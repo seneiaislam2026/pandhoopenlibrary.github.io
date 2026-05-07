@@ -185,20 +185,39 @@ export default function Events() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+          <motion.div 
+            initial="hidden"
+            animate="show"
+            variants={{
+              hidden: { opacity: 0 },
+              show: {
+                opacity: 1,
+                transition: {
+                  staggerChildren: 0.15
+                }
+              }
+            }}
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10"
+          >
             {events.map((event, index) => (
               <motion.div
                 key={event.id}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
+                variants={{
+                  hidden: { opacity: 0, y: 30 },
+                  show: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } }
+                }}
+                whileHover={{ y: -10, transition: { duration: 0.3 } }}
                 className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden hover:shadow-2xl transition-all group flex flex-col h-full"
               >
-                <div className="relative h-56">
-                  <img src={event.image || 'https://images.unsplash.com/photo-1544928147-79a2dbc1f389?q=80&w=1974&auto=format&fit=crop'} alt={event.title} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                <div className="relative h-56 overflow-hidden">
+                  <img src={event.image || 'https://images.unsplash.com/photo-1544928147-79a2dbc1f389?q=80&w=1974&auto=format&fit=crop'} alt={event.title} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                   <div className="absolute top-6 left-6">
-                    <span className="bg-white/90 backdrop-blur px-4 py-2 rounded-xl text-xs font-black text-indigo-600 font-bengali tracking-[0.15em] shadow-sm uppercase">{event.type}</span>
+                    <motion.span 
+                      whileHover={{ scale: 1.1 }}
+                      className="bg-white/90 backdrop-blur px-4 py-2 rounded-xl text-xs font-black text-indigo-600 font-bengali tracking-[0.15em] shadow-sm uppercase inline-block"
+                    >
+                      {event.type}
+                    </motion.span>
                   </div>
                 </div>
 
@@ -208,32 +227,34 @@ export default function Events() {
                    
                    <div className="mt-auto space-y-4">
                       <div className="flex items-center gap-4 text-slate-500 text-sm font-bold">
-                         <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                         <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg group-hover:rotate-12 transition-transform">
                             <Calendar size={18} />
                          </div>
                          <span className="font-bengali">তারিখ: {new Date(event.date).toLocaleDateString('bn-BD')}</span>
                       </div>
                       <div className="flex items-center gap-4 text-rose-600 text-sm font-bold">
-                         <div className="p-2 bg-rose-50 rounded-lg">
+                         <div className="p-2 bg-rose-50 rounded-lg group-hover:-rotate-12 transition-transform">
                             <Clock size={18} />
                          </div>
                          <span className="font-bengali">ডেডলাইন: {new Date(event.deadline).toLocaleDateString('bn-BD')}</span>
                       </div>
                    </div>
 
-                   <button
+                   <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => {
                       setSelectedEvent(event);
                       setHasRegistered(false);
                     }}
-                    className="mt-10 w-full py-5 rounded-2xl font-black font-bengali text-lg transition-all flex items-center justify-center gap-3 bg-slate-900 text-white hover:bg-indigo-600 shadow-xl shadow-slate-100 group-hover:shadow-indigo-100 active:scale-[0.98]"
+                    className="mt-10 w-full py-5 rounded-2xl font-black font-bengali text-lg transition-all flex items-center justify-center gap-3 bg-slate-900 text-white hover:bg-indigo-600 shadow-xl shadow-slate-100 group-hover:shadow-indigo-100"
                   >
                     রেজিস্ট্রেশন করুন <ArrowRight size={22} />
-                  </button>
+                  </motion.button>
                 </div>
               </motion.div>
             ))}
-          </div>
+          </motion.div>
         )}
 
         {!loading && events.length === 0 && (

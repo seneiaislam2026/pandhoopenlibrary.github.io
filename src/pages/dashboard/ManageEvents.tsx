@@ -3,7 +3,7 @@ import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query, orderBy,
 import { db } from '../../lib/firebase';
 import { Plus, Trash2, Calendar, FileText, CheckCircle, Clock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../store/AuthContext';
 
 interface Event {
@@ -297,10 +297,28 @@ export default function ManageEvents() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <motion.div 
+          initial="hidden"
+          animate="show"
+          variants={{
+            hidden: { opacity: 0 },
+            show: {
+              opacity: 1,
+              transition: {
+                staggerChildren: 0.1
+              }
+            }
+          }}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+        >
           {events.map((event) => (
             <motion.div
               layout
+              variants={{
+                hidden: { opacity: 0, y: 20, scale: 0.95 },
+                show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.5 } }
+              }}
+              whileHover={{ y: -5, transition: { duration: 0.2 } }}
               key={event.id}
               className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
             >
@@ -365,7 +383,7 @@ export default function ManageEvents() {
               কোন ইভেন্ট পাওয়া যায়নি
             </div>
           )}
-        </div>
+        </motion.div>
       )}
 
       {/* Applicant View Modal */}

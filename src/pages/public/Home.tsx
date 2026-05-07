@@ -33,14 +33,51 @@ export default function Home() {
       {/* Hero Section */}
       <section className="relative pt-24 md:pt-32 pb-32 md:pb-40 px-6 overflow-hidden">
         {/* Abstract Background Shapes */}
-        <div className="absolute top-0 right-0 w-[500px] md:w-[800px] h-[500px] md:h-[800px] bg-indigo-500/5 rounded-full blur-[80px] md:blur-[120px] -mr-48 md:-mr-96 -mt-48 md:-mt-96 animate-pulse"></div>
-        <div className="absolute top-1/4 left-0 w-[400px] h-[400px] bg-emerald-500/5 rounded-full blur-[100px] -ml-64 opacity-50"></div>
-        <div className="absolute bottom-0 right-1/4 w-[300px] h-[300px] bg-rose-500/5 rounded-full blur-[80px] opacity-30"></div>
+        <motion.div 
+          animate={{ 
+            y: [0, -20, 0],
+            scale: [1, 1.05, 1],
+            rotate: [0, 5, 0]
+          }}
+          transition={{ 
+            duration: 8, 
+            repeat: Infinity, 
+            ease: "easeInOut" 
+          }}
+          className="absolute top-0 right-0 w-[500px] md:w-[800px] h-[500px] md:h-[800px] bg-indigo-500/5 rounded-full blur-[80px] md:blur-[120px] -mr-48 md:-mr-96 -mt-48 md:-mt-96"
+        />
+        <motion.div 
+          animate={{ 
+            y: [0, 30, 0],
+            x: [0, 20, 0],
+            scale: [1, 1.1, 1]
+          }}
+          transition={{ 
+            duration: 10, 
+            repeat: Infinity, 
+            ease: "easeInOut",
+            delay: 1
+          }}
+          className="absolute top-1/4 left-0 w-[400px] h-[400px] bg-emerald-500/5 rounded-full blur-[100px] -ml-64 opacity-50"
+        />
+        <motion.div 
+          animate={{ 
+            scale: [1, 1.2, 1],
+            opacity: [0.2, 0.4, 0.2]
+          }}
+          transition={{ 
+            duration: 12, 
+            repeat: Infinity, 
+            ease: "easeInOut" 
+          }}
+          className="absolute bottom-0 right-1/4 w-[300px] h-[300px] bg-rose-500/5 rounded-full blur-[80px]"
+        />
         
         <div className="max-w-7xl mx-auto relative z-10 text-center">
           <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
+            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ type: "spring", stiffness: 100, damping: 15 }}
             className="inline-flex items-center gap-3 bg-white/60 backdrop-blur-md px-5 py-2.5 rounded-full border border-slate-200/50 shadow-lg shadow-slate-200/30 mb-8 md:mb-12 cursor-default"
           >
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
@@ -48,8 +85,9 @@ export default function Home() {
           </motion.div>
 
           <motion.h1 
-            initial={{ opacity: 0, y: 30 }}
+            initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
             className="text-6xl md:text-8xl lg:text-7xl xl:text-8xl font-black text-slate-900 mb-10 font-bengali tracking-tight leading-[1.05]"
           >
             জ্ঞানের আলোয় <br />
@@ -57,9 +95,9 @@ export default function Home() {
           </motion.h1>
           
           <motion.p 
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
+            transition={{ duration: 0.8, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
             className="text-xl md:text-2xl lg:text-xl xl:text-2xl text-slate-500 font-bengali max-w-3xl mx-auto mb-16 font-medium leading-relaxed px-4"
           >
             আপনার পছন্দের বইটি এখন এক ক্লিকেই। লাইব্রেরির সদস্য হোন, ইভেন্টে অংশগ্রহণ করুন এবং নিজেকে বিকশিত করুন।
@@ -68,35 +106,43 @@ export default function Home() {
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
+            transition={{ duration: 0.8, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
             className="flex flex-col sm:flex-row items-center justify-center gap-4 lg:gap-6 flex-wrap px-4"
           >
-            <Link
-              to="/register"
-              className="w-full sm:w-auto bg-slate-900 text-white px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl hover:bg-slate-800 shadow-2xl shadow-slate-900/10 hover:shadow-indigo-500/10 transition-all active:scale-95 group flex items-center justify-center gap-3"
-            >
-              সদস্য হতে আবেদন করুন
-              <ArrowRight className="w-5 h-5 group-hover:translate-x-2 transition-transform" />
-            </Link>
-            <Link
-              to="/login"
-              className="w-full sm:w-auto bg-indigo-600 text-white px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl hover:bg-indigo-700 shadow-xl shadow-indigo-600/10 transition-all active:scale-95 flex items-center justify-center gap-3"
-            >
-              লগইন করুন
-            </Link>
-            <Link
-              to="/books"
-              className="w-full sm:w-auto bg-white text-slate-900 px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl border border-slate-200 hover:border-indigo-600 shadow-lg shadow-slate-200/40 hover:text-indigo-600 transition-all active:scale-95 flex items-center justify-center gap-3"
-            >
-              বই ব্রাউজ করুন
-            </Link>
-            <Link
-              to="/buy-books"
-              className="w-full sm:w-auto bg-rose-50 text-rose-600 px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl border border-rose-100 hover:bg-rose-600 hover:text-white shadow-lg shadow-rose-200/40 transition-all active:scale-95 flex items-center justify-center gap-3"
-            >
-              <ShoppingCart className="w-5 h-5" />
-              বই কিনুন
-            </Link>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Link
+                to="/register"
+                className="w-full sm:w-auto bg-slate-900 text-white px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl hover:bg-slate-800 shadow-2xl shadow-slate-900/10 hover:shadow-indigo-500/10 transition-all group flex items-center justify-center gap-3"
+              >
+                সদস্য হতে আবেদন করুন
+                <ArrowRight className="w-5 h-5 group-hover:translate-x-2 transition-transform" />
+              </Link>
+            </motion.div>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Link
+                to="/login"
+                className="w-full sm:w-auto bg-indigo-600 text-white px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl hover:bg-indigo-700 shadow-xl shadow-indigo-600/10 transition-all flex items-center justify-center gap-3"
+              >
+                লগইন করুন
+              </Link>
+            </motion.div>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Link
+                to="/books"
+                className="w-full sm:w-auto bg-white text-slate-900 px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl border border-slate-200 hover:border-indigo-600 shadow-lg shadow-slate-200/40 hover:text-indigo-600 transition-all flex items-center justify-center gap-3"
+              >
+                বই ব্রাউজ করুন
+              </Link>
+            </motion.div>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Link
+                to="/buy-books"
+                className="w-full sm:w-auto bg-rose-50 text-rose-600 px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl border border-rose-100 hover:bg-rose-600 hover:text-white shadow-lg shadow-rose-200/40 transition-all flex items-center justify-center gap-3"
+              >
+                <ShoppingCart className="w-5 h-5" />
+                বই কিনুন
+              </Link>
+            </motion.div>
           </motion.div>
         </div>
       </section>
@@ -114,11 +160,12 @@ export default function Home() {
                 key={i}
                 initial={{ opacity: 0, y: 40 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
+                viewport={{ once: true, margin: "-100px" }}
+                transition={{ duration: 0.8, delay: i * 0.15, ease: [0.16, 1, 0.3, 1] }}
+                whileHover={{ y: -10, transition: { duration: 0.3 } }}
                 className="bg-white p-12 rounded-[3.5rem] shadow-2xl shadow-slate-200/50 border border-slate-50 group hover:shadow-indigo-500/10 transition-all"
               >
-                <div className={`w-20 h-20 bg-${f.color}-50 text-${f.color}-600 rounded-[2rem] flex items-center justify-center mb-10 group-hover:scale-110 transition-transform`}>
+                <div className={`w-20 h-20 bg-${f.color}-50 text-${f.color}-600 rounded-[2rem] flex items-center justify-center mb-10 group-hover:scale-110 group-hover:rotate-6 transition-transform`}>
                   <f.icon size={36} />
                 </div>
                 <h3 className="text-3xl font-black text-slate-900 mb-6 font-bengali">{f.title}</h3>
@@ -132,22 +179,57 @@ export default function Home() {
       {/* CTA Section */}
       <section className="py-32 px-6">
         <div className="max-w-7xl mx-auto">
-          <div className="bg-slate-900 rounded-[4rem] p-16 md:p-32 text-center relative overflow-hidden">
-             <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-indigo-500/20 rounded-full blur-[150px] -mr-64 -mt-64"></div>
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+            className="bg-slate-900 rounded-[4rem] p-16 md:p-32 text-center relative overflow-hidden"
+          >
+             <motion.div 
+              animate={{ 
+                scale: [1, 1.2, 1],
+                opacity: [0.1, 0.2, 0.1]
+              }}
+              transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+              className="absolute top-0 right-0 w-[600px] h-[600px] bg-indigo-500/20 rounded-full blur-[150px] -mr-64 -mt-64"
+             />
              
              <div className="relative z-10">
-               <h2 className="text-4xl md:text-7xl font-black text-white mb-10 font-bengali tracking-tight leading-[1.1]">
+               <motion.h2 
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.8, delay: 0.2 }}
+                className="text-4xl md:text-7xl font-black text-white mb-10 font-bengali tracking-tight leading-[1.1]"
+               >
                  আমাদের অগ্রযাত্রার <br /> অংশ হতে চান?
-               </h2>
-               <p className="text-slate-400 font-bengali text-xl md:text-2xl mb-16 max-w-2xl mx-auto leading-relaxed">
+               </motion.h2>
+               <motion.p 
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.8, delay: 0.3 }}
+                className="text-slate-400 font-bengali text-xl md:text-2xl mb-16 max-w-2xl mx-auto leading-relaxed"
+               >
                  সদস্য আবেদন থেকে শুরু করে যেকোনো প্রয়োজনে আমাদের সাথেই থাকুন। জ্ঞানের আলো সবার মাঝে ছড়িয়ে দেই।
-               </p>
-               <div className="flex flex-col sm:flex-row justify-center gap-6">
-                 <Link to="/register" className="bg-white text-slate-900 px-12 py-6 rounded-[2rem] font-black font-bengali text-xl hover:bg-indigo-400 hover:text-white transition-all shadow-2xl active:scale-95">সদস্য হতে আবেদন করুন</Link>
-                 <Link to="/donors" className="bg-slate-800 text-white border border-slate-700 px-12 py-6 rounded-[2rem] font-black font-bengali text-xl hover:bg-slate-700 transition-all shadow-xl active:scale-95">দাতা সদস্যদের তালিকা</Link>
-               </div>
+               </motion.p>
+               <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.8, delay: 0.4 }}
+                className="flex flex-col sm:flex-row justify-center gap-6"
+               >
+                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                   <Link to="/register" className="w-full sm:w-auto bg-white text-slate-900 px-12 py-6 rounded-[2rem] font-black font-bengali text-xl hover:bg-indigo-400 hover:text-white transition-all shadow-2xl flex items-center justify-center">সদস্য হতে আবেদন করুন</Link>
+                 </motion.div>
+                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                   <Link to="/donors" className="w-full sm:w-auto bg-slate-800 text-white border border-slate-700 px-12 py-6 rounded-[2rem] font-black font-bengali text-xl hover:bg-slate-700 transition-all shadow-xl flex items-center justify-center">দাতা সদস্যদের তালিকা</Link>
+                 </motion.div>
+               </motion.div>
              </div>
-          </div>
+          </motion.div>
         </div>
       </section>
     </div>

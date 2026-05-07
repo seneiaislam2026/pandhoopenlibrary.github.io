@@ -121,6 +121,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setUser(null);
           setToken(null);
         }
+        // Immediately set loading to false if no user is found
         setLoading(false);
       }
     });

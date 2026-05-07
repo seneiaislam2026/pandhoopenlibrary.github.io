@@ -53,7 +53,12 @@ const AdminSettings = React.lazy(() => import('./pages/dashboard/AdminSettings')
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) => {
   const { user, loading } = useAuth();
-  if (loading) return <div className="h-screen w-full flex items-center justify-center">Loading...</div>;
+  if (loading) return (
+    <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50">
+      <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
+      <p className="font-bengali font-bold text-slate-500 animate-pulse">প্রবেশাধিকার যাচাই করা হচ্ছে...</p>
+    </div>
+  );
   if (!user) return <Navigate to="/login" replace />;
   if (allowedRoles && !allowedRoles.includes(user.role)) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
@@ -61,7 +66,15 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode,
 
 function AppRoutes() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center font-bengali text-lg text-primary">লোড হচ্ছে...</div>}>
+    <Suspense fallback={
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white font-bengali">
+        <div className="relative">
+          <div className="w-20 h-20 border-4 border-slate-100 rounded-full"></div>
+          <div className="w-20 h-20 border-4 border-t-indigo-600 rounded-full animate-spin absolute top-0 left-0"></div>
+        </div>
+        <p className="mt-6 text-xl font-black text-slate-800 animate-pulse">লোড হচ্ছে...</p>
+      </div>
+    }>
       <Routes>
         {/* Public Pages grouped under MainLayout */}
         <Route element={<MainLayout />}>

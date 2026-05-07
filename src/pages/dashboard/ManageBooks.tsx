@@ -46,6 +46,8 @@ interface Book {
   bookCode?: string;
   shelfNo?: string;
   price?: number;
+  review?: string;
+  description?: string;
 }
 
 enum OperationType {
@@ -139,14 +141,16 @@ export default function ManageBooks() {
   
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState<{ title: string; author: string; category: string; cover: string; status: string; bookCode: string; shelfNo: string }>({ 
+  const [formData, setFormData] = useState<{ title: string; author: string; category: string; cover: string; status: string; bookCode: string; shelfNo: string; review: string; description: string }>({ 
     title: '', 
     author: '', 
     category: '', 
     cover: '', 
     status: 'Available', 
     bookCode: '',
-    shelfNo: ''
+    shelfNo: '',
+    review: '',
+    description: ''
   });
   const [coverInputType, setCoverInputType] = useState<'upload' | 'link'>('upload');
 
@@ -323,7 +327,7 @@ export default function ManageBooks() {
               updatedAt: serverTimestamp()
             });
             setShowModal(false);
-            setFormData({ title: '', author: '', category: '', cover: '', status: 'Available', bookCode: '', shelfNo: '' });
+            setFormData({ title: '', author: '', category: '', cover: '', status: 'Available', bookCode: '', shelfNo: '', review: '', description: '' });
             setEditingId(null);
             toast.success('সফলভাবে বই আপডেট করা হয়েছে!');
         } else {
@@ -336,7 +340,7 @@ export default function ManageBooks() {
               createdAt: serverTimestamp()
             });
             toast.success('সফলভাবে বই যুক্ত করা হয়েছে!');
-            setFormData(prev => ({ title: '', author: '', category: prev.category, cover: '', status: 'Available', bookCode: generateBookCode(prev.category || ''), shelfNo: prev.shelfNo }));
+            setFormData(prev => ({ title: '', author: '', category: prev.category, cover: '', status: 'Available', bookCode: generateBookCode(prev.category || ''), shelfNo: prev.shelfNo, review: '', description: '' }));
         }
     } catch (error: any) {
         if (error.message?.includes('permission-denied') || error.code === 'permission-denied') {
@@ -356,7 +360,9 @@ export default function ManageBooks() {
       cover: book.cover || '',
       status: book.status || 'Available',
       bookCode: book.bookCode || '',
-      shelfNo: book.shelfNo || ''
+      shelfNo: book.shelfNo || '',
+      review: book.review || '',
+      description: book.description || ''
     });
     setEditingId(book.id);
     setShowModal(true);
@@ -425,7 +431,7 @@ export default function ManageBooks() {
                 তালিকা ডাউনলোড
               </button>
               <button
-                onClick={() => { setFormData({ title: '', author: '', category: '', cover: '', status: 'Available', bookCode: '', shelfNo: '' }); setEditingId(null); setShowModal(true); }}
+                onClick={() => { setFormData({ title: '', author: '', category: '', cover: '', status: 'Available', bookCode: '', shelfNo: '', review: '', description: '' }); setEditingId(null); setShowModal(true); }}
                 className="bg-indigo-500 hover:bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-indigo-500/20 transition-all active:scale-95 group whitespace-nowrap min-w-[160px]"
               >
                 <Plus className="w-5 h-5" /> 
@@ -659,6 +665,26 @@ export default function ManageBooks() {
                     classNamePrefix="react-select"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বইয়ের বিবরণ (Description)</label>
+                <textarea 
+                  value={formData.description || ''} 
+                  onChange={e=>setFormData({...formData, description: e.target.value})} 
+                  className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-50 outline-none font-bold text-sm h-32" 
+                  placeholder="বইয়ের বিষয়বস্তু সম্পর্কে বিস্তারিত লিখুন..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বই সমালোচনা (বই সম্পর্কে আপনার মন্তব্য - অপশনাল)</label>
+                <textarea 
+                  value={formData.review || ''} 
+                  onChange={e=>setFormData({...formData, review: e.target.value})} 
+                  className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm h-24" 
+                  placeholder="বইটি সম্পর্কে আপনার কোনো রিভিউ বা মন্তব্য থাকলে লিখুন..."
+                />
               </div>
 
               <div>

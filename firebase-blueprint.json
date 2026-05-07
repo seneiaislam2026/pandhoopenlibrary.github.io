@@ -33,6 +33,7 @@
         "bookCode": { "type": "string" },
         "cover": { "type": "string" },
         "description": { "type": "string" },
+        "review": { "type": "string" },
         "price": { "type": "number" },
         "isForSale": { "type": "boolean" }
       },
