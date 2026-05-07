@@ -21,7 +21,8 @@ import {
   LayoutDashboard,
   Bell,
   MessageSquare,
-  DollarSign
+  DollarSign,
+  ChevronDown
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "../store/AuthContext";
@@ -98,7 +99,7 @@ export default function MainLayout() {
       <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 md:gap-4">
               {location.pathname !== "/" && (
                 <button
                   onClick={() => {
@@ -108,75 +109,104 @@ export default function MainLayout() {
                       navigate("/");
                     }
                   }}
-                  className="p-2 -ml-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-full transition-colors"
+                  className="p-2 -ml-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-full transition-all"
                   aria-label="Go back"
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </button>
               )}
-              <Link to="/" className="flex items-center gap-2">
-                <Logo className="h-8 w-8" />
-                <span className="font-bold text-lg tracking-normal text-indigo-900">
+              <Link to="/" className="flex items-center gap-2 group">
+                <Logo className="h-8 w-8 group-hover:rotate-12 transition-transform duration-300" />
+                <span className="font-bold text-base lg:text-lg tracking-tight text-indigo-950 whitespace-nowrap">
                   পানধোয়া উন্মুক্ত পাঠাগার
                 </span>
               </Link>
             </div>
 
             {/* Desktop Nav */}
-          <div className="hidden md:flex items-center space-x-8">
-              {links.map((link) => (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  className={cn(
-                    "text-sm font-medium transition-colors hover:text-indigo-600",
-                    location.pathname === link.path
-                      ? "text-indigo-600"
-                      : "text-slate-600",
-                  )}
-                >
-                  {link.name}
-                </Link>
-              ))}
+          <div className="hidden md:flex items-center">
+              <div className="flex items-center space-x-3 lg:space-x-5 mr-4">
+                {links.slice(0, 5).map((link) => (
+                  <Link
+                    key={link.path}
+                    to={link.path}
+                    className={cn(
+                      "text-[13px] lg:text-[14px] font-bold transition-all px-2 py-1 rounded-lg font-bengali whitespace-nowrap",
+                      location.pathname === link.path
+                        ? "text-indigo-600 bg-indigo-50"
+                        : "text-slate-600 hover:text-indigo-600 hover:bg-slate-50",
+                    )}
+                  >
+                    {link.name}
+                  </Link>
+                ))}
 
-              <div className="pl-4 border-l border-slate-200 flex items-center gap-4">
+                {/* More Dropdown */}
+                <div className="relative group/more">
+                  <button className="flex items-center gap-1 text-[13px] lg:text-[14px] font-bold text-slate-600 hover:text-indigo-600 px-2 py-1 rounded-lg font-bengali cursor-default">
+                    আরো
+                    <ChevronDown className="w-4 h-4 group-hover/more:rotate-180 transition-transform" />
+                  </button>
+                  <div className="absolute top-full left-0 pt-2 opacity-0 translate-y-2 pointer-events-none group-hover/more:opacity-100 group-hover/more:translate-y-0 group-hover/more:pointer-events-auto transition-all duration-200 z-50">
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 min-w-[180px]">
+                      {links.slice(5).map((link) => (
+                        <Link
+                          key={link.path}
+                          to={link.path}
+                          className={cn(
+                            "flex items-center gap-3 px-4 py-2.5 rounded-xl text-[14px] font-bold font-bengali transition-colors",
+                            location.pathname === link.path
+                              ? "text-indigo-600 bg-indigo-50"
+                              : "text-slate-600 hover:bg-slate-50 hover:text-indigo-600",
+                          )}
+                        >
+                          <link.icon className="w-4 h-4 opacity-50" />
+                          {link.name}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pl-4 border-l border-slate-200 flex items-center gap-2 lg:gap-3">
                 <button
                   onClick={toggleLanguage}
-                  className="flex items-center gap-1 text-slate-600 hover:text-indigo-600 transition-colors px-2 py-1 rounded-md text-sm font-medium bg-slate-50"
+                  className="flex items-center gap-1 text-slate-500 hover:text-indigo-600 transition-colors px-2 py-1.5 rounded-lg text-xs font-bold bg-slate-50 border border-slate-100"
                   title="Toggle Language"
                 >
-                  <Globe className="w-4 h-4" />
+                  <Globe className="w-3.5 h-3.5" />
                   {i18n.language === "en" ? "BN" : "EN"}
                 </button>
                 <Link
                   to="/finances"
-                  className="bg-emerald-500 text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-emerald-600 transition-colors shadow-sm shadow-emerald-500/20 font-bengali"
+                  className="bg-emerald-500 text-white px-4 py-2 rounded-xl text-[13px] font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/10 font-bengali active:scale-95 whitespace-nowrap"
                 >
-                  আয়-ব্যয় হিসাব
+                  আয়-ব্যয় হিসেব
                 </Link>
                 {user ? (
                   <Link
                     to="/dashboard"
-                    className="flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-indigo-600 transition-colors"
+                    className="flex items-center gap-2 text-[13px] lg:text-sm font-bold text-slate-700 bg-slate-100 px-4 py-2 rounded-xl hover:bg-indigo-600 hover:text-white transition-all active:scale-95 whitespace-nowrap"
                   >
-                    <UserCircle className="w-5 h-5" />
+                    <UserCircle className="w-4 h-4" />
                     {t("nav.dashboard")}
                   </Link>
                 ) : (
-                  <>
+                  <div className="flex items-center gap-2">
                     <Link
                       to="/login"
-                      className="text-sm font-medium text-slate-800 hover:text-indigo-600 transition-colors bg-slate-100 px-3 py-1.5 rounded-lg"
+                      className="text-[13px] lg:text-sm font-bold text-slate-700 hover:text-indigo-600 transition-colors px-3 py-2 rounded-lg"
                     >
                       {t("nav.login")}
                     </Link>
                     <Link
                       to="/register"
-                      className="bg-indigo-600 text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-indigo-700 transition-colors"
+                      className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-[13px] lg:text-sm font-bold hover:bg-indigo-700 shadow-xl shadow-indigo-600/10 transition-all active:scale-95 whitespace-nowrap"
                     >
-                      Join Limitless
+                      Join Now
                     </Link>
-                  </>
+                  </div>
                 )}
               </div>
             </div>

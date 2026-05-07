@@ -31,25 +31,26 @@ export default function Home() {
       </Helmet>
 
       {/* Hero Section */}
-      <section className="relative pt-32 pb-40 px-6 overflow-hidden">
+      <section className="relative pt-24 md:pt-32 pb-32 md:pb-40 px-6 overflow-hidden">
         {/* Abstract Background Shapes */}
-        <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-indigo-500/5 rounded-full blur-[120px] -mr-96 -mt-96 animate-pulse"></div>
-        <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-emerald-500/5 rounded-full blur-[100px] -ml-64 -mb-64 opacity-50"></div>
+        <div className="absolute top-0 right-0 w-[500px] md:w-[800px] h-[500px] md:h-[800px] bg-indigo-500/5 rounded-full blur-[80px] md:blur-[120px] -mr-48 md:-mr-96 -mt-48 md:-mt-96 animate-pulse"></div>
+        <div className="absolute top-1/4 left-0 w-[400px] h-[400px] bg-emerald-500/5 rounded-full blur-[100px] -ml-64 opacity-50"></div>
+        <div className="absolute bottom-0 right-1/4 w-[300px] h-[300px] bg-rose-500/5 rounded-full blur-[80px] opacity-30"></div>
         
         <div className="max-w-7xl mx-auto relative z-10 text-center">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="inline-flex items-center gap-3 bg-white/80 backdrop-blur-md px-6 py-2.5 rounded-full border border-slate-200 shadow-xl shadow-slate-200/50 mb-12"
+            className="inline-flex items-center gap-3 bg-white/60 backdrop-blur-md px-5 py-2.5 rounded-full border border-slate-200/50 shadow-lg shadow-slate-200/30 mb-8 md:mb-12 cursor-default"
           >
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></div>
-            <span className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] font-bengali">একটি আধুনিক ডিজিটাল পাঠাগার</span>
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+            <span className="text-[10px] md:text-xs font-black text-slate-500 uppercase tracking-[0.2em] font-bengali">একটি আধুনিক ডিজিটাল পাঠাগার</span>
           </motion.div>
 
           <motion.h1 
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-6xl md:text-8xl lg:text-9xl font-black text-slate-900 mb-10 font-bengali tracking-tight leading-[0.95]"
+            className="text-6xl md:text-8xl lg:text-7xl xl:text-8xl font-black text-slate-900 mb-10 font-bengali tracking-tight leading-[1.05]"
           >
             জ্ঞানের আলোয় <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-indigo-400">সমাজ গড়ি</span>
@@ -59,7 +60,7 @@ export default function Home() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="text-xl md:text-2xl text-slate-500 font-bengali max-w-2xl mx-auto mb-16 font-medium leading-relaxed"
+            className="text-xl md:text-2xl lg:text-xl xl:text-2xl text-slate-500 font-bengali max-w-3xl mx-auto mb-16 font-medium leading-relaxed px-4"
           >
             আপনার পছন্দের বইটি এখন এক ক্লিকেই। লাইব্রেরির সদস্য হোন, ইভেন্টে অংশগ্রহণ করুন এবং নিজেকে বিকশিত করুন।
           </motion.p>
@@ -68,32 +69,32 @@ export default function Home() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-6 flex-wrap"
+            className="flex flex-col sm:flex-row items-center justify-center gap-4 lg:gap-6 flex-wrap px-4"
           >
             <Link
               to="/register"
-              className="w-full sm:w-auto bg-slate-900 text-white px-10 py-5 rounded-[2rem] font-black font-bengali text-xl hover:bg-indigo-600 shadow-2xl shadow-slate-900/20 hover:shadow-indigo-500/20 transition-all active:scale-95 group flex items-center justify-center gap-3"
+              className="w-full sm:w-auto bg-slate-900 text-white px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl hover:bg-slate-800 shadow-2xl shadow-slate-900/10 hover:shadow-indigo-500/10 transition-all active:scale-95 group flex items-center justify-center gap-3"
             >
               সদস্য হতে আবেদন করুন
-              <ArrowRight className="w-6 h-6 group-hover:translate-x-2 transition-transform" />
+              <ArrowRight className="w-5 h-5 group-hover:translate-x-2 transition-transform" />
             </Link>
             <Link
               to="/login"
-              className="w-full sm:w-auto bg-indigo-600 text-white px-10 py-5 rounded-[2rem] font-black font-bengali text-xl hover:bg-indigo-700 shadow-xl shadow-indigo-600/20 transition-all active:scale-95 flex items-center justify-center gap-3"
+              className="w-full sm:w-auto bg-indigo-600 text-white px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl hover:bg-indigo-700 shadow-xl shadow-indigo-600/10 transition-all active:scale-95 flex items-center justify-center gap-3"
             >
               লগইন করুন
             </Link>
             <Link
               to="/books"
-              className="w-full sm:w-auto bg-white text-slate-900 px-10 py-5 rounded-[2rem] font-black font-bengali text-xl border-2 border-slate-100 hover:border-indigo-600 shadow-xl shadow-slate-200/50 hover:text-indigo-600 transition-all active:scale-95 flex items-center justify-center gap-3"
+              className="w-full sm:w-auto bg-white text-slate-900 px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl border border-slate-200 hover:border-indigo-600 shadow-lg shadow-slate-200/40 hover:text-indigo-600 transition-all active:scale-95 flex items-center justify-center gap-3"
             >
               বই ব্রাউজ করুন
             </Link>
             <Link
               to="/buy-books"
-              className="w-full sm:w-auto bg-rose-50 text-rose-600 px-10 py-5 rounded-[2rem] font-black font-bengali text-xl border-2 border-rose-100 hover:bg-rose-600 hover:text-white shadow-xl shadow-rose-200/50 transition-all active:scale-95 flex items-center justify-center gap-3"
+              className="w-full sm:w-auto bg-rose-50 text-rose-600 px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl border border-rose-100 hover:bg-rose-600 hover:text-white shadow-lg shadow-rose-200/40 transition-all active:scale-95 flex items-center justify-center gap-3"
             >
-              <ShoppingCart className="w-6 h-6" />
+              <ShoppingCart className="w-5 h-5" />
               বই কিনুন
             </Link>
           </motion.div>
