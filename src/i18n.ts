@@ -9,10 +9,14 @@ const resources = {
         "home": "Home",
         "books": "Library",
         "about": "About",
-        "team": "Team",
+        "team": "Board of Directors",
+        "constitution": "Constitution",
         "buy": "Buy Books",
         "login": "Login",
-        "dashboard": "Dashboard"
+        "dashboard": "Dashboard",
+        "donors": "Donors",
+        "blog": "Book Review",
+        "donate": "Donate"
       },
       "home": {
         "badge": "A community-driven knowledge hub",
@@ -33,7 +37,7 @@ const resources = {
           "col3Desc": "We manage our funds and donations transparently. Every contribution is recorded and visible to the public."
         },
         "testimonial": "\"Books are the magic keys that open the doors to the unknown.\"",
-        "since": "Pandhoa Open Library, Established May 28, 2020",
+        "since": "Pandhoa Open Library",
         "members": "Join our active members today."
       }
     }
@@ -44,10 +48,14 @@ const resources = {
         "home": "হোম",
         "books": "বইসমূহ",
         "about": "আমাদের সম্পর্কে",
-        "team": "টিম",
+        "team": "পরিচালনা পর্ষদ",
+        "constitution": "গঠনতন্ত্র",
         "buy": "বই কিনুন",
         "login": "লগইন",
-        "dashboard": "ড্যাশবোর্ড"
+        "dashboard": "ড্যাশবোর্ড",
+        "donors": "দাতা সদস্য",
+        "blog": "বুক রিভিও",
+        "donate": "দান করুন"
       },
       "home": {
         "badge": "সবার জন্য উন্মুক্ত জ্ঞানচর্চা কেন্দ্র",
@@ -68,7 +76,7 @@ const resources = {
           "col3Desc": "আমরা আমাদের তহবিল এবং অনুদান স্বচ্ছভাবে পরিচালনা করি। প্রতিটি অবদান রেকর্ড করা হয় এবং সবার জন্য উন্মুক্ত থাকে।"
         },
         "testimonial": "\"বই হলো এমন এক জাদুর চাবি, যা অজানার দরজা খুলে দেয়।\"",
-        "since": "পানধোয়া উন্মুক্ত পাঠাগার স্থাপিত ২৮ মে ২০২০",
+        "since": "পানধোয়া উন্মুক্ত পাঠাগার",
         "members": "আজই আমাদের সক্রিয় সদস্যের সাথে যোগ দিন।"
       }
     }

@@ -1,17 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../store/AuthContext';
+import { db } from '../../lib/firebase';
+import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function BkashMockPayment() {
   const [params] = useSearchParams();
   const paymentID = params.get('paymentID');
+  const amount = params.get('amount');
+  const month = params.get('month');
+  const type = params.get('type') || 'monthly';
+  
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { user } = useAuth();
   
   const [status, setStatus] = useState('Processing...');
 
   useEffect(() => {
-    if (!paymentID) {
+    if (!paymentID || !user) {
       navigate('/dashboard/profile');
       return;
     }
@@ -20,24 +26,30 @@ export default function BkashMockPayment() {
     setTimeout(() => {
       setStatus('Waiting for confirmation...');
     }, 1500);
-  }, [paymentID, navigate]);
+  }, [paymentID, navigate, user]);
 
   const handleConfirm = async () => {
+    if (!user) return;
     setStatus('Executing payment...');
     try {
-      const res = await fetch('/api/bkash/execute', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-         body: JSON.stringify({ paymentID })
+      // Record payment in Firestore
+      const newPaymentRef = doc(collection(db, "payments"));
+      await setDoc(newPaymentRef, {
+        userId: user.id,
+        userName: user.name,
+        amount: Number(amount) || 0,
+        month: month || '',
+        status: 'Approved',
+        trxId: paymentID,
+        date: new Date().toISOString(),
+        type: type,
+        createdAt: serverTimestamp()
       });
-      if (res.ok) {
-        setStatus('Payment Successful! Redirecting...');
-        setTimeout(() => navigate('/dashboard/profile'), 2000);
-      } else {
-        setStatus('Payment Failed. Please try again.');
-        setTimeout(() => navigate('/dashboard/profile'), 2000);
-      }
+
+      setStatus('Payment Successful! Redirecting...');
+      setTimeout(() => navigate('/dashboard/profile'), 2000);
     } catch (e) {
+      console.error(e);
       setStatus('Error connecting to bKash');
     }
   };

@@ -1,13 +1,19 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../store/AuthContext';
-import { BookOpen, AlertCircle, ArrowRight, X, Send, Lock } from 'lucide-react';
+import { BookOpen, AlertCircle, ArrowRight, X, Send, Lock, MapPin, Phone } from 'lucide-react';
+import { Logo } from '../../components/Logo';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { auth, db } from '../../lib/firebase';
+import { doc, getDoc, setDoc, collection, serverTimestamp, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+import toast from 'react-hot-toast';
 
 export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
@@ -15,32 +21,159 @@ export default function Login() {
   const [forgotLoading, setForgotLoading] = useState(false);
 
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, loginWithUsername } = useAuth();
+
+  const handleGoogleLogin = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      // Check if user exists in Firestore
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      const isAdminEmail = user.email === 'seneiaislam@gmail.com' || user.email === 'admin@library.com';
+      
+      if (!userDoc.exists()) {
+        // Redirect to register with initial data if profile missing
+        navigate('/register', { 
+            state: { 
+                prefill: { 
+                    name: user.displayName || '', 
+                    email: user.email || '',
+                    googleUid: user.uid
+                } 
+            } 
+        });
+        return;
+      } else {
+        // Always ensure admin role for this specific email
+        if (isAdminEmail && userDoc.data().role !== 'admin') {
+          await setDoc(doc(db, 'users', user.uid), { role: 'admin' }, { merge: true });
+        }
+      }
+      navigate('/dashboard');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      const data = await res.json();
-      
-      if (!res.ok) {
-        if (res.status === 403 && data.error?.includes('pending')) {
-            throw new Error('Account is pending approval. Please wait for the admin to approve your account.');
-        }
-        throw new Error(data.error || 'Login failed');
-      }
+      try {
+        const usernameLower = username.toLowerCase();
+        // Specifically check for the user's requested admin credentials
+        const isMasterAdmin = (usernameLower === 'admin' && password === 'admin@@') || (usernameLower === 'seneiaislam' && password === 'admin@@') || (usernameLower === 'seneiaislam@gmail.com' && password === 'admin@@');
+        const loginEmail = username.includes('@') ? username : (usernameLower === 'admin' ? 'admin@library.com' : `${usernameLower}@library.com`);
+        
+        let manualUser = null;
+        try {
+          // Fallback manual checks in parallel with auth login to save time if needed
+          let manualUser = null;
+          
+          if (isMasterAdmin) {
+              manualUser = {
+                  username: 'admin',
+                  password: 'admin@@',
+                  name: 'System Admin',
+                  role: 'admin',
+                  id: 'admin_master_uid'
+              };
+          } else {
+             // Only query if it isn't an admin override, to speed up queries
+              let q = query(collection(db, "users"), where("username", "==", username));
+              let querySnapshot = await getDocs(q);
+              
+              if (querySnapshot.empty && username !== usernameLower) {
+                  q = query(collection(db, "users"), where("username", "==", usernameLower));
+                  querySnapshot = await getDocs(q);
+              }
 
-      login(data.token, data.user);
-      navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.message);
+              if (!querySnapshot.empty) {
+                  const userDoc = querySnapshot.docs[0];
+                  const userData = userDoc.data();
+                  if (userData.password === password) {
+                      manualUser = { ...userData, id: userDoc.id };
+                  }
+              }
+          }
+        } catch (err: any) {
+          console.error("Lookup error:", err);
+        }
+
+        try {
+          // 1. Force Firebase Auth Login
+          // This is required for Firestore writes to work
+          await signInWithEmailAndPassword(auth, loginEmail, password);
+          console.log("Logged in with Firebase Auth:", loginEmail);
+          
+          const currentUid = auth.currentUser?.uid;
+          if (currentUid && (isMasterAdmin || manualUser?.role === 'admin')) {
+            // Update/Verify admin record in Firestore
+            await setDoc(doc(db, 'users', currentUid), { 
+              ...(manualUser || {}),
+              role: 'admin', 
+              email: loginEmail,
+              username: usernameLower,
+              id: currentUid,
+              updatedAt: serverTimestamp()
+            }, { merge: true });
+          }
+          
+          navigate('/dashboard');
+          return;
+        } catch (err: any) {
+          console.warn("Firebase Auth login failed, checking migration/fallback:", err.code);
+
+          // 2. Migration: If they exist in Firestore but NOT in Auth, create the Auth account now
+          if ((err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') && (manualUser || isMasterAdmin)) {
+               try {
+                  const cred = await createUserWithEmailAndPassword(auth, loginEmail, password);
+                  const finalRole = (usernameLower === 'admin' || isMasterAdmin) ? 'admin' : (manualUser?.role || 'reader');
+                  
+                  await setDoc(doc(db, 'users', cred.user.uid), { 
+                    ...(manualUser || {}),
+                    username: usernameLower,
+                    id: cred.user.uid, 
+                    email: loginEmail, 
+                    role: finalRole,
+                    updatedAt: serverTimestamp()
+                  });
+
+                  if (manualUser && manualUser.id !== cred.user.uid && manualUser.id !== 'admin_master_uid') {
+                      await deleteDoc(doc(db, 'users', manualUser.id));
+                  }
+                  
+                  navigate('/dashboard');
+                  return;
+               } catch (createErr) {
+                  console.error("Critical: Failed to create Auth account for user:", createErr);
+               }
+          }
+          
+          // 3. Last Resort: Manual session (Note: Writes might still fail if Firestore rejects non-auth users)
+          if (manualUser && (manualUser.password === password || isMasterAdmin)) {
+            console.log("Using manual session fallback.");
+            await loginWithUsername(username, password);
+            navigate('/dashboard');
+            return;
+          }
+          
+          throw err;
+        }
+
+      } catch (err: any) {
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential' || err.code === 'auth/invalid-email' || err.message === 'User not found' || err.message === 'Invalid password') {
+        setError('Invalid credentials. Please check your username and password.');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -55,15 +188,15 @@ export default function Login() {
       >
         <div>
           <div className="flex justify-center">
-            <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center">
-              <BookOpen className="h-8 w-8 text-indigo-600" />
-            </div>
+            <Logo className="h-16 w-16" />
           </div>
-          <h2 className="mt-6 text-center text-3xl font-semibold tracking-tight text-slate-900">
-            Welcome back
+
+          <h2 className="text-center text-2xl font-extrabold tracking-tight text-slate-900 font-bengali uppercase mt-6">
+            স্বাগতম (Welcome Back)
           </h2>
-          <p className="mt-2 text-center text-sm text-slate-500">
-            Enter your credentials to access your Admin or Member account
+
+          <p className="mt-4 text-center text-sm text-slate-500 font-bengali">
+            আপনার ইউজারনেম এবং পাসওয়ার্ড দিয়ে লগইন করুন
           </p>
         </div>
         
@@ -85,8 +218,8 @@ export default function Login() {
                 name="username"
                 type="text"
                 required
-                className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 focus:bg-white transition-colors sm:text-sm"
-                placeholder="Library2026"
+                className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 focus:bg-white transition-colors sm:text-sm font-bengali"
+                placeholder="ইউজারনেম দিন"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
               />
@@ -94,14 +227,14 @@ export default function Login() {
             <div>
               <div className="flex items-center justify-between mt-1.5">
                 <label className="block text-sm font-medium text-slate-700" htmlFor="password">
-                  Password
+                  পাসওয়ার্ড
                 </label>
                 <button 
                   type="button"
                   onClick={() => setShowForgot(true)}
-                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-500"
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-500 font-bengali"
                 >
-                  Forgot password?
+                  পাসওয়ার্ড ভুলে গেছেন?
                 </button>
               </div>
               <input
@@ -109,7 +242,7 @@ export default function Login() {
                 name="password"
                 type="password"
                 required
-                className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 focus:bg-white transition-colors sm:text-sm"
+                className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 focus:bg-white transition-colors sm:text-sm font-bengali"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -125,6 +258,27 @@ export default function Login() {
             >
               {loading ? 'Signing in...' : 'Sign in'}
               {!loading && <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />}
+            </button>
+          </div>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white text-slate-500">Or continue with</span>
+            </div>
+          </div>
+
+          <div>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={handleGoogleLogin}
+              className="w-full flex justify-center items-center gap-3 py-3.5 px-4 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 focus:ring-offset-white transition-all"
+            >
+              <img src="https://www.google.com/favicon.ico" alt="Google" className="w-4 h-4" />
+              Sign in with Google
             </button>
           </div>
         </form>
@@ -149,9 +303,9 @@ export default function Login() {
               className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-100"
             >
               <div className="bg-amber-500 p-6 text-white flex justify-between items-center">
-                <h3 className="text-xl font-bold flex items-center gap-2 text-white">
+                <h3 className="text-xl font-bold flex items-center gap-2 text-white font-bengali">
                   <Lock className="w-5 h-5" />
-                  Request Password Reset
+                  পাসওয়ার্ড রিসেটের অনুরোধ
                 </h3>
                 <button onClick={() => setShowForgot(false)} className="p-2 hover:bg-white/10 rounded-xl transition">
                   <X className="w-6 h-6" />
@@ -161,45 +315,45 @@ export default function Login() {
                   e.preventDefault();
                   setForgotLoading(true);
                   try {
-                      const res = await fetch('/api/auth/forgot-password', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify(forgotData)
+                      const newDocRef = doc(collection(db, "reset-requests"));
+                      await setDoc(newDocRef, {
+                          id: newDocRef.id,
+                          ...forgotData,
+                          status: 'Pending',
+                          createdAt: serverTimestamp()
                       });
-                      if (res.ok) {
-                          alert('Reset request sent! Please wait for administrator approval.');
-                          setShowForgot(false);
-                      } else {
-                          const err = await res.json();
-                          alert(err.error || 'Failed to send request');
-                      }
+                      toast.success('রিসেট এর অনুরোধ পাঠানো হয়েছে! এডমিনের এপ্রুভালের জন্য অপেক্ষা করুন।');
+                      setShowForgot(false);
+                  } catch (err) {
+                      console.error(err);
+                      toast.error('অনুরোধ পাঠাতে সমস্যা হচ্ছে');
                   } finally {
                       setForgotLoading(false);
                   }
               }} className="p-8 space-y-6">
-                <p className="text-sm text-slate-600 font-medium leading-relaxed">
-                  Enter your username and registered phone number. An administrator will review your request and reset your password.
+                <p className="text-sm text-slate-600 font-medium leading-relaxed font-bengali">
+                  আপনার ইউজারনেম এবং রেজিস্টার্ড ফোন নম্বর দিন। একজন এডমিন আপনার অনুরোধ চেক করে আপনার পাসওয়ার্ড রিসেট করে দিবেন।
                 </p>
                 <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Username</label>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2 font-bengali">ইউজারনেম</label>
                   <input
                     required
                     type="text"
                     value={forgotData.username}
                     onChange={e => setForgotData({ ...forgotData, username: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500 transition font-medium"
-                    placeholder="e.g. AlMahmud"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500 transition font-medium font-bengali"
+                    placeholder="উদা: AlMahmud"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Phone Number</label>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2 font-bengali">ফোন নম্বর</label>
                   <input
                     required
                     type="text"
                     value={forgotData.phone}
                     onChange={e => setForgotData({ ...forgotData, phone: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500 transition font-medium"
-                    placeholder="e.g. 017..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500 transition font-medium font-bengali"
+                    placeholder="উদা: 017..."
                   />
                 </div>
                 <button 
@@ -207,7 +361,7 @@ export default function Login() {
                   disabled={forgotLoading}
                   className="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-slate-800 transition shadow-lg flex items-center justify-center gap-2"
                 >
-                  {forgotLoading ? 'Sending...' : <><Send className="w-4 h-4" /> Send Request</>}
+                  {forgotLoading ? 'পাঠানো হচ্ছে...' : <><Send className="w-4 h-4" /> অনুরোধ পাঠান</>}
                 </button>
               </form>
             </motion.div>

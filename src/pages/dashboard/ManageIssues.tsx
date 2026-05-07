@@ -2,22 +2,26 @@ import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../store/AuthContext';
 import { BookmarkMinus, CheckCircle2, Trash2, ShieldAlert, FileDown } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { onSnapshot, collection, doc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import Select from 'react-select';
+import toast from 'react-hot-toast';
+import { sendSMS } from '../../lib/sms';
 
 export default function ManageIssues() {
   const [issues, setIssues] = useState<any[]>([]);
   const [books, setBooks] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
-  const { token } = useAuth();
+  const { user: currentUser } = useAuth();
   const location = useLocation();
   
   const [showIssueForm, setShowIssueForm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get('action') === 'issue') {
+      setFormData({ bookId: '', userId: '', expectedReturnDate: '' });
       setShowIssueForm(true);
     }
   }, [location]);
@@ -29,126 +33,478 @@ export default function ManageIssues() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
 
-  const fetchData = () => {
-    Promise.all([
-      fetch('/api/issues', { headers: { Authorization: `Bearer ${token}` } }),
-      fetch('/api/books'),
-      fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } })
-    ]).then(async ([iRes, bRes, uRes]) => {
-      setIssues(await iRes.json());
-      setBooks(await bRes.json());
-      setUsers(await uRes.json());
+  useEffect(() => {
+    const unsubIssues = onSnapshot(collection(db, "issues"), (snapshot) => {
+      setIssues(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'issues');
     });
-  };
+    const unsubBooks = onSnapshot(collection(db, "books"), (snapshot) => {
+      setBooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'books');
+    });
+    const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+      setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'users');
+    });
 
-  useEffect(() => { fetchData(); }, []);
+    return () => {
+      unsubIssues();
+      unsubBooks();
+      unsubUsers();
+    };
+  }, []);
+
+  useEffect(() => {
+    // Check for overdue issues and send SMS automatically
+    if (issues.length === 0 || users.length === 0 || books.length === 0) return;
+
+    let processing = false;
+
+    const checkAndSendOverdueAlerts = async () => {
+      if (processing) return;
+      processing = true;
+
+      for (const issue of issues) {
+        if ((issue.status === 'ISSUED' || issue.status === 'Issued') && !issue.autoAlertSent && new Date(issue.expectedReturnDate) < new Date()) {
+          const issueUser = users.find(u => u.id === issue.userId);
+          const issueBook = books.find(b => b.id === issue.bookId);
+
+          if (issueUser && issueUser.phone) {
+            const smsMessage = `প্রিয় ${issueUser.name}, পানধোয়া উন্মুক্ত পাঠাগার থেকে নেওয়া আপনার "${issueBook?.title || 'বইটি'}" বইটির ফেরত দেওয়ার তারিখ অতিক্রম হয়েছে। দয়া করে বইটি দ্রুত ফেরত দিন। ওয়েবসাইট: www.pandhoalibrary.org`;
+            
+            try {
+              const success = await sendSMS(issueUser.phone, smsMessage);
+              
+              if (success) {
+                  const currentNote = issue.adminNote || '';
+                  await updateDoc(doc(db, "issues", issue.id), {
+                    autoAlertSent: true,
+                    adminNote: currentNote ? currentNote + ' | AUTO ALERT SENT' : 'AUTO ALERT SENT'
+                  });
+              }
+            } catch (err) {
+              console.error("Auto alert failed for issue", issue.id, err);
+            }
+          }
+        }
+      }
+      processing = false;
+    };
+
+    checkAndSendOverdueAlerts();
+  }, [issues, users, books]);
 
   const handleUpdateNote = async (id: string, text: string = note) => {
-    await fetch(`/api/issues/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ adminNote: text })
-    });
-    setEditId(null);
-    fetchData();
+    try {
+      await updateDoc(doc(db, "issues", id), { adminNote: text });
+      setEditId(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `issues/${id}`);
+    }
   };
 
   const handleAlert = async (id: string, userPhone: string) => {
-    alert(`Alert sent to phone number: ${userPhone || 'N/A'}`);
+    toast.success(`Alert sent to phone number: ${userPhone || 'N/A'}`);
     await handleUpdateNote(id, 'ALERT SENT (Overdue)');
   };
 
-  const handleIssue = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if(!formData.userId || !formData.bookId || !formData.expectedReturnDate) {
-        alert("Please complete the form");
+  const handleIssue = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e && e.preventDefault) {
+      e.preventDefault();
+    }
+    
+    console.log('--- Start Book Issue Process ---');
+    console.log('Form Data:', formData);
+
+    // 1. Form Validation
+    if (!formData.bookId || !formData.userId || !formData.expectedReturnDate) {
+      console.warn('Validation failed: missing fields');
+      toast.error("Validation Error: Please select a book, a user, and a return date.");
+      return;
+    }
+
+    // 2. Prepare Data (finding titles/names)
+    const selectedBook = books.find(b => b.id === formData.bookId);
+    const selectedUser = users.find(u => u.id === formData.userId);
+
+    console.log('Selected Book:', selectedBook);
+    console.log('Selected User:', selectedUser);
+
+    if (!selectedBook) {
+      console.error('Book not found in the local state:', formData.bookId);
+      toast.error("Error: Selected book not found. Please try again.");
+      return;
+    }
+
+    if (!selectedUser) {
+      console.error('User not found in the local state:', formData.userId);
+      toast.error("Error: Selected user not found. Please try again.");
+      return;
+    }
+
+    // Check if user is blocked
+    if (selectedUser.borrowBlocked) {
+      toast.error(`Error: Membership Blocked! \n\n${selectedUser.blockedReason || "এই সদস্যের বই নেয়ার সুযোগ সাময়িকভাবে বন্ধ আছে।"}`);
+      return;
+    }
+
+    // Additional check for IDs
+    if (!selectedBook.id || !selectedUser.id) {
+        console.error('Missing ID in entities:', { bookId: selectedBook.id, userId: selectedUser.id });
+        toast.error("Critical Error: Invalid data format (Missing ID). Please contact support.");
         return;
     }
-    await fetch('/api/issues', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ ...formData, issueDate: new Date().toISOString() })
-    });
-    setShowIssueForm(false);
-    fetchData();
+
+    // 3. Start Loading
+    setIsSubmitting(true);
+
+    try {
+      if (!currentUser) {
+          throw new Error("Authentication Error: You must be logged in to perform this action.");
+      }
+
+      // 4. Create Issue Document
+      const issueId = `ISS-${Date.now()}`;
+      const issueData = {
+        bookId: String(selectedBook.id),
+        bookTitle: selectedBook.title || 'Untitled',
+        bookCode: selectedBook.bookCode || 'N/A',
+        userId: String(selectedUser.id),
+        userName: selectedUser.name || 'Anonymous',
+        memberId: selectedUser.memberId || 'N/A',
+        issueDate: new Date().toISOString(),
+        returnDate: formData.expectedReturnDate,
+        expectedReturnDate: formData.expectedReturnDate,
+        status: "ISSUED",
+        adminNote: "",
+        autoAlertSent: false,
+        issuedBy: currentUser.id,
+        createdAt: serverTimestamp()
+      };
+
+      console.log('Creating Issue Doc with ID:', issueId, 'Payload:', issueData);
+      await setDoc(doc(db, "issues", issueId), issueData);
+      console.log('Issue document created successfully');
+
+      // 5. Update Book Status
+      console.log('Updating Book Status for book:', selectedBook.id);
+      await updateDoc(doc(db, "books", String(selectedBook.id)), { 
+        status: "ISSUED",
+        updatedAt: serverTimestamp()
+      });
+      console.log('Book status updated successfully');
+
+      // 6. Success Handling
+      toast.success(`Success: ${selectedBook.title} has been successfully issued to ${selectedUser.name}!`);
+
+      console.log("Checking phone number for SMS:", selectedUser.phone);
+      if (selectedUser.phone) {
+        const bdDate = new Date(formData.expectedReturnDate).toLocaleDateString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486));
+        const smsMessage = `প্রিয় ${selectedUser.name}, পানধোয়া উন্মুক্ত পাঠাগার থেকে আপনাকে "${selectedBook.title}" বইটি ইস্যু করা হয়েছে। ফেরত দেওয়ার শেষ তারিখ: ${bdDate}। পাঠাগারের সাথে থাকার জন্য ধন্যবাদ। ওয়েবসাইট: www.pandhoalibrary.org`;
+        console.log("Sending SMS payload:", selectedUser.phone, smsMessage);
+        sendSMS(selectedUser.phone, smsMessage);
+      } else {
+        console.warn("User has no phone number, skipping SMS.");
+      }
+
+      setFormData({ bookId: '', userId: '', expectedReturnDate: '' });
+      setShowIssueForm(false);
+      
+    } catch (err: any) {
+      // 7. Error Handling
+      console.error("Critical Problem during book issuance:", err);
+      const errorMessage = err.message || "An unexpected error occurred during database write.";
+      toast.error(`Critical Error: Failed to issue book. \n\nReason: ${errorMessage}\n\nPlease check console logs for details.`);
+      handleFirestoreError(err, OperationType.CREATE, "issues");
+    } finally {
+      // 8. Reset Loading State
+      setIsSubmitting(false);
+      console.log('--- End Book Issue Process ---');
+    }
   };
 
   const downloadOverdueReport = () => {
-    const doc = new jsPDF();
-    doc.text('Overdue Books Report', 14, 15);
-    
     const overdueIssues = issues.filter(i => {
-      if (i.status !== 'Issued') return false;
+      if (i.status !== 'ISSUED') return false;
       const expected = new Date(i.expectedReturnDate);
       return expected < new Date();
     });
 
-    const tableData = overdueIssues.map(i => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('উইন্ডো ওপেন করা সম্ভব হয়নি। দয়া করে পপআপ ব্লকার চেক করুন।');
+      return;
+    }
+
+    const printContent = overdueIssues.map((i, index) => {
       const book = books.find(b => b.id === i.bookId);
       const user = users.find(u => u.id === i.userId);
-      return [
-        user?.memberId || 'N/A',
-        user?.name || 'Unknown',
-        user?.phone || 'N/A',
-        book?.title || 'Unknown',
-        new Date(i.expectedReturnDate).toLocaleDateString()
-      ];
-    });
+      const serialConverted = (index + 1).toString().replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486));
+      const memberIdConverted = user?.memberId ? user.memberId.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) : 'অনির্ধারিত';
+      const phoneConverted = user?.phone ? user.phone.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) : 'N/A';
+      const expectedDateConverted = new Date(i.expectedReturnDate).toLocaleDateString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486));
 
-    autoTable(doc, {
-      head: [['Member ID', 'Name', 'Phone', 'Book Title', 'Due Date']],
-      body: tableData,
-      startY: 25,
-    });
+      return `
+      <tr>
+        <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; text-align: center; color: #475569;">${serialConverted}</td>
+        <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #1e293b;">${memberIdConverted}</td>
+        <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; font-weight: 700; color: #1e293b;">${user?.name || 'অজানা'}</td>
+        <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; font-family: 'JetBrains Mono', monospace; color: #64748b; font-size: 13px;">${phoneConverted}</td>
+        <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #1e293b;">${book?.title || 'অজানা বই'}</td>
+        <td style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; font-weight: 700; color: #e11d48; text-align: right;">${expectedDateConverted}</td>
+      </tr>`;
+    }).join('');
 
-    doc.save('overdue_report.pdf');
+    const todayDateConverted = new Date().toLocaleDateString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486));
+    const todayTimeConverted = new Date().toLocaleString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486));
+
+    printWindow.document.write(`
+    <!DOCTYPE html>
+    <html lang="bn">
+    <head>
+        <meta charset="UTF-8">
+        <title>ওভারডিউ বইয়ের রিপোর্ট</title>
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+        <style>
+            body {
+                font-family: 'Hind Siliguri', sans-serif;
+                padding: 40px;
+                color: #0f172a;
+                margin: 0;
+                background-color: #f8fafc;
+            }
+            .container {
+                max-width: 900px;
+                margin: 0 auto;
+                background: white;
+                padding: 40px;
+                border-radius: 12px;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            }
+            .header {
+                text-align: center;
+                margin-bottom: 40px;
+                padding-bottom: 20px;
+                border-bottom: 2px solid #e2e8f0;
+            }
+            .logo-placeholder {
+                width: 60px;
+                height: 60px;
+                background: #fff1f2;
+                border-radius: 50%;
+                margin: 0 auto 15px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 24px;
+            }
+            .title {
+                font-size: 32px;
+                font-weight: 700;
+                margin-bottom: 2px;
+                color: #0f172a;
+            }
+            .address-box {
+                font-family: 'Outfit', 'Hind Siliguri', sans-serif; 
+                font-size: 15px; 
+                color: #1e293b; 
+                margin: 10px 0; 
+                font-weight: 700; 
+                background: #f1f5f9; 
+                display: inline-block; 
+                padding: 4px 18px; 
+                border-radius: 10px; 
+                border: 1px solid #e2e8f0;
+            }
+            .subtitle {
+                color: #e11d48;
+                font-size: 15px;
+                font-weight: 600;
+                letter-spacing: 0.5px;
+                margin-top: 5px;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 20px;
+                font-size: 15px;
+                font-family: 'Hind Siliguri', sans-serif;
+            }
+            th {
+                background-color: #f1f5f9;
+                padding: 16px;
+                text-align: left;
+                font-weight: 700;
+                color: #475569;
+                font-size: 13px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            th:first-child { text-align: center; border-radius: 8px 0 0 8px; }
+            th:last-child { text-align: right; border-radius: 0 8px 8px 0; }
+            .total-row {
+                background-color: #fff1f2;
+                border-top: 2px solid #e11d48;
+            }
+            .total-row td {
+                padding: 16px;
+                font-weight: 700;
+                color: #0f172a;
+                font-size: 16px;
+                border-bottom: none;
+            }
+            .total-row td:last-child {
+                text-align: right;
+                color: #e11d48;
+                font-size: 18px;
+            }
+            .footer {
+                margin-top: 60px;
+                text-align: center;
+                color: #94a3b8;
+                font-size: 13px;
+                padding-top: 20px;
+                border-top: 1px solid #e2e8f0;
+            }
+            @media print {
+                body { padding: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                .container { padding: 0; box-shadow: none; max-width: 100%; }
+                .header { margin-top: 0; }
+                @page { margin: 20mm; }
+                .no-print { display: none !important; }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <div class="logo-placeholder">⏰</div>
+                <div class="title">পানধোয়া উন্মুক্ত পাঠাগার</div>
+                <div class="address-box">ঠিকানা: পানধোয়া, সেনওয়ালিয়া-1344, আশুলিয়া, সাভার, ঢাকা।</div>
+                <div class="subtitle">ওভারডিউ (দেরিতে ফেরত) বইয়ের রিপোর্ট — ${todayDateConverted}</div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ক্রমিক</th>
+                        <th>সদস্য আইডি</th>
+                        <th>নাম</th>
+                        <th>মোবাইল নম্বর</th>
+                        <th>বইয়ের নাম</th>
+                        <th>ফেরতের তারিখ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${printContent}
+                    <tr class="total-row">
+                        <td colspan="5" style="text-align: right;">সর্বমোট ওভারডিউ বই:</td>
+                        <td>${overdueIssues.length.toString().replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))} টি</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="footer">
+                রিপোর্ট জেনারেট করা হয়েছে: ${todayTimeConverted}<br>
+                © পানধোয়া উন্মুক্ত পাঠাগার
+            </div>
+        </div>
+        <div class="no-print" style="text-align: center; margin-top: 30px;">
+            <button onclick="window.print()" style="background: #e11d48; color: white; border: none; padding: 14px 28px; border-radius: 8px; font-family: 'Noto Serif Bengali', serif; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(225, 29, 72, 0.2); transition: all 0.2s;">
+                🖨️ প্রিন্ট / পিডিএফ সেভ করুন
+            </button>
+            <p style="color: #64748b; font-size: 14px; margin-top: 12px; font-family: sans-serif;">মোবাইল ব্রাউজারে সমস্যা হলে উপরের বাটনে ক্লিক করুন</p>
+        </div>
+        <script>
+            window.onload = () => {
+                setTimeout(() => {
+                    window.print();
+                }, 800);
+            };
+        </script>
+    </body>
+    </html>
+    `);
   };
 
   const handleReturn = async (id: string) => {
-    console.log('[DEBUG] Attempting to mark issue as returned. issueId:', id);
+    console.log('--- Start Book Return Process ---');
+    console.log('Issue ID to return:', id);
+
+    const issue = issues.find(iss => iss.id === id);
+    if (!issue) {
+      console.error('Issue not found in local state:', id);
+      return;
+    }
+    
     try {
-        const res = await fetch(`/api/issues/${id}/return`, {
-          method: 'PATCH',
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.ok) {
-            console.log('[DEBUG] Issue marked as returned successfully');
-            fetchData();
-        } else {
-            const data = await res.json();
-            console.error('[DEBUG] Error returning book:', data);
-        }
-    } catch (err) {
-        console.error('[DEBUG] Failed to connect to the server for return:', err);
+      if (!currentUser) throw new Error("Auth required");
+
+      console.log('Updating Issue Doc:', id);
+      await updateDoc(doc(db, "issues", id), {
+        status: 'Returned',
+        returnDate: new Date().toISOString(),
+        updatedAt: serverTimestamp()
+      });
+      console.log('Issue record updated to Returned');
+
+      console.log('Updating Book status to Available for bookId:', issue.bookId);
+      await updateDoc(doc(db, "books", issue.bookId), { 
+        status: 'Available',
+        updatedAt: serverTimestamp()
+      });
+      console.log('Book status updated successfully');
+      toast.success('Book returned successfully!');
+
+      const issueUser = users.find(u => u.id === issue.userId);
+      const issueBook = books.find(b => b.id === issue.bookId);
+      if (issueUser && issueUser.phone) {
+        const smsMessage = `প্রিয় ${issueUser.name}, আপনার জমাকৃত "${issueBook?.title || 'বইটি'}" বইটির ফেরত প্রক্রিয়া সফলভাবে সম্পন্ন হয়েছে। পানধোয়া উন্মুক্ত পাঠাগারের সাথে থাকার জন্য ধন্যবাদ। ওয়েবসাইট: www.pandhoalibrary.org`;
+        sendSMS(issueUser.phone, smsMessage);
+      }
+    } catch (err: any) {
+      console.error('Error during return process:', err);
+      toast.error('Failed to return book: ' + (err.message || String(err)));
+      handleFirestoreError(err, OperationType.UPDATE, `issues/${id}`);
+    } finally {
+      console.log('--- End Book Return Process ---');
     }
   };
 
   const handleDeleteIssue = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this issue record?")) return;
+    console.log('--- Delete Issue Process ---');
+    console.log('ID to delete:', id);
+
+    if (!window.confirm("Are you sure you want to delete this issue record?")) {
+      console.log('Delete cancelled by user');
+      return;
+    }
+
     try {
-        const res = await fetch(`/api/issues/${id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        
-        if (res.ok) {
-            console.log('[DEBUG] Issue record deleted successfully');
-            fetchData();
-        } else {
-            const data = await res.json();
-            console.error('[DEBUG] Error deleting issue:', data);
-        }
+      if (!currentUser) throw new Error("Auth required");
+
+      await deleteDoc(doc(db, "issues", id));
+      console.log('Document deleted successfully from Firestore');
     } catch (err) {
-        console.error('[DEBUG] Failed to connect to the server for delete:', err);
+      console.error('Error deleting issue:', err);
+      handleFirestoreError(err, OperationType.DELETE, `issues/${id}`);
+    } finally {
+      console.log('--- End Delete Issue Process ---');
     }
   };
 
-  const userOptions = users.filter(u => u.status === 'active').map(u => ({
+  const userOptions = users.filter(u => 
+    u.status === 'active' && 
+    u.name?.toLowerCase() !== 'system admin' && 
+    u.name?.toLowerCase() !== 'seneia islam' &&
+    u.email !== 'seneiaislam@gmail.com'
+  ).map(u => ({
     value: u.id,
-    label: `${u.name} (@${u.username})`
+    label: `${u.name} (আইডি: ${u.memberId ? u.memberId.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) : 'অনির্ধারিত'})`
   }));
 
-  const bookOptions = books.filter(b => b.status === 'Available').map(b => ({
+  const bookOptions = books.filter(b => b.status === 'Available' || b.status === 'AVAILABLE').map(b => ({
     value: b.id,
     label: `${b.title} [${b.bookCode || 'N/A'}]`
   }));
@@ -198,76 +554,190 @@ export default function ManageIssues() {
     })
   };
 
+  const handleRejectExtend = async (id: string) => {
+    if (!window.confirm("আপনি কি নিশ্চিত যে সময় বৃদ্ধির রিকোয়েস্ট বাতিল করতে চান?")) return;
+    try {
+      await updateDoc(doc(db, "issues", id), {
+        extendRequested: false,
+        adminNote: "সময় বৃদ্ধির রিকোয়েস্ট বাতিল করা হয়েছে। দয়া করে বইটি দ্রুত ফেরত দিন।",
+        updatedAt: serverTimestamp()
+      });
+      toast.success('রিকোয়েস্ট বাতিল করা হয়েছে।');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `issues/${id}`);
+    }
+  };
+
+  const [extendConfig, setExtendConfig] = useState<{ id: string, currentDateStr: string } | null>(null);
+  const [extendDays, setExtendDays] = useState(7);
+
+  const confirmExtension = async () => {
+    if (!extendConfig) return;
+    const { id, currentDateStr } = extendConfig;
+    if (isNaN(extendDays) || extendDays <= 0) {
+      toast.error("Invalid number of days.");
+      return;
+    }
+    try {
+      const currentExpected = new Date(currentDateStr);
+      currentExpected.setDate(currentExpected.getDate() + extendDays);
+      const bdDate = currentExpected.toLocaleDateString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486));
+      
+      await updateDoc(doc(db, "issues", id), {
+        extendRequested: false,
+        expectedReturnDate: currentExpected.toISOString(),
+        adminNote: `সময় বৃদ্ধির রিকোয়েস্ট অনুমোদিত হয়েছে। নতুন তারিখ: ${bdDate}`,
+        autoAlertSent: false,
+        updatedAt: serverTimestamp()
+      });
+      toast.success('সময় বৃদ্ধি করা হয়েছে।');
+
+      const issue = issues.find(i => i.id === id);
+      if (issue) {
+        const issueUser = users.find(u => u.id === issue.userId);
+        const issueBook = books.find(b => b.id === issue.bookId);
+        if (issueUser && issueUser.phone) {
+          const smsMessage = `প্রিয় ${issueUser.name}, পানধোয়া উন্মুক্ত পাঠাগার থেকে নেওয়া আপনার "${issueBook?.title || 'বইটি'}" বইটির ফেরত দেওয়ার সময় বৃদ্ধি করে নতুন তারিখ ${bdDate} করা হয়েছে। ওয়েবসাইট: www.pandhoalibrary.org`;
+          sendSMS(issueUser.phone, smsMessage);
+        }
+      }
+
+      setExtendConfig(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `issues/${id}`);
+    }
+  };
+
+  const handleAcceptExtend = (id: string, currentExpectedStr: string) => {
+    setExtendConfig({ id, currentDateStr: currentExpectedStr });
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 font-bengali">
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-        <div>
-           <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Issue / Return</h2>
-           <p className="text-slate-500 font-medium text-sm mt-1 mb-0">Manage book rentals and returns for the library.</p>
+      <div className="flex flex-col gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+        <div className="flex flex-col md:flex-row md:justify-between items-start md:items-end gap-4">
+          <div>
+             <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Issue / Return</h2>
+             <p className="text-slate-500 font-medium text-sm mt-1 mb-0">Manage book rentals and returns for the library.</p>
+          </div>
+          <div className="flex flex-wrap gap-3 w-full md:w-auto">
+             <input 
+                type="text" 
+                placeholder="বইয়ের কোড বা নাম দিয়ে খুঁজুন..." 
+                className="border border-slate-200 px-4 py-2.5 rounded-xl text-sm w-full md:w-auto shadow-inner bg-slate-50 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium font-bengali"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+             />
+             <button onClick={downloadOverdueReport} className="flex-1 md:flex-none justify-center bg-rose-50/50 text-rose-600 px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-rose-100 transition shadow-sm border border-rose-200/50 hover:border-rose-300">
+               <FileDown className="w-5 h-5 truncate" /> ওভারডিউ রিপোর্ট
+             </button>
+             <button 
+               onClick={() => {
+                 setFormData({ bookId: '', userId: '', expectedReturnDate: '' });
+                 setShowIssueForm(true);
+               }} 
+               className="flex-1 md:flex-none justify-center bg-indigo-600 shadow-lg shadow-indigo-600/20 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all font-bengali whitespace-nowrap"
+             >
+               নতুন বই ইস্যু
+             </button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <input 
-             type="text" 
-             placeholder="Search code or user..." 
-             className="border border-slate-200 px-4 py-2.5 rounded-xl text-sm w-full md:w-auto shadow-inner bg-slate-50 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
-             value={search}
-             onChange={e => setSearch(e.target.value)}
-          />
-          <select
-            value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value)}
-            className="border border-slate-200 px-4 py-2.5 rounded-xl text-sm w-full md:w-auto shadow-inner bg-slate-50 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-700"
-          >
-            <option value="all">All Issues</option>
-            <option value="issued">Currently Issued</option>
-            <option value="overdue">Overdue Books</option>
-            <option value="returned">Returned Books</option>
-          </select>
-          <button onClick={downloadOverdueReport} className="flex-1 md:flex-none justify-center bg-rose-50/50 text-rose-600 px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-rose-100 transition shadow-sm border border-rose-200/50 hover:border-rose-300">
-            <FileDown className="w-5 h-5" /> Overdue Report
-          </button>
-          <button onClick={() => setShowIssueForm(true)} className="flex-1 md:flex-none justify-center bg-indigo-600 shadow-lg shadow-indigo-600/20 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all">
-            Issue Book
-          </button>
+        <div className="flex flex-wrap gap-2 mt-2">
+          {[{id:'all',l:'সবগুলো'},{id:'issued',l:'বর্তমানে ইস্যুকৃত'},{id:'overdue',l:'ওভারডিউ বা লেট'},{id:'returned',l:'ফেরত দেওয়া'},{id:'extend',l:'সময় বৃদ্ধির রিকোয়েস্ট'}].map((btn) => (
+            <button
+              key={btn.id}
+              onClick={() => setFilterStatus(btn.id)}
+              className={`flex-1 md:flex-none px-4 py-2.5 rounded-xl text-xs font-bold transition-all border whitespace-nowrap ${
+                filterStatus === btn.id ? "bg-indigo-600 text-white border-indigo-600 shadow-md" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              {btn.l}
+            </button>
+          ))}
         </div>
       </div>
+
+      {extendConfig && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] w-full max-w-sm p-8 shadow-2xl relative">
+            <h3 className="text-xl font-bold text-slate-900 mb-2 font-bengali">সময় বৃদ্ধি করুন</h3>
+            <p className="text-slate-500 text-sm mb-6 font-bengali">কত দিন সময় বাড়াতে চান লিখুন (ডিফল্ট ৭ দিন)।</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1 font-bengali">দিন সংখ্যা</label>
+                <input 
+                  type="number" 
+                  value={extendDays} 
+                  onChange={e => setExtendDays(Number(e.target.value))} 
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500 font-mono text-center font-bold text-lg" 
+                  min="1"
+                />
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button 
+                  onClick={() => setExtendConfig(null)} 
+                  className="flex-1 px-4 py-3 text-slate-500 hover:bg-slate-50 rounded-xl font-bold font-bengali transition-colors"
+                >
+                  বাতিল
+                </button>
+                <button 
+                  onClick={confirmExtension} 
+                  className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all active:scale-95 font-bengali"
+                >
+                  নিশ্চিত করুন
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showIssueForm && (
         <form onSubmit={handleIssue} className="bg-white p-8 border border-slate-200 rounded-2xl space-y-6 shadow-xl shadow-slate-200/40 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-indigo-100 to-transparent -mr-16 -mt-16 rounded-full blur-2xl"></div>
           
-          <h3 className="text-xl font-bold tracking-tight text-slate-900 mb-2">New Book Issue</h3>
+          <h3 className="text-xl font-bold tracking-tight text-slate-900 mb-2 font-bengali">নতুন বই ইস্যু</h3>
           
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="space-y-1.5">
-              <label className="block text-sm font-bold text-slate-700 uppercase tracking-wider">Book <span className="text-rose-500">*</span></label>
+              <label className="block text-sm font-bold text-slate-700 uppercase tracking-wider font-bengali">বই <span className="text-rose-500">*</span></label>
               <Select
                 options={bookOptions}
-                onChange={(option: any) => setFormData({...formData, bookId: option?.value || ''})}
-                placeholder="Search Book..."
+                value={bookOptions.find(o => o.value === formData.bookId) || null}
+                onChange={(option: any) => setFormData(p => ({...p, bookId: option?.value || ''}))}
+                placeholder="বই খুঁজুন..."
                 styles={selectStyles}
                 classNamePrefix="react-select"
                 className="text-sm font-medium focus:outline-none font-bengali"
+                required
               />
             </div>
             
             <div className="space-y-1.5">
-              <label className="block text-sm font-bold text-slate-700 uppercase tracking-wider">User <span className="text-rose-500">*</span></label>
+              <label className="block text-sm font-bold text-slate-700 uppercase tracking-wider font-bengali">সদস্য <span className="text-rose-500">*</span></label>
               <Select
                 options={userOptions}
-                onChange={(option: any) => setFormData({...formData, userId: option?.value || ''})}
-                placeholder="Search User..."
+                value={userOptions.find(o => o.value === formData.userId) || null}
+                onChange={(option: any) => setFormData(p => ({...p, userId: option?.value || ''}))}
+                placeholder="সদস্য খুঁজুন..."
                 styles={selectStyles}
                 classNamePrefix="react-select"
                 className="text-sm font-medium focus:outline-none font-bengali"
+                required
               />
               {formData.userId && (
-                <div className="mt-3 p-4 bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 rounded-xl flex items-center justify-between shadow-sm">
+                <div className={`mt-3 p-4 rounded-xl flex items-center justify-between shadow-sm border ${users.find(u => u.id === formData.userId)?.borrowBlocked ? "bg-rose-50 border-rose-200" : "bg-gradient-to-br from-indigo-50 to-blue-50 border-indigo-100"}`}>
                   <div>
-                    <p className="text-sm font-extrabold text-slate-800">{users.find(u => u.id === formData.userId)?.name}</p>
-                    <p className="text-xs font-semibold text-slate-500 mt-0.5">@{users.find(u => u.id === formData.userId)?.username}</p>
+                    <p className={`text-sm font-extrabold ${users.find(u => u.id === formData.userId)?.borrowBlocked ? "text-rose-700" : "text-slate-800"}`}>
+                      {users.find(u => u.id === formData.userId)?.name}
+                    </p>
+                    {users.find(u => u.id === formData.userId)?.borrowBlocked && (
+                      <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-widest animate-pulse font-bengali">
+                        সদস্য সাময়িকভাবে স্থগিত: {users.find(u => u.id === formData.userId)?.blockedReason || "কোন কারণ উল্লেখ করা হয়নি"}
+                      </p>
+                    )}
                   </div>
-                  <div className="bg-white text-indigo-700 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest border border-indigo-200 shadow-sm">
+                  <div className={`px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest border shadow-sm ${users.find(u => u.id === formData.userId)?.borrowBlocked ? "bg-rose-600 text-white border-rose-600" : "bg-white text-indigo-700 border-indigo-200"}`}>
                     ID: #{users.find(u => u.id === formData.userId)?.memberId || 'N/A'}
                   </div>
                 </div>
@@ -275,36 +745,69 @@ export default function ManageIssues() {
             </div>
             
             <div className="space-y-1.5">
-              <label className="block text-sm font-bold text-slate-700 uppercase tracking-wider">Expected Return <span className="text-rose-500">*</span></label>
-              <input type="date" required onChange={e=>setFormData({...formData, expectedReturnDate: new Date(e.target.value).toISOString()})} className="w-full border-2 border-slate-200 px-4 py-2 rounded-xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 font-medium text-slate-700 transition" />
+              <label className="block text-sm font-bold text-slate-700 uppercase tracking-wider font-bengali">ফেরতের সম্ভাব্য তারিখ <span className="text-rose-500">*</span></label>
+              <input type="date" required value={formData.expectedReturnDate ? formData.expectedReturnDate.split('T')[0] : ''} onChange={e => {
+                const val = e.target.value;
+                if (!val) {
+                  setFormData(p => ({...p, expectedReturnDate: ''}));
+                  return;
+                }
+                try {
+                  const d = new Date(val);
+                  if (!isNaN(d.getTime())) {
+                    setFormData(p => ({...p, expectedReturnDate: d.toISOString()}));
+                  }
+                } catch (e) {
+                  // ignore
+                }
+              }} className="w-full border-2 border-slate-200 px-4 py-2 rounded-xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 font-medium text-slate-700 transition font-bengali" />
             </div>
           </div>
           
           <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">
-            <button type="button" onClick={() => setShowIssueForm(false)} className="px-6 py-2.5 font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition">Cancel</button>
-            <button type="submit" className="bg-slate-900 shadow-xl shadow-slate-900/10 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-black transition-all hover:-translate-y-0.5">Confirm Issue</button>
+            <button 
+              type="button" 
+              disabled={isSubmitting}
+              onClick={() => setShowIssueForm(false)} 
+              className="px-6 py-2.5 font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition disabled:opacity-50 font-bengali"
+            >
+              বাতিল
+            </button>
+            <button 
+              type="submit" 
+              disabled={isSubmitting}
+              className="bg-slate-900 shadow-xl shadow-slate-900/10 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-black transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-bengali"
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  প্রসেস করা হচ্ছে...
+                </>
+              ) : 'নিশ্চিত করুন'}
+            </button>
           </div>
         </form>
       )}
 
       <div className="bg-white border text-center md:text-left border-slate-200 rounded-2xl md:rounded-3xl shadow-sm overflow-hidden md:overflow-hidden overflow-x-auto">
         <table className="w-full text-left min-w-[800px]">
-          <thead className="bg-[#f8fafc] border-b border-slate-200">
+          <thead className="bg-[#f8fafc] border-b border-slate-200 font-bengali">
             <tr>
-              <th className="p-5 text-xs font-black tracking-widest text-[#64748B] uppercase">Issue / Status</th>
-              <th className="p-5 text-xs font-black tracking-widest text-[#64748B] uppercase">Book Details</th>
-              <th className="p-5 text-xs font-black tracking-widest text-[#64748B] uppercase">User Details</th>
-              <th className="p-5 text-xs font-black tracking-widest text-[#64748B] uppercase text-right">Actions</th>
+              <th className="p-5 text-sm font-black text-[#64748B]">ইস্যু / স্ট্যাটাস</th>
+              <th className="p-5 text-sm font-black text-[#64748B]">বইয়ের তথ্য</th>
+              <th className="p-5 text-sm font-black text-[#64748B]">সদস্যের তথ্য</th>
+              <th className="p-5 text-sm font-black text-[#64748B] text-right">অ্যাকশন</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {issues.filter(i => {
                 if (filterStatus === 'returned' && i.status !== 'Returned') return false;
-                if (filterStatus === 'issued' && i.status !== 'Issued') return false;
+                if (filterStatus === 'issued' && i.status !== 'ISSUED' && i.status !== 'Issued') return false;
                 if (filterStatus === 'overdue') {
-                   if (i.status !== 'Issued') return false;
+                   if (i.status !== 'ISSUED' && i.status !== 'Issued') return false;
                    if (new Date(i.expectedReturnDate) >= new Date()) return false;
                 }
+                if (filterStatus === 'extend' && !i.extendRequested) return false;
 
                 const book = books.find(b => b.id === i.bookId);
                 const user = users.find(u => u.id === i.userId);
@@ -313,46 +816,61 @@ export default function ManageIssues() {
             }).map(i => (
               <tr key={i.id} className="hover:bg-slate-50 transition-colors group">
                 <td className="p-5">
-                   <div className="text-xs font-mono font-bold text-slate-500 uppercase">#{i.id.slice(-5)}</div>
-                   <div className="mt-2">
-                       {i.status === 'Issued' ? (
-                          <div className="flex flex-col gap-1.5 items-start">
-                             <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border ${new Date(i.expectedReturnDate) < new Date() ? 'bg-rose-50 text-rose-600 border-rose-200 animate-pulse' : 'bg-emerald-50 text-emerald-600 border-emerald-200'}`}>
-                                {new Date(i.expectedReturnDate) < new Date() ? 'Overdue' : 'Active'}
-                             </span>
-                             {i.adminNote && <span className="text-indigo-700 font-bold text-[9px] bg-indigo-50 px-2 py-1 rounded border border-indigo-200">MSG: {i.adminNote}</span>}
-                          </div>
-                       ) : (
-                          <span className="text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border border-slate-200">Returned</span>
-                       )}
-                   </div>
+                  <div className="font-bold text-slate-700 text-sm mb-1.5 tracking-tight uppercase">
+                    #{i.id.slice(-6).replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}
+                  </div>
+                  <div>
+                      {(i.status === 'ISSUED' || i.status === 'Issued') ? (
+                         <div className="flex flex-col gap-1.5 items-start">
+                            <span className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold tracking-wide border font-bengali ${new Date(i.expectedReturnDate) < new Date() ? 'bg-rose-50 text-rose-600 border-rose-200 animate-pulse' : 'bg-emerald-50 text-emerald-600 border-emerald-200'}`}>
+                               {new Date(i.expectedReturnDate) < new Date() ? 'ওভারডিউ' : 'অ্যাকটিভ'}
+                            </span>
+                            {i.adminNote && <span className="text-indigo-700 font-medium font-bengali text-[10.5px] bg-indigo-50/80 px-2 py-1.5 rounded-md border border-indigo-100/50 flex flex-wrap max-w-[150px]">নোট: {i.adminNote}</span>}
+                         </div>
+                      ) : (
+                         <span className="text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg text-[10.5px] font-bold tracking-wide border border-slate-200 font-bengali">ফেরত দেওয়া হয়েছে</span>
+                      )}
+                  </div>
                 </td>
                 <td className="p-5">
-                  <div className="font-exrabold text-slate-900 text-sm">{books.find(b => b.id === i.bookId)?.title || 'Unknown'}</div>
-                  <div className="text-[10px] mt-1 inline-blockbg-slate-100 px-2 py-0.5 rounded text-slate-500 font-bold uppercase tracking-widest border border-slate-200">Code: {books.find(b => b.id === i.bookId)?.bookCode || 'N/A'}</div>
+                  <div className="font-bold text-slate-900 text-[15px] font-bengali">{books.find(b => b.id === i.bookId)?.title || 'অজানা বই'}</div>
+                  <div className="text-xs mt-2 inline-flex items-center bg-slate-50 px-2.5 py-1 rounded-md text-slate-600 font-medium border border-slate-200 font-bengali">
+                    কোড: {books.find(b => b.id === i.bookId)?.bookCode?.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}
+                  </div>
                 </td>
                 <td className="p-5">
-                  <div className="font-bold text-slate-900 text-sm mb-1">{users.find(u => u.id === i.userId)?.name || 'Unknown'}</div>
+                  <div className="font-bold text-slate-900 text-sm mb-1.5 font-bengali">{users.find(u => u.id === i.userId)?.name || 'অজানা সদস্য'}</div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-indigo-700 font-black bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 tracking-wider">
-                      ID: #{users.find(u => u.id === i.userId)?.memberId || 'N/A'}
+                    <span className="text-xs text-slate-600 font-medium bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200 font-bengali">
+                      আইডি: {users.find(u => u.id === i.userId)?.memberId?.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}
                     </span>
-                    <span className="text-[11px] font-medium text-slate-500">@{users.find(u => u.id === i.userId)?.username}</span>
                   </div>
                 </td>
                 
                 <td className="p-5 text-right align-top">
                   <div className="flex flex-col items-end gap-2 relative z-0 group-hover:z-10">
                     <div className="flex items-center gap-2">
-                        {i.status === 'Issued' && (
+                        {(i.status === 'ISSUED' || i.status === 'Issued') && (
                             <>
-                                {new Date(i.expectedReturnDate) < new Date() && (
+                                {i.returnRequested && (
+                                    <div className="flex items-center gap-1.5 mr-2 bg-indigo-50/80 p-1.5 rounded-xl border border-indigo-200/60 shadow-sm backdrop-blur-sm">
+                                       <span className="text-[10.5px] font-bold text-indigo-700 px-2 py-1 flex items-center h-full font-bengali">রিকোয়েস্ট: ফেরত</span>
+                                    </div>
+                                )}
+                                {i.extendRequested && (
+                                    <div className="flex items-center gap-1.5 mr-2 bg-amber-50/80 p-1.5 rounded-lg border border-amber-200/60 shadow-sm backdrop-blur-sm">
+                                       <span className="text-[10.5px] font-bold text-amber-700 px-2 py-1 flex items-center h-full font-bengali">সময় বৃদ্ধি</span>
+                                       <button onClick={() => handleAcceptExtend(i.id, i.expectedReturnDate)} className="bg-emerald-500 text-white text-[10.5px] px-3 py-1.5 font-bold rounded shadow-sm hover:bg-emerald-600 transition-colors active:scale-95 font-bengali">অনুমোদন</button>
+                                       <button onClick={() => handleRejectExtend(i.id)} className="bg-rose-500 text-white text-[10.5px] px-3 py-1.5 font-bold rounded shadow-sm hover:bg-rose-600 transition-colors active:scale-95 font-bengali">বাতিল</button>
+                                    </div>
+                                )}
+                                {new Date(i.expectedReturnDate) < new Date() && !i.extendRequested && (
                                     <button 
-                                        onClick={() => handleAlert(i.id, users.find(u => u.id === i.userId)?.phone)}
-                                        className="text-[10px] font-black uppercase tracking-wider bg-rose-600 text-white px-2.5 py-1.5 rounded-lg shadow-md shadow-rose-600/20 hover:bg-rose-700 transition flex items-center gap-1.5"
+                                        onClick={() => handleAlert(i.id, users.find(u => u.id === i.userId)?.phone || '')}
+                                        className="text-[10.5px] font-bold bg-rose-600 text-white px-3 py-1.5 rounded-lg shadow-sm hover:bg-rose-700 transition flex items-center gap-1.5 font-bengali"
                                         title="Send Alert"
                                     >
-                                        <ShieldAlert className="w-3.5 h-3.5" /> Alert
+                                        <ShieldAlert className="w-3.5 h-3.5" /> রিমাইন্ডার
                                     </button>
                                 )}
                                 <button 
@@ -360,12 +878,12 @@ export default function ManageIssues() {
                                         setEditId(i.id);
                                         setNote(i.adminNote || '');
                                     }}
-                                    className="text-[10px] font-black uppercase tracking-wider bg-white text-slate-700 shadow-sm px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition"
+                                    className="text-[10.5px] font-bold bg-white text-slate-700 shadow-sm px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition font-bengali"
                                 >
-                                    Msg
+                                    নোট
                                 </button>
-                                <button onClick={() => { handleReturn(i.id); }} className="text-xs bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold tracking-tight shadow-md shadow-emerald-600/20 hover:bg-emerald-700 transition flex items-center justify-center gap-1.5">
-                                    <CheckCircle2 className="w-4 h-4" /> Return
+                                <button onClick={() => { handleReturn(i.id); }} className="text-[11px] bg-emerald-600 text-white px-4 py-1.5 rounded-lg font-bold shadow-sm hover:bg-emerald-700 transition flex items-center justify-center gap-1.5 font-bengali">
+                                    <CheckCircle2 className="w-4 h-4" /> বই ফেরত
                                 </button>
                             </>
                         )}
@@ -376,8 +894,8 @@ export default function ManageIssues() {
                     {editId === i.id && (
                        <div className="mt-2 flex gap-1 animate-in fade-in slide-in-from-top-2 absolute right-0 top-12 bg-white p-2 rounded-xl shadow-xl border border-slate-200 w-64 z-20">
                           <input 
-                            className="text-xs font-medium border-2 border-slate-100 focus:border-indigo-500 focus:ring-0 p-2 rounded-lg w-full transition" 
-                            placeholder="Add a message..."
+                            className="text-xs font-medium border-2 border-slate-100 focus:border-indigo-500 focus:ring-0 p-2 rounded-lg w-full transition font-bengali" 
+                            placeholder="মেসেজ দিন..."
                             value={note}
                             onChange={e=>setNote(e.target.value)}
                             autoFocus

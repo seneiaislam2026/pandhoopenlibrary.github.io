@@ -1,0 +1,178 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net - Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function isEmail(email) { return isSignedIn() && request.auth.token.email == email && isVerified(); }
+    
+    // Admin check looks up the role in the users collection
+    function isAdmin() { 
+      return isSignedIn() && (
+        request.auth.token.email == 'seneiaislam@gmail.com' || 
+        request.auth.token.email == 'admin@library.com' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+    
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+
+    // --- Validation Blueprints ---
+    
+    function isValidUser(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.username is string && data.username.size() <= 50 &&
+             data.role in ['admin', 'reader'] &&
+             data.status in ['active', 'pending', 'suspended'] &&
+             (data.phone == null || (data.phone is string && data.phone.size() <= 20)) &&
+             (data.address == null || (data.address is string && data.address.size() <= 500));
+    }
+
+    function isValidBook(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.author is string && data.author.size() <= 100 &&
+             data.bookCode is string && data.bookCode.size() <= 50 &&
+             data.status in ['Available', 'Issued', 'Lost'];
+    }
+
+    function isValidOrder(data) {
+      return data.customerName is string && data.customerName.size() <= 100 &&
+             data.customerPhone is string && data.customerPhone.size() <= 20 &&
+             data.customerAddress is string && data.customerAddress.size() <= 500 &&
+             data.totalPrice is number && data.totalPrice >= 0 &&
+             data.status in ['Pending', 'Confirmed', 'Processing', 'Shipping', 'Delivered', 'Cancelled', 'Confirmed'];
+    }
+
+    function isValidEvent(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.description is string && data.description.size() <= 2000 &&
+             data.creatorId is string && data.creatorId.size() <= 128;
+    }
+
+    // --- Collection Rules ---
+
+    // Users
+    match /users/{userId} {
+      allow get: if (isValidId(userId) && isOwner(userId)) || isAdmin();
+      allow list: if isAdmin(); // Prevent scraping all users
+      allow create: if (isValidId(userId) && isOwner(userId) && isValidUser(incoming()) && incoming().role == 'reader' && (incoming().status == 'pending' || incoming().status == 'active')) || isAdmin();
+      allow update: if (isValidId(userId) && isAdmin()) || (
+        isOwner(userId) && 
+        isValidUser(incoming()) && 
+        incoming().role == existing().role && 
+        incoming().status == existing().status &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'address', 'avatar', 'password', 'username', 'memberId', 'email', 'verified', 'paymentMethod', 'paymentNumber', 'trxId', 'feeAmount', 'createdAt', 'serverCreatedAt'])
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Books (Publicly readable, admin only write)
+    match /books/{bookId} {
+      allow read: if true;
+      allow write: if isValidId(bookId) && isAdmin() && isValidBook(incoming());
+    }
+
+    // Test
+    match /test/{docId} {
+      allow read: if true;
+    }
+
+    // Issues
+    match /issues/{issueId} {
+      allow read: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+      allow write: if isValidId(issueId) && isAdmin();
+    }
+
+    // Events
+    match /events/{eventId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
+    }
+
+    // Event Registrations
+    match /event_registrations/{regId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
+    }
+
+    // Pre-bookings
+    match /pre-bookings/{bookingId} {
+      allow read: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow update: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status']) && existing().status == 'Pending');
+      allow delete: if isAdmin();
+    }
+
+    // Shop Books
+    match /shop-books/{bookId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Shop Orders
+    match /shop-orders/{orderId} {
+      allow read: if isValidId(orderId) && (isAdmin() || (isSignedIn() && existing().userId == request.auth.uid));
+      allow create: if isValidId(orderId) && isValidOrder(incoming()) && (incoming().items.size() <= 20);
+      allow update, delete: if isValidId(orderId) && isAdmin();
+    }
+
+    // Donations
+    match /donations/{donationId} {
+      allow read: if true; // Public list of donors
+      allow create: if true; // Anyone can donate
+      allow update, delete: if isAdmin();
+    }
+
+    // Messages
+    match /messages/{messageId} {
+      allow read: if isAdmin() || (isSignedIn() && (existing().toUserId == request.auth.uid || existing().fromUserId == request.auth.uid));
+      allow create: if true;
+      allow update: if isAdmin() || (isSignedIn() && existing().toUserId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status']));
+      allow delete: if isAdmin();
+    }
+
+    // Finances
+    match /finances/{financeId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Team
+    match /team/{memberId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Posts
+    match /posts/{postId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Notices
+    match /notices/{noticeId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // General Fallback for other collections
+    match /member-requests/{id} { allow read, write: if isAdmin() || (isSignedIn() && (incoming().userId == request.auth.uid || existing().userId == request.auth.uid)); }
+    match /book-requests/{id} { allow read: if isAdmin(); allow create: if isSignedIn(); }
+    match /reset-requests/{id} { allow read: if isAdmin(); allow create: if true; }
+    match /payments/{id} { allow read: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid); allow create: if isSignedIn(); }
+    match /donor-members/{id} { allow read: if true; allow create: if true; allow update, delete: if isAdmin(); }
+    match /donor-payments/{id} { allow read: if isAdmin(); allow create: if true; }
+    match /book-stickers/{id} { allow read, write: if isAdmin(); }
+    match /notifications/{id} { allow read: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid); allow write: if isAdmin(); }
+  }
+}

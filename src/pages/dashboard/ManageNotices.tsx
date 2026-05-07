@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../store/AuthContext';
-import { Bell, Plus, Trash2, X, AlertCircle, Info, Send } from 'lucide-react';
+import { Bell, Plus, Trash2, X, AlertCircle, Info, Send, Printer, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { onSnapshot, collection, doc, setDoc, deleteDoc, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import toast from 'react-hot-toast';
 
 interface Notice {
   id: string;
@@ -16,72 +19,312 @@ export default function ManageNotices() {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [formData, setFormData] = useState({ title: '', content: '', priority: 'medium' as 'low' | 'medium' | 'high' });
-  const { token } = useAuth();
+  const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
-    fetchNotices();
+    const q = query(collection(db, "notices"), orderBy("date", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setNotices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Notice[]);
+      setLoading(false);
+      
+      if (user?.id) {
+          localStorage.setItem(`last_seen_notices_${user.id}`, new Date().toISOString());
+          window.dispatchEvent(new Event('notices_seen'));
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
-  const fetchNotices = async () => {
-    try {
-      const res = await fetch('/api/notices');
-      setNotices(await res.json());
-    } finally {
-      setLoading(false);
-    }
+  const [secretary, setSecretary] = useState<{name: string, title: string}>({
+    name: 'মোঃ ফয়েজ রাব্বি',
+    title: 'লাইব্রেরি সম্পাদক'
+  });
+
+  useEffect(() => {
+    const q = query(collection(db, "team"), orderBy("order", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+      // Look for secretary specifically
+      const sec = members.find(m => m.title.includes('সম্পাদক') || m.title.includes('Secretary'));
+      if (sec) {
+        setSecretary({ name: sec.name, title: sec.title });
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handlePrint = (notice: Notice) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const dateStr = new Date(notice.date).toLocaleDateString('bn-BD', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    const html = `
+      <html>
+        <head>
+          <title>নোটিশ - ${notice.title}</title>
+          <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Outfit:wght@400;600;700;900&display=swap" rel="stylesheet">
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap');
+            body { 
+              font-family: 'Hind Siliguri', sans-serif; 
+              color: #1a1a1a;
+              margin: 0;
+              padding: 0;
+              background-color: #f8fafc;
+            }
+            .pad {
+              width: 210mm;
+              min-height: 297mm;
+              padding: 20mm 20mm;
+              margin: 20px auto;
+              background: #fffefb; /* Lighter newsprint color */
+              position: relative;
+              box-sizing: border-box;
+              box-shadow: 0 0 20px rgba(0,0,0,0.05);
+            }
+            .header {
+              text-align: center;
+              border-bottom: 2px solid #2d3436;
+              padding-bottom: 20px;
+              margin-bottom: 40px;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 42px;
+              color: #1e1b4b;
+              font-weight: 800;
+              letter-spacing: -0.5px;
+            }
+            .header p {
+              margin: 5px 0 0;
+              font-size: 18px;
+              color: #2d3436;
+              font-weight: 600;
+            }
+            .phone-info {
+              font-family: 'Outfit', sans-serif;
+              font-size: 15px;
+              font-weight: 800;
+              margin-top: 5px;
+              color: #000;
+            }
+            .meta {
+              display: flex;
+              justify-content: space-between;
+              margin-bottom: 50px;
+              font-weight: 700;
+              font-size: 16px;
+            }
+            .ref { font-family: 'Hind Siliguri', sans-serif; }
+            .ref-val { font-family: 'Outfit', sans-serif; font-weight: 700; }
+
+            .content {
+              line-height: 1.8;
+              font-size: 20px;
+              text-align: justify;
+              min-height: 450px;
+              color: #000;
+            }
+            .title-box {
+              text-align: center;
+              margin-bottom: 40px;
+            }
+            .title {
+              display: inline-block;
+              font-size: 28px;
+              font-weight: 900;
+              text-decoration: underline;
+              text-underline-offset: 10px;
+              color: #000;
+            }
+            .footer {
+              margin-top: 80px;
+              display: flex;
+              justify-content: flex-start;
+            }
+            .signature {
+              text-align: left;
+              width: 300px;
+            }
+            .sig-label {
+              font-size: 16px;
+              font-weight: 800;
+              color: #000;
+              margin-bottom: 60px;
+              text-decoration: underline;
+            }
+            .sig-line {
+              border-top: 1.5px solid #000;
+              margin-bottom: 8px;
+              width: 200px;
+            }
+            .sig-text {
+              font-size: 18px;
+              font-weight: 800;
+              color: #000;
+            }
+            .sig-post {
+              font-size: 15px;
+              font-weight: 700;
+              color: #334155;
+            }
+
+            @media print {
+              .no-print { display: none; }
+              body { background: none; }
+              .pad { 
+                margin: 0; 
+                box-shadow: none; 
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="no-print" style="text-align: center; padding: 20px; background: #fff; border-bottom: 1px solid #e2e8f0;">
+            <button onclick="window.print()" style="font-family: 'Hind Siliguri', sans-serif; padding: 12px 30px; background: #4f46e5; color: #fff; border: none; font-size: 16px; font-weight: 700; cursor: pointer; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.4);">সরাসরি প্রিন্ট করুন</button>
+          </div>
+          <div class="pad">
+            <div class="header">
+              <h1>পানধোয়া উন্মুক্ত পাঠাগার</h1>
+              <p>পানধোয়া, সেনওয়ালিয়া-১৩৪৪, আশুলিয়া, সাভার, ঢাকা।</p>
+              <div class="phone-info">Mobile: 01570206953</div>
+            </div>
+            
+            <div class="meta">
+              <div class="ref">সূত্র: <span class="ref-val">PULL/${new Date().getFullYear().toString().replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}/${notice.id.substring(0, 4).toUpperCase()}</span></div>
+              <div>তারিখ: ${dateStr}</div>
+            </div>
+
+            <div class="title-box">
+              <div class="title">নোটিশ</div>
+            </div>
+
+            <div class="content">
+              <p style="font-weight: 800; font-size: 22px; margin-bottom: 25px;">${notice.title}</p>
+              <p>${notice.content.replace(/\n/g, '<br>')}</p>
+            </div>
+
+            <div class="footer">
+              <div class="signature">
+                <div class="sig-label">বার্তা প্রেরক,</div>
+                <div class="sig-line"></div>
+                <div class="sig-text">${secretary.name}</div>
+                <div class="sig-post">${secretary.title}</div>
+                <div class="sig-post" style="font-size: 14px; margin-top: 2px;">পানধোয়া উন্মুক্ত পাঠাগার</div>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch('/api/notices', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify(formData)
-    });
-    if (res.ok) {
+    try {
+      if (editingNotice) {
+        await setDoc(doc(db, "notices", editingNotice.id), {
+          ...formData,
+          createdAt: serverTimestamp()
+        }, { merge: true });
+        toast.success("Notice updated successfully");
+      } else {
+        const newDocRef = doc(collection(db, "notices"));
+        await setDoc(newDocRef, {
+          ...formData,
+          id: newDocRef.id,
+          date: new Date().toISOString(),
+          createdAt: serverTimestamp()
+        });
+        toast.success("Notice posted successfully");
+      }
       setShowAddModal(false);
       setFormData({ title: '', content: '', priority: 'medium' });
-      fetchNotices();
+      setEditingNotice(null);
+    } catch (err) {
+      console.error("Error saving notice:", err);
+      toast.error("Failed to save notice");
     }
   };
 
-  const handleDelete = async (id: string) => {
-
-    const res = await fetch(`/api/notices/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
+  const handleEdit = (notice: Notice) => {
+    setEditingNotice(notice);
+    setFormData({
+      title: notice.title,
+      content: notice.content,
+      priority: notice.priority
     });
-    if (res.ok) fetchNotices();
+    setShowAddModal(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("আপনি কি নিশ্চিত যে আপনি এই নোটিশটি ডিলিট করতে চান?")) return;
+    try {
+      await deleteDoc(doc(db, "notices", id));
+    } catch (err) {
+      console.error("Error deleting notice:", err);
+      toast.error("Failed to delete notice");
+    }
   };
 
   return (
     <div className="space-y-6 pb-20">
       <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Notice Management</h2>
-          <p className="text-slate-500 text-sm">Post and manage announcements for library members.</p>
+          <h2 className="text-2xl font-bold text-slate-800 tracking-tight font-bengali">নোটিশ ব্যবস্থাপনা</h2>
+          <p className="text-slate-500 text-sm font-bengali">লাইব্রেরি সদস্যদের জন্য নোটিশ প্রকাশ এবং পরিচালনা করুন।</p>
         </div>
         <button 
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-100"
+          className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-100 font-bengali"
         >
           <Plus className="w-5 h-5" />
-          Post Notice
+          নোটিশ প্রকাশ
         </button>
+      </div>
+
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap items-center gap-6">
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 font-bengali">বার্তা প্রেরক (এডিট করা যাবে)</label>
+          <div className="flex gap-2">
+            <input 
+              type="text" 
+              value={secretary.name} 
+              onChange={e => setSecretary({...secretary, name: e.target.value})}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold font-bengali w-full"
+              placeholder="নাম"
+            />
+            <input 
+              type="text" 
+              value={secretary.title} 
+              onChange={e => setSecretary({...secretary, title: e.target.value})}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold font-bengali w-full"
+              placeholder="পদবী"
+            />
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-4">
         {loading ? (
-          <div className="p-20 text-center text-slate-400">Loading notices...</div>
+          <div className="p-20 text-center text-slate-400 font-bengali">নোটিশ লোড হচ্ছে...</div>
         ) : notices.length === 0 ? (
           <div className="bg-white p-16 rounded-2xl border border-dashed border-slate-200 text-center space-y-4">
             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto">
               <Bell className="w-8 h-8 text-slate-300" />
             </div>
-            <p className="text-slate-400 font-medium tracking-tight">No notices posted yet.</p>
+            <p className="text-slate-400 font-medium tracking-tight font-bengali">এখনও কোনো নোটিশ পোস্ট করা হয়নি।</p>
           </div>
         ) : (
           notices.map((notice) => (
@@ -105,12 +348,32 @@ export default function ManageNotices() {
                         {new Date(notice.date).toLocaleDateString(undefined, { dateStyle: 'long' })}
                       </p>
                     </div>
-                    <button 
-                      onClick={() => handleDelete(notice.id)}
-                      className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition opacity-0 group-hover:opacity-100"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
+                    <div className="flex flex-wrap gap-2 mt-2 sm:mt-0">
+                      <button 
+                        onClick={() => handlePrint(notice)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg font-bold text-xs hover:bg-indigo-100 transition shadow-sm border border-indigo-100 font-bengali"
+                        title="প্রিন্ট করুন"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        প্রিন্ট
+                      </button>
+                      <button 
+                        onClick={() => handleEdit(notice)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg font-bold text-xs hover:bg-amber-100 transition shadow-sm border border-amber-100 font-bengali"
+                        title="ইডিট করুন"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        ইডিট
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(notice.id)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-700 rounded-lg font-bold text-xs hover:bg-rose-100 transition shadow-sm border border-rose-100 font-bengali"
+                        title="ডিলিট করুন"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        ডিলিট
+                      </button>
+                    </div>
                   </div>
                   <p className="mt-4 text-slate-600 leading-relaxed whitespace-pre-wrap">{notice.content}</p>
                 </div>
@@ -130,53 +393,57 @@ export default function ManageNotices() {
               className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-slate-100"
             >
               <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
-                <h3 className="text-xl font-bold flex items-center gap-2">
+                <h3 className="text-xl font-bold flex items-center gap-2 font-bengali">
                   <Send className="w-5 h-5 text-indigo-400" />
-                  Post New Notice
+                  {editingNotice ? 'নোটিশ ইডিট করুন' : 'নতুন নোটিশ পোস্ট করুন'}
                 </h3>
-                <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-white/10 rounded-xl transition">
+                <button onClick={() => {
+                  setShowAddModal(false);
+                  setEditingNotice(null);
+                  setFormData({ title: '', content: '', priority: 'medium' });
+                }} className="p-2 hover:bg-white/10 rounded-xl transition">
                   <X className="w-6 h-6" />
                 </button>
               </div>
               <form onSubmit={handleAdd} className="p-8 space-y-6">
                 <div>
-                  <label className="block text-sm font-black text-slate-400 uppercase tracking-widest mb-2">Title</label>
+                  <label className="block text-sm font-black text-slate-400 uppercase tracking-widest mb-2 font-bengali">শিরোনাম</label>
                   <input
                     required
                     type="text"
-                    value={formData.title}
+                    value={formData.title || ''}
                     onChange={e => setFormData({ ...formData, title: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 transition font-medium"
-                    placeholder="Notice Heading"
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 transition font-medium font-bengali"
+                    placeholder="নোটিশের শিরোনাম"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-black text-slate-400 uppercase tracking-widest mb-2">Priority</label>
+                  <label className="block text-sm font-black text-slate-400 uppercase tracking-widest mb-2 font-bengali">গুরুত্ব</label>
                   <select
-                    value={formData.priority}
+                    value={formData.priority || 'medium'}
                     onChange={e => setFormData({ ...formData, priority: e.target.value as any })}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 transition font-medium"
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 transition font-medium font-bengali"
                   >
-                    <option value="low">Low Priority (Green)</option>
-                    <option value="medium">Medium Priority (Amber)</option>
-                    <option value="high">High Priority (Red)</option>
+                    <option value="low">কম গুরুত্ব (সবুজ)</option>
+                    <option value="medium">মাঝারি গুরুত্ব (অ্যাম্বার)</option>
+                    <option value="high">বেশি গুরুত্ব (লাল)</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-black text-slate-400 uppercase tracking-widest mb-2">Message Content</label>
+                  <label className="block text-sm font-black text-slate-400 uppercase tracking-widest mb-2 font-bengali">নোটিশের বিস্তারিত</label>
                   <textarea
                     required
-                    value={formData.content}
+                    value={formData.content || ''}
                     onChange={e => setFormData({ ...formData, content: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 transition h-32 resize-none font-medium text-sm leading-relaxed"
-                    placeholder="Enter announcement details..."
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 transition h-32 resize-none font-medium text-sm leading-relaxed font-bengali"
+                    placeholder="নোটিশের বিস্তারিত লিখুন..."
                   />
                 </div>
                 <button 
                   type="submit" 
-                  className="w-full bg-indigo-600 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-100"
+                  className="w-full bg-indigo-600 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-100 font-bengali"
                 >
-                  Publish Notice
+                  {editingNotice ? 'আপডেট করুন' : 'নোটিশ প্রকাশ করুন'}
                 </button>
               </form>
             </motion.div>

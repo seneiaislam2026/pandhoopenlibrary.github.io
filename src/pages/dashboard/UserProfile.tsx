@@ -1,10 +1,15 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../store/AuthContext';
-import { UserCircle2, Calendar, BookmarkCheck, CreditCard, Send, CheckCircle2, Camera, AlertCircle, ShieldAlert } from 'lucide-react';
+import Select from 'react-select';
+import { UserCircle2, Calendar, BookmarkCheck, CreditCard, Send, CheckCircle2, Camera, AlertCircle, ShieldAlert, Pencil, BookOpen, Bell, MessageSquare, ArrowRight, BadgeCheck, Download } from 'lucide-react';
+import { onSnapshot, collection, doc, updateDoc, query, where, serverTimestamp, setDoc, addDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import toast from 'react-hot-toast';
 
 export default function UserProfile() {
-  const { user, token, updateUser } = useAuth();
+  const navigate = useNavigate();
+  const { user, updateUser } = useAuth();
   const [payments, setPayments] = useState<any[]>([]);
   const [prebookings, setPrebookings] = useState<any[]>([]);
   const [books, setBooks] = useState<any[]>([]);
@@ -14,70 +19,128 @@ export default function UserProfile() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [payFormData, setPayFormData] = useState({ month: '', amount: '50', trxId: '' });
+  const [payFormData, setPayFormData] = useState({ month: '', amount: '30', paymentMethod: 'online', paymentNumber: '', trxId: '' });
   const [payLoading, setPayLoading] = useState(false);
 
-  const totalPaid = payments.reduce((acc, p) => acc + Number(p.amount), 0);
-  const totalDues = dues.filter(d => d.userId === user?.id && d.status === 'Unpaid').reduce((acc, d) => acc + Number(d.amount), 0);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewFormData, setReviewFormData] = useState({ title: '', content: '' });
+
+  const totalPaid = payments.filter((p:any) => p.status === 'Approved' || p.status === 'Paid' || !p.status).reduce((acc, p) => acc + Number(p.amount), 0);
+  const totalDues = user?.hasGiftSubscription ? 0 : dues.filter(d => d.userId === user?.id && d.status === 'Unpaid').reduce((acc, d) => acc + Number(d.amount), 0);
+
+  const [messages, setMessages] = useState<any[]>([]);
+  const [notices, setNotices] = useState<any[]>([]);
+
+  const [donorRecord, setDonorRecord] = useState<any>(null);
+  const [donorPayments, setDonorPayments] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!token) return;
-    Promise.all([
-        fetch('/api/my-payments', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-        fetch('/api/my-pre-bookings', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-        fetch('/api/books').then(r => r.json()),
-        fetch('/api/issues', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-        fetch('/api/my-dues', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-        fetch('/api/my-purchases', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-        fetch('/api/my-profile', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json())
-    ]).then(([payData, preData, bookData, issueData, dueData, purchaseData, profileData]) => {
-        setPayments(payData || []);
-        setPrebookings(preData || []);
-        setBooks(bookData || []);
-        setIssues(issueData || []);
-        setDues(dueData || []);
-        setPurchases(purchaseData || []);
-        if (profileData && profileData.id) {
-           updateUser(profileData);
+    if (!user) return;
+
+    let unsubDonorPayments = () => {};
+    const unsubDonor = onSnapshot(query(collection(db, "donor-members"), where("phone", "==", user.phone || '')), (s) => {
+        if (!s.empty) {
+           const donor = { id: s.docs[0].id, ...s.docs[0].data() };
+           setDonorRecord(donor);
+           unsubDonorPayments = onSnapshot(query(collection(db, 'donor-payments'), where('donorId', '==', donor.id)), (ps) => {
+               setDonorPayments(ps.docs.map(doc => ({ id: doc.id, ...doc.data()})));
+           });
+        } else {
+           setDonorRecord(null);
+           setDonorPayments([]);
         }
-    }).catch(err => {
-        console.error('Profile fetch error:', err);
     });
-  }, [token]);
+
+    const unsubPayments = onSnapshot(query(collection(db, "payments"), where("userId", "==", user.id)), (s) => {
+        setPayments(s.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubPrebookings = onSnapshot(query(collection(db, "pre-bookings"), where("userId", "==", user.id)), (s) => {
+        setPrebookings(s.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubBooks = onSnapshot(collection(db, "books"), (s) => {
+        setBooks(s.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubIssues = onSnapshot(query(collection(db, "issues"), where("userId", "==", user.id)), (s) => {
+        setIssues(s.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubPurchases = onSnapshot(query(collection(db, "purchases"), where("userId", "==", user.id)), (s) => {
+        setPurchases(s.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubMessages = onSnapshot(query(collection(db, 'messages'), where('toUserId', '==', user.id)), (s) => {
+      setMessages(s.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubNotices = onSnapshot(collection(db, 'notices'), (s) => {
+      setNotices(s.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => {
+        unsubDonor();
+        unsubDonorPayments();
+        unsubPayments();
+        unsubPrebookings();
+        unsubBooks();
+        unsubIssues();
+        unsubPurchases();
+        unsubMessages();
+        unsubNotices();
+    };
+  }, [user]);
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !user) return;
 
     if (file.size > 2 * 1024 * 1024) {
-      alert("Please choose an image smaller than 2MB.");
+      toast.error("Please choose an image smaller than 2MB.");
       return;
     }
 
     setUploadingImage(true);
     const reader = new FileReader();
     reader.onloadend = async () => {
-      const base64String = reader.result as string;
-      try {
-        const res = await fetch('/api/my-profile', {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({ avatar: base64String })
-        });
-        if (res.ok) {
-            const updatedUser = await res.json();
-            updateUser(updatedUser);
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 400;
+        const MAX_HEIGHT = 400;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
         } else {
-            alert('Failed to update avatar');
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
         }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setUploadingImage(false);
-      }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        const base64String = canvas.toDataURL('image/jpeg', 0.6);
+        try {
+          await updateDoc(doc(db, "users", user.id), { avatar: base64String });
+          updateUser({ ...user, avatar: base64String });
+        } catch (err) {
+          console.error(err);
+          toast.error('Failed to update avatar');
+        } finally {
+          setUploadingImage(false);
+        }
+      };
+      img.src = reader.result as string;
     };
     reader.readAsDataURL(file);
   };
@@ -85,54 +148,476 @@ export default function UserProfile() {
   const handleBkashCheckout = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!payFormData.month || !payFormData.amount) {
-          alert('Please select month and enter Amount');
+          toast.error('Please select month and enter Amount');
           return;
       }
+      
+      if (payFormData.paymentMethod === 'online' && !payFormData.trxId) {
+          toast.error('Please enter your TrxID');
+          return;
+      }
+
       setPayLoading(true);
       try {
-          const res = await fetch('/api/bkash/create', {
-              method: 'POST',
-              headers: { 
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${token}`
-              },
-              body: JSON.stringify({
-                  amount: payFormData.amount,
-                  month: payFormData.month
-              })
+          const newPaymentRef = doc(collection(db, "payments"));
+          await setDoc(newPaymentRef, {
+            ...payFormData,
+            userId: user?.id,
+            userName: user?.name,
+            status: payFormData.paymentMethod === 'library' ? 'Pending' : 'Pending Verification',
+            date: new Date().toISOString(),
+            type: 'monthly',
+            createdAt: serverTimestamp()
           });
-          if (res.ok) {
-              const data = await res.json();
-              if (data.bkashURL) {
-                  window.location.href = data.bkashURL;
-              }
-          } else {
-              const err = await res.json();
-              alert(err.error || 'Failed to initialize payment');
-          }
+          
+          toast.success('Payment submitted successfully! Waiting for verification.');
+          setPayFormData({ month: '', amount: '30', paymentMethod: 'online', paymentNumber: '', trxId: '' });
       } catch (err) {
           console.error(err);
-          alert('Network error connecting to bKash');
+          toast.error('Payment initialization failed');
       } finally {
           setPayLoading(false);
       }
   };
 
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileFormData, setProfileFormData] = useState({
+    name: user?.name || '',
+    phone: user?.phone || '',
+    address: user?.address || ''
+  });
+  const [saveLoading, setSaveLoading] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setProfileFormData({
+        name: user.name,
+        phone: user.phone || '',
+        address: user.address || ''
+      });
+    }
+  }, [user]);
+
+  const downloadLibraryCard = () => {
+    if (!user) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('উইন্ডো ওপেন করা সম্ভব হয়নি। দয়া করে পপআপ ব্লকার চেক করুন।');
+      return;
+    }
+
+    const todayDateConverted = new Date().toLocaleDateString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486));
+    const memberIdConverted = user.memberId ? user.memberId.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) : 'অনির্ধারিত';
+    
+    printWindow.document.write(`
+    <!DOCTYPE html>
+    <html lang="bn">
+    <head>
+        <meta charset="UTF-8">
+        <title>লাইব্রেরি কার্ড - ${user.name}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+        <style>
+            body {
+                font-family: 'Hind Siliguri', sans-serif;
+                background-color: #f1f5f9;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                margin: 0;
+                padding: 40px;
+            }
+            .card-wrapper {
+                width: 56mm;
+                height: max-content;
+                min-height: 95mm;
+                background: #ffffff;
+                border-radius: 12px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+                position: relative;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                border: 1px solid #e2e8f0;
+            }
+            .card-header {
+                background: #0f172a;
+                padding: 16px 10px 12px;
+                text-align: center;
+                color: white;
+                border-bottom: 4px solid #fbbf24;
+            }
+            .header-lib-name {
+                font-size: 15px;
+                font-weight: 700;
+                margin: 0 0 2px;
+                letter-spacing: 0.5px;
+                color: #ffffff;
+            }
+            .header-info {
+                font-size: 8px;
+                color: #e2e8f0;
+                line-height: 1.4;
+            }
+            .card-title {
+                display: inline-block;
+                background: #ffffff;
+                color: #1e3a8a;
+                padding: 3px 12px;
+                border-radius: 12px;
+                font-size: 11px;
+                font-weight: 700;
+                margin-top: 8px;
+                letter-spacing: 0.5px;
+            }
+            .card-body {
+                padding: 16px 14px;
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+            .info-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 10px;
+            }
+            .info-icon {
+                width: 14px;
+                height: 14px;
+                stroke: #3b82f6;
+                background: #eff6ff;
+                padding: 3px;
+                border-radius: 4px;
+                flex-shrink: 0;
+            }
+            .info-label {
+                font-weight: 700;
+                color: #64748b;
+                width: 60px;
+                flex-shrink: 0;
+            }
+            .info-value {
+                font-weight: 700;
+                color: #0f172a;
+                flex: 1;
+                border-bottom: 1px dashed #cbd5e1;
+                padding-bottom: 2px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .barcode-section {
+                padding: 12px 14px;
+                text-align: center;
+                border-top: 1px dashed #e2e8f0;
+                margin-top: auto;
+                background: #ffffff;
+            }
+            .barcode-placeholder {
+                height: 28px;
+                width: 85%;
+                margin: 0 auto 6px;
+                display: flex;
+                justify-content: space-between;
+                opacity: 0.7;
+            }
+            .barcode-line {
+                background: #1e293b;
+                height: 100%;
+            }
+            .barcode-text {
+                font-family: 'Outfit', sans-serif;
+                font-size: 11px;
+                letter-spacing: 3px;
+                font-weight: 700;
+                color: #334155;
+            }
+            .card-footer {
+                background: #1e3a8a;
+                color: white;
+                text-align: center;
+                padding: 10px 12px;
+                font-size: 8.5px;
+                line-height: 1.4;
+            }
+            .no-print { margin-top: 40px; text-align: center; }
+            .print-btn { background: #4f46e5; color: white; border: none; padding: 14px 28px; border-radius: 12px; font-family: 'Hind Siliguri', sans-serif; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2); transition: all 0.2s; }
+            .print-btn:hover { background: #4338ca; transform: translateY(-1px); }
+            @media print {
+                body { background: white; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; display: flex; justify-content: center; align-items: flex-start; padding-top: 20px;}
+                .card-wrapper { box-shadow: none !important; border: 1px solid #cbd5e1; }
+                .no-print { display: none !important; }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="card-wrapper">
+            <div class="card-header">
+                <img src="https://i.ibb.co/b5B2gv9b/1777771470223.jpg" alt="Logo" crossorigin="anonymous" referrerpolicy="no-referrer" style="width: 48px; height: 48px; border-radius: 50%; object-fit: contain; margin-bottom: 8px; border: 2px solid white; background: white;" />
+                <h1 class="header-lib-name">পানধোয়া উন্মুক্ত পাঠাগার</h1>
+                <div class="header-info">পানধোয়া, সেনওয়ালিয়া-১৩৪৪, আশুলিয়া, সাভার, ঢাকা।</div>
+                <div class="header-info">মোবাইল: ০১৫৭০২০৬৯৫৩</div>
+                <div class="card-title">লাইব্রেরি কার্ড</div>
+            </div>
+            
+            <div class="card-body">
+                <div class="info-row">
+                    <svg class="info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    <span class="info-label">নাম</span>
+                    <span class="info-value">: ${user.name}</span>
+                </div>
+                <div class="info-row">
+                    <svg class="info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    <span class="info-label">সদস্য আইডি</span>
+                    <span class="info-value">: ${user.memberId ? `#${user.memberId}` : 'অনির্ধারিত'}</span>
+                </div>
+                <div class="info-row">
+                    <svg class="info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+                    <span class="info-label">ইউজারনেম</span>
+                    <span class="info-value">: ${user.username || user.email?.split('@')[0] || ''}</span>
+                </div>
+                <div class="info-row">
+                    <svg class="info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    <span class="info-label">পাসওয়ার্ড</span>
+                    <span class="info-value">: ${user.password || '******'}</span>
+                </div>
+                <div class="info-row">
+                    <svg class="info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    <span class="info-label">ইস্যু তারিখ</span>
+                    <span class="info-value">: ${todayDateConverted}</span>
+                </div>
+            </div>
+            
+            <div class="barcode-section">
+                <div class="barcode-placeholder">
+                    ${Array.from({length: 12}).map(() => `
+                        <div class="barcode-line" style="width: 2px;"></div>
+                        <div class="barcode-line" style="width: 1px;"></div>
+                        <div class="barcode-line" style="width: 3px;"></div>
+                        <div class="barcode-line" style="width: 2px;"></div>
+                    `).join('')}
+                </div>
+                ${user.memberId ? `<div class="barcode-text">${user.memberId}</div>` : ''}
+            </div>
+
+            <div class="card-footer">
+                <div>এই কার্ডটি পানধোয়া উন্মুক্ত পাঠাগারের নিজস্ব সম্পত্তি এবং সংরক্ষণযোগ্য।</div>
+            </div>
+        </div>
+
+        <div class="no-print">
+            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+              <button onclick="window.print()" class="print-btn">
+                  🖨️ প্রিন্ট / পিডিএফ সেভ করুন
+              </button>
+              <button onclick="saveAsJPG()" class="print-btn" style="background: #10b981; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);">
+                  🖼️ জেপিজি (JPG) সেভ করুন
+              </button>
+            </div>
+            <p style="color: #64748b; font-size: 14px; margin-top: 12px;">পিডিএফ হিসেবে সেভ করতে প্রিন্ট অপশন থেকে <strong>'Save as PDF'</strong> নির্বাচন করুন</p>
+        </div>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+        <script>
+            function saveAsJPG() {
+                const card = document.querySelector('.card-wrapper');
+                html2canvas(card, { 
+                  scale: 6, 
+                  useCORS: true,
+                  backgroundColor: '#ffffff'
+                }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.download = 'library-card-${user.memberId || user.name}.jpg';
+                    link.href = canvas.toDataURL('image/jpeg', 0.95);
+                    link.click();
+                });
+            }
+            window.onload = () => {
+                setTimeout(() => {
+                    window.print();
+                }, 800);
+            };
+        </script>
+    </body>
+    </html>
+    `);
+  };
+
+  const handleReviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    try {
+      const newDocRef = doc(collection(db, "posts"));
+      await setDoc(newDocRef, {
+        title: reviewFormData.title,
+        content: reviewFormData.content,
+        id: newDocRef.id,
+        date: new Date().toISOString(),
+        createdAt: serverTimestamp(),
+        author: user.name,
+        userId: user.id
+      });
+      setShowReviewModal(false);
+      setReviewFormData({ title: '', content: '' });
+      toast.success('আপনার রিভিউ প্রকাশ করা হয়েছে!');
+    } catch(err) {
+      console.error(err);
+      toast.success('রিভিউ প্রকাশে ব্যাঘাত ঘটেছে।');
+    }
+  };
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setSaveLoading(true);
+    try {
+      await updateDoc(doc(db, "users", user.id), {
+        name: profileFormData.name,
+        phone: profileFormData.phone,
+        address: profileFormData.address
+      });
+      updateUser({
+        ...user,
+        name: profileFormData.name,
+        phone: profileFormData.phone,
+        address: profileFormData.address
+      });
+      setIsEditingProfile(false);
+      toast.success('Profile updated successfully!');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to update profile');
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
   const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const bengaliMonths = ["জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"];
   const currentYear = new Date().getFullYear();
 
-  const lateReturnCount = issues.filter(i => i.status === 'Returned' && new Date(i.returnDate || i.issueDate) > new Date(i.expectedReturnDate)).length;
-  const hasOverdueBooks = issues.some(i => i.status === 'Issued' && new Date() > new Date(i.expectedReturnDate));
+  const monthOptions = months.map((m, index) => ({
+    value: `${m} ${currentYear}`,
+    label: `${bengaliMonths[index]} ${currentYear}`
+  }));
+
+  const lateReturnCount = issues.filter(i => String(i.status).toLowerCase() === 'returned' && new Date(i.returnDate || i.issueDate) > new Date(i.expectedReturnDate)).length;
+  const hasOverdueBooks = issues.some(i => String(i.status).toLowerCase() === 'issued' && new Date() > new Date(i.expectedReturnDate));
   const isBorrowBlocked = user?.borrowBlocked || hasOverdueBooks || lateReturnCount >= 5;
+
+  const fourMonthsAgo = new Date();
+  fourMonthsAgo.setMonth(fourMonthsAgo.getMonth() - 4);
+  let isActiveProfile = true;
+  if (issues.length > 0) {
+    const lastIssueDate = new Date(Math.max(...issues.map(i => new Date(i.issueDate || i.date || new Date()).getTime())));
+    if (lastIssueDate < fourMonthsAgo) {
+      isActiveProfile = false;
+    }
+  } else if (user?.createdAt) {
+    const joinedDate = user.createdAt?.toDate ? user.createdAt.toDate() : new Date(user.createdAt);
+    if (joinedDate < fourMonthsAgo) {
+      isActiveProfile = false;
+    }
+  }
+
+  const handleDownloadHistoryPDF = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const today = new Date().toLocaleDateString('bn-BD', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    const returnedIssues = issues.filter(i => String(i.status).toLowerCase() === 'returned').sort((a,b)=>new Date(b.returnDate||b.issueDate).getTime()-new Date(a.returnDate||a.issueDate).getTime());
+
+    const html = `
+      <html>
+        <head>
+          <title>${user?.name || ''} - পঠিত বইয়ের রিপোর্ট</title>
+          <style>
+            body { font-family: sans-serif; padding: 40px; color: #0f172a; line-height: 1.5; }
+            .header { text-align: center; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 2px solid #e2e8f0; }
+            .title { font-size: 24px; font-weight: bold; margin: 0 0 10px 0; }
+            .meta { color: #64748b; font-size: 14px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+            th { background-color: #f8fafc; font-weight: bold; color: #475569; }
+            .index { color: #94a3b8; font-weight: bold; width: 40px; }
+            .book-title { font-weight: bold; color: #0f172a; }
+            .book-code { font-family: monospace; color: #64748b; font-size: 12px; }
+            .date-cell { white-space: nowrap; font-size: 14px; }
+            @media print {
+              body { padding: 0; }
+              button { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1 class="title">পঠিত বইয়ের তালিকা</h1>
+            <div class="meta">
+              সদস্য: ${user?.name || ''} (ID: ${user?.memberId || 'N/A'})<br/>
+              তারিখ: ${today}<br/>
+              মোট পঠিত বই: ${returnedIssues.length}
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th class="index">#</th>
+                <th>বইয়ের বিবরণ</th>
+                <th>নেওয়ার তারিখ</th>
+                <th>ফেরত দেওয়ার তারিখ</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${returnedIssues.map((i, idx) => {
+                const book = books.find(b => b.id === i.bookId);
+                const issueDateObj = i.issueDate ? new Date(i.issueDate) : new Date();
+                const issueDate = issueDateObj.toLocaleDateString('bn-BD', { day:'numeric', month:'short', year:'numeric' });
+                let returnDate = '';
+                if (i.returnDate) {
+                   returnDate = new Date(i.returnDate).toLocaleDateString('bn-BD', { day:'numeric', month:'short', year:'numeric' });
+                }
+                return `
+                  <tr>
+                    <td class="index">${idx + 1}</td>
+                    <td>
+                      <div class="book-title">${book?.title || 'Unknown Book'}</div>
+                      <div class="book-code">CODE: ${book?.bookCode || 'N/A'}</div>
+                    </td>
+                    <td class="date-cell">${issueDate}</td>
+                    <td class="date-cell">${returnDate}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+          <script>
+            window.onload = () => window.print();
+          </script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
   
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-12 font-bengali">
+    <div className="max-w-5xl mx-auto space-y-8 pb-12 font-bengali">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">My Profile & Activity</h2>
-        <Link to="/books" className="inline-flex items-center gap-2 bg-indigo-600 text-white px-6 py-2.5 rounded-full font-bold text-sm shadow-md hover:bg-indigo-700 transition transform hover:-translate-y-0.5">
-           <BookmarkCheck className="w-5 h-5" />
-           Browse & Pre-book Books
-        </Link>
+        <div>
+          <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">আমার প্রোফাইল</h2>
+          <p className="text-slate-500 font-medium text-sm mt-1">আপনার প্রোফাইল পরিচালনা করুন এবং আপডেট দেখুন</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link to="/books" className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md hover:bg-indigo-700 transition">
+             <BookmarkCheck className="w-4 h-4" />
+             বই খুঁজুন (Browse)
+          </Link>
+        </div>
       </div>
 
       {lateReturnCount >= 5 && !isBorrowBlocked && (
@@ -149,6 +634,38 @@ export default function UserProfile() {
               </div>
             </div>
         </div>
+      )}
+
+      {issues.filter(i => !!i.adminNote && String(i.status).toLowerCase() === 'issued').length > 0 && (
+        <div className="bg-indigo-50 border border-indigo-200 p-5 rounded-2xl shadow-sm space-y-3">
+            <div className="flex items-center gap-3 mb-2">
+                <Bell className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-bold text-indigo-800">অ্যাডমিন মেসেজ (Notifications)</h3>
+            </div>
+            {issues.filter(i => !!i.adminNote && String(i.status).toLowerCase() === 'issued').map(i => {
+                const bookTitle = books.find(b => b.id === i.bookId)?.title || 'Book';
+                return (
+                    <div key={i.id} className="bg-white p-3.5 rounded-xl border border-indigo-100 flex flex-col gap-1">
+                        <p className="text-xs font-bold text-indigo-500 uppercase">{bookTitle}</p>
+                        <p className="text-sm text-slate-700 font-medium">📢 {i.adminNote}</p>
+                    </div>
+                )
+            })}
+        </div>
+      )}
+
+      {donorRecord && donorPayments.filter(p => p.status === 'Unpaid').length > 0 && (
+         <div className="bg-rose-50 border border-rose-200 p-5 rounded-2xl shadow-sm">
+            <div className="flex items-start gap-4">
+              <ShieldAlert className="w-6 h-6 text-rose-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-rose-800 uppercase tracking-widest mb-1">অনুদানের পেমেন্ট বকেয়া রয়েছে</p>
+                <p className="text-sm font-semibold text-rose-700 leading-relaxed font-bengali">
+                   আপনার দাতা সদস্য হিসেবে {donorPayments.filter(p => p.status === 'Unpaid').map(p => p.month).join(', ')} মাসের অনুদান বকেয়া রয়েছে (৳{donorPayments.filter(p => p.status === 'Unpaid').reduce((s, p) => s + Number(p.amount), 0)})। অনুগ্রহ করে দ্রুত পরিশোধ করুন।
+                </p>
+              </div>
+            </div>
+         </div>
       )}
 
       {isBorrowBlocked && (
@@ -169,193 +686,247 @@ export default function UserProfile() {
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-1 space-y-8">
-           <div className="bg-white p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 text-center relative overflow-hidden">
+           <div className="bg-white p-8 rounded-[2.5rem] shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-slate-100 relative overflow-hidden">
+             {/* Subdued clean gradient background */}
+             <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50 rounded-full blur-3xl -mr-20 -mt-20 opacity-60"></div>
+             <div className="absolute bottom-0 left-0 w-40 h-40 bg-purple-50 rounded-full blur-2xl -ml-10 -mb-10 opacity-60"></div>
              
-             {/* Decorative Background */}
-             <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-br from-indigo-500 to-purple-600 opacity-10"></div>
-             
-             {/* Avatar Box */}
-             <div className="relative w-32 h-32 mx-auto mb-6 z-10">
-               {user?.avatar ? (
-                 <img src={user.avatar} alt="Profile" className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-xl" />
-               ) : (
-                 <div className="w-32 h-32 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-50 flex items-center justify-center border-4 border-white shadow-xl text-indigo-300">
-                    <UserCircle2 className="w-16 h-16" />
-                 </div>
-               )}
-               
-               <button 
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingImage}
-                className="absolute bottom-0 right-0 p-2.5 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 hover:scale-105 transition-all disabled:opacity-50 border-2 border-white ring-2 ring-transparent focus:ring-indigo-200"
-                title="Update Profile Picture"
-               >
-                 <Camera className="w-4 h-4" />
-               </button>
-               <input 
-                 type="file" 
-                 ref={fileInputRef} 
-                 onChange={handleAvatarChange} 
-                 accept="image/*" 
-                 className="hidden" 
-               />
-             </div>
+             <div className="relative z-10 flex flex-col items-center text-center">
+               {/* Avatar Box */}
+               <div className="relative w-32 h-32 mb-5">
+                 {user?.avatar ? (
+                   <img src={user.avatar} alt="Profile" referrerPolicy="no-referrer" className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-xl" />
+                 ) : (
+                   <div className="w-32 h-32 rounded-full bg-slate-50 flex items-center justify-center border-4 border-white shadow-xl text-slate-300">
+                      <UserCircle2 className="w-16 h-16" />
+                   </div>
+                 )}
+                 
+                 <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingImage}
+                  className="absolute bottom-1 right-1 p-2 bg-slate-900 text-white rounded-full shadow-lg hover:bg-black hover:scale-105 transition-all outline-none focus:ring-4 focus:ring-slate-200"
+                  title="Update Profile Picture"
+                 >
+                   <Camera className="w-4 h-4" />
+                 </button>
+                 <input 
+                   type="file" 
+                   ref={fileInputRef} 
+                   onChange={handleAvatarChange} 
+                   accept="image/*" 
+                   className="hidden" 
+                 />
+               </div>
 
-             <h3 className="text-2xl font-bold text-slate-900 tracking-tight">{user?.name}</h3>
-             <p className="text-slate-500 font-medium mb-6">@{user?.username}</p>
-             
-             <div className="space-y-4 pt-6 border-t border-slate-100 text-left">
-               <div>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Member ID</p>
-                  <p className="font-black text-indigo-700 bg-indigo-50/50 border border-indigo-100 px-3 py-1.5 rounded-lg inline-block text-lg tracking-wider">#{user?.memberId || 'N/A'}</p>
-               </div>
-               <div>
-                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Status</p>
-                 <div className="flex flex-col gap-2">
-                   <span className="w-fit inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200/50 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      Active Member
-                   </span>
-                   {user?.borrowBlocked && (
-                     <span className="w-fit inline-flex items-center gap-1.5 bg-rose-50 text-rose-700 border border-rose-200/50 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                        Borrowing Blocked
-                     </span>
-                   )}
-                 </div>
-               </div>
-               {user?.phone && (
-                 <div>
-                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Phone</p>
-                   <p className="font-semibold text-slate-800 text-sm">{user.phone}</p>
-                 </div>
-               )}
-               {user?.address && (
-                 <div>
-                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Address</p>
-                   <p className="font-semibold text-slate-800 text-sm">{user.address}</p>
-                 </div>
-               )}
-               <div>
-                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Role</p>
-                 <p className="font-semibold text-slate-900 capitalize text-sm">{user?.role}</p>
-               </div>
-               <div className="grid grid-cols-2 gap-4 mt-6">
-                 <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Total Paid</p>
-                   <p className="font-bold text-indigo-600 text-lg">৳{totalPaid}</p>
-                 </div>
-                 <div className="bg-rose-50/50 p-3 rounded-2xl border border-rose-100">
-                   <p className="text-[10px] text-rose-400 font-bold uppercase tracking-widest mb-1">Unpaid Dues</p>
-                   <p className="font-bold text-rose-600 text-lg">৳{totalDues}</p>
-                 </div>
+               <h3 className="text-2xl font-black text-slate-900 tracking-tight">{user?.name}</h3>
+               <p className="text-slate-500 font-medium mb-4">@{user?.username}</p>
+               <div className="flex flex-col gap-2 w-full mt-2">
+                 <button 
+                   onClick={() => setShowReviewModal(true)}
+                   className="w-full inline-flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 transition"
+                 >
+                    <BookOpen className="w-4 h-4" />
+                    বুক রিভিও পোস্ট করুন
+                 </button>
+                 <button 
+                   onClick={() => setIsEditingProfile(true)}
+                   className="w-full inline-flex items-center justify-center gap-2 bg-slate-100 text-slate-700 px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-200 transition"
+                 >
+                    <Pencil className="w-4 h-4" />
+                    ইডিট প্রোফাইল
+                 </button>
                </div>
              </div>
-
-             <div className="mt-8 pt-8 border-t border-slate-100">
-                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <CreditCard className="w-4 h-4 text-pink-500" />
-                    Pay Monthly Fee
-                </h4>
-                <div className="bg-pink-50/50 p-4 rounded-xl border border-pink-100 mb-4 flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-[10px] font-bold text-pink-700 mb-1">Make Payment via bKash</p>
-                            <p className="text-lg font-black text-slate-900 tracking-wider">01570206953</p>
+             
+             <div className="relative z-10 space-y-4 pt-6 text-left">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
+                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Member ID</p>
+                     <p className="font-black text-slate-900 text-lg tracking-wider">#{user?.memberId || 'N/A'}</p>
+                  </div>
+                  <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2 font-bengali">স্ট্যাটাস</p>
+                    <div className="flex flex-col gap-2">
+                      {isActiveProfile ? (
+                        <span className="w-fit inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider font-bengali">
+                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                           সক্রিয়
+                        </span>
+                      ) : (
+                        <span className="w-fit inline-flex items-center gap-1.5 bg-slate-200 text-slate-600 px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider font-bengali">
+                           <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                           নিষ্ক্রিয়
+                        </span>
+                      )}
+                      {user?.hasGiftSubscription && (
+                        <div className="flex flex-col gap-1">
+                          <span className="w-fit inline-flex items-center gap-1.5 bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider">
+                             <BadgeCheck className="w-3 h-3" />
+                             আপনাকে সাবস্ক্রিপশন গিফট করা হয়েছে
+                          </span>
+                          {user.giftSubscriptionExpiry && (
+                            <span className="text-[9px] font-bold text-indigo-600 font-bengali ml-1">
+                              মেয়াদ: {new Date(user.giftSubscriptionExpiry).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' })}
+                            </span>
+                          )}
                         </div>
-                        <img src="https://scripts.sandbox.bka.sh/resources/img/bkash_logo.png" alt="bKash" className="h-8" />
+                      )}
+                      {user?.borrowBlocked && (
+                        <span className="w-fit inline-flex items-center gap-1.5 bg-rose-100 text-rose-800 px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider">
+                           <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                           Blocked
+                        </span>
+                      )}
                     </div>
+                  </div>
+                  {user?.phone && (
+                    <div className="col-span-2 bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Phone</p>
+                      <p className="font-semibold text-slate-900 text-sm">{user.phone}</p>
+                    </div>
+                  )}
+                  {user?.address && (
+                    <div className="col-span-2 bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Address</p>
+                      <p className="font-semibold text-slate-900 text-sm leading-relaxed break-words">{user.address}</p>
+                    </div>
+                  )}
+                  <div className="col-span-2 bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 font-bengali">সদস্যের ধরন</p>
+                    <p className="font-semibold text-slate-900 capitalize text-sm font-bengali">{user?.role === 'reader' ? 'পাঠক সদস্য' : user?.role === 'donor' ? 'সম্মানিত দাতা' : user?.role === 'admin' ? 'অ্যাডমিন' : user?.role}</p>
+                  </div>
                 </div>
-                <form onSubmit={handleBkashCheckout} className="space-y-3 text-left">
-                    <select 
-                      value={payFormData.month} 
-                      onChange={e => setPayFormData({...payFormData, month: e.target.value})}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
-                      required
-                    >
-                        <option value="">Select Month</option>
-                        {months.map(m => (
-                            <option key={m} value={`${m} ${currentYear}`}>{m} {currentYear}</option>
-                        ))}
-                    </select>
-                    <input 
-                        type="number" 
-                        min="1"
-                        placeholder="Amount (৳)"
-                        value={payFormData.amount}
-                        onChange={e => setPayFormData({...payFormData, amount: e.target.value})}
-                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm shadow-sm"
-                        required
-                    />
-                    <button 
-                        type="submit" 
-                        disabled={payLoading}
-                        className="w-full bg-[#E2136E] text-white font-bold py-2.5 rounded-lg text-sm hover:bg-[#c91162] transition shadow-lg flex items-center justify-center gap-2"
-                    >
-                        {payLoading ? 'Processing...' : <><CreditCard className="w-3.5 h-3.5" /> Pay with bKash</>}
-                    </button>
-                </form>
+                <div className="grid grid-cols-2 gap-3 mt-4">
+                 <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100/50">
+                   <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest mb-1">Total Paid</p>
+                   <p className="font-black text-indigo-700 text-xl">৳{totalPaid}</p>
+                 </div>
+                 <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100/50">
+                   <p className="text-[10px] text-rose-500 font-bold uppercase tracking-widest mb-1">Unpaid Dues</p>
+                   <p className="font-black text-rose-700 text-xl">৳{totalDues}</p>
+                 </div>
+               </div>
              </div>
            </div>
         </div>
 
         <div className="lg:col-span-2 space-y-8">
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-            <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-6 flex items-center gap-2">
-               <Calendar className="w-5 h-5 text-indigo-600" />
-               Payment History
-            </h3>
-            {payments.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                No payment history found.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                 {payments.sort((a,b) => b.month.localeCompare(a.month)).map(p => (
-                   <div key={p.id} className="flex items-center justify-between p-4 hover:bg-slate-50 transition rounded-xl border border-slate-100">
-                      <div className="flex items-center gap-4">
-                         <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center font-bold text-sm">
-                           {p.month.substring(0,3)}
-                         </div>
-                         <div>
-                           <p className="font-bold text-slate-900">{p.month}</p>
-                           <p className="text-[10px] text-slate-400 font-mono uppercase">{new Date(p.date).toLocaleDateString()}</p>
-                         </div>
-                      </div>
-                      <div className="text-lg font-black text-emerald-600">৳{p.amount}</div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+             {/* Messages Summary */}
+             <div className="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100 flex flex-col justify-between">
+                <div>
+                   <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center mb-4">
+                     <MessageSquare className="w-5 h-5" />
                    </div>
-                 ))}
-              </div>
-            )}
+                   <h3 className="text-xl font-bold text-slate-900 mb-1 font-bengali">ম্যাসেজসমূহ</h3>
+                   <p className="text-slate-500 text-sm mb-4 font-bengali">আপনার {messages.filter(m => !m.read).length > 0 ? <span className="font-bold text-indigo-600">{messages.filter(m => !m.read).length}টি নতুন</span> : 'কোন নতুন'} ম্যাসেজ আছে।</p>
+                </div>
+                <Link to="/dashboard/inbox" className="inline-flex items-center text-sm font-bold text-indigo-600 hover:text-indigo-800 gap-1 font-bengali">
+                   সবগুলো ম্যাসেজ দেখুন <ArrowRight className="w-4 h-4" />
+                </Link>
+             </div>
+
+             {/* Notices Summary */}
+             <div className="bg-emerald-50/50 p-6 rounded-2xl border border-emerald-100 flex flex-col justify-between">
+                <div>
+                   <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-lg flex items-center justify-center mb-4">
+                     <Bell className="w-5 h-5" />
+                   </div>
+                   <h3 className="text-xl font-bold text-slate-900 mb-1 font-bengali">নোটিশ বোর্ড</h3>
+                   <p className="text-slate-500 text-sm mb-4 font-bengali">সর্বশেষ আপডেট ও নোটিশগুলো দেখে নিন।</p>
+                </div>
+                <Link to="/dashboard/notice-board" className="inline-flex items-center text-sm font-bold text-emerald-600 hover:text-emerald-800 gap-1 font-bengali">
+                   নোটিশবোর্ড দেখুন <ArrowRight className="w-4 h-4" />
+                </Link>
+             </div>
           </div>
 
           <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-            <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-6 flex items-center gap-2">
+            <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-6 flex items-center gap-2 font-bengali">
                <BookmarkCheck className="w-5 h-5 text-indigo-500" />
-               Current Issued Books
+               বর্তমান পঠিত বইসমূহ
             </h3>
-            {issues.filter(i => i.status === 'Issued').length === 0 ? (
-              <div className="py-8 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-sm">
-                No books currently issued.
+            {issues.filter(i => String(i.status).toLowerCase() === 'issued').length === 0 ? (
+              <div className="py-8 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-sm font-bengali">
+                বর্তমানে কোন ইস্যু করা বই নেই।
               </div>
             ) : (
                 <div className="space-y-4">
-                    {issues.filter(i => i.status === 'Issued').map(i => {
+                    {issues.filter(i => String(i.status).toLowerCase() === 'issued').map(i => {
                         const book = books.find(b => b.id === i.bookId);
                         return (
                             <div key={i.id} className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl">
-                                <div className="flex justify-between items-start">
+                                <div className="flex flex-col sm:flex-row sm:justify-between items-start gap-3 sm:gap-0">
                                   <div>
                                     <p className="font-bold text-slate-900">{book?.title}</p>
-                                    <p className="text-xs font-mono text-indigo-600 font-bold">CODE: {book?.bookCode}</p>
+                                    <p className="text-[11px] font-mono text-indigo-600 font-bold font-bengali">কোড: {book?.bookCode}</p>
                                   </div>
                                   <div className="text-right">
-                                    <p className="text-[10px] text-indigo-500 font-semibold">RETURN BY: {new Date(i.expectedReturnDate).toLocaleDateString()}</p>
+                                    <p className="text-[10px] text-indigo-500 font-semibold mb-2 font-bengali">ফেরতের তারিখ: {new Date(i.expectedReturnDate).toLocaleDateString('bn-BD')}</p>
+                                    <div className="flex flex-col gap-2 items-end">
+                                      {i.returnRequested ? (
+                                        <span className="text-[10px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-3 py-1.5 rounded-lg font-bold shadow-sm font-bengali">
+                                          ফেরতের অনুরোধ পাঠানো হয়েছে
+                                        </span>
+                                      ) : (
+                                        <button 
+                                          onClick={async () => {
+                                            if (!confirm('আপনি কি বইটি রিটার্ন দেওয়ার জন্য রিকোয়েস্ট করতে চান?')) return;
+                                            try {
+                                              await updateDoc(doc(db, 'issues', i.id), {
+                                                  returnRequested: true,
+                                                  updatedAt: serverTimestamp()
+                                              });
+                                              await addDoc(collection(db, 'member-requests'), {
+                                                  userId: user?.id,
+                                                  type: 'return',
+                                                  issueId: i.id,
+                                                  bookId: i.bookId,
+                                                  createdAt: serverTimestamp(),
+                                                  status: 'pending'
+                                              });
+                                              toast.success('বইটি রিটার্ন দেওয়ার অনুরোধ পাঠানো হয়েছে।');
+                                            } catch (err) {
+                                              console.error(err);
+                                              toast.error('রিকোয়েস্ট পাঠাতে সমস্যা হয়েছে');
+                                            }
+                                          }}
+                                          className="text-[10px] bg-white text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-50 hover:border-indigo-300 transition-all shadow-sm active:scale-95 flex items-center gap-1 font-bengali"
+                                        >
+                                          বই রিটার্ন করুন
+                                        </button>
+                                      )}
+                                      
+                                      {i.extendRequested ? (
+                                          <span className="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-3 py-1.5 rounded-lg font-bold shadow-sm font-bengali">
+                                              সময় বাড়ানোর অনুরোধ পাঠানো হয়েছে
+                                          </span>
+                                      ) : (
+                                          <button 
+                                            onClick={async () => {
+                                                if (!confirm('আপনি কি বই ফেরতের সময় বাড়ানোর জন্য রিকোয়েস্ট করতে চান?')) return;
+                                                try {
+                                                    await updateDoc(doc(db, 'issues', i.id), {
+                                                        extendRequested: true,
+                                                        updatedAt: serverTimestamp()
+                                                    });
+                                                } catch(err) {
+                                                    toast.error('রিকোয়েস্ট পাঠাতে সমস্যা হয়েছে');
+                                                }
+                                            }}
+                                            className="text-[10px] bg-white text-amber-600 border border-amber-200 px-3 py-1.5 rounded-lg font-bold hover:bg-amber-50 hover:border-amber-300 transition-all shadow-sm active:scale-95 flex items-center gap-1 font-bengali"
+                                          >
+                                              সময় বাড়ান
+                                          </button>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                                 {i.adminNote && (
-                                   <div className="mt-3 p-2 bg-rose-50 border border-rose-100 rounded-lg text-rose-700 text-xs font-bold animate-pulse">
-                                      {i.adminNote}
+                                   <div className="mt-3 p-3 bg-slate-50 border border-indigo-100 rounded-lg text-slate-700 text-sm font-semibold font-bengali">
+                                     <span className="text-indigo-600 font-bold mr-1 font-sans">Admin:</span> {i.adminNote}
                                    </div>
                                 )}
                             </div>
@@ -366,27 +937,38 @@ export default function UserProfile() {
           </div>
 
           <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-            <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-6 flex items-center gap-2">
-               <Calendar className="w-5 h-5 text-indigo-500" />
-               Borrow History & Previous Issues
-            </h3>
-            {issues.filter(i => i.status === 'Returned').length === 0 ? (
-              <div className="py-8 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-sm">
-                No borrowing history found.
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                <h3 className="text-lg font-bold tracking-tight text-slate-900 flex items-center gap-2 font-bengali">
+                   <Calendar className="w-5 h-5 text-indigo-500" />
+                   পঠিত বইয়ের পূর্বের রেকর্ড
+                </h3>
+                {issues.filter(i => String(i.status).toLowerCase() === 'returned').length > 0 && (
+                  <button 
+                     onClick={handleDownloadHistoryPDF}
+                     className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl font-bold text-sm hover:bg-indigo-100 transition whitespace-nowrap border border-indigo-100 w-fit font-bengali"
+                  >
+                     <Download className="w-4 h-4" />
+                     রিপোর্ট ডাউনলোড
+                  </button>
+                )}
+            </div>
+            {issues.filter(i => String(i.status).toLowerCase() === 'returned').length === 0 ? (
+              <div className="py-8 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-sm font-bengali">
+                কোন পঠিত বইয়ের রেকর্ড নেই।
               </div>
             ) : (
                 <div className="space-y-4">
-                    {issues.filter(i => i.status === 'Returned').sort((a,b)=>new Date(b.returnDate||b.issueDate).getTime()-new Date(a.returnDate||a.issueDate).getTime()).map(i => {
+                    {issues.filter(i => String(i.status).toLowerCase() === 'returned').sort((a,b)=>new Date(b.returnDate||b.issueDate).getTime()-new Date(a.returnDate||a.issueDate).getTime()).map(i => {
                         const book = books.find(b => b.id === i.bookId);
                         return (
                             <div key={i.id} className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
-                                <div className="flex justify-between items-start">
+                                <div className="flex flex-col sm:flex-row sm:justify-between items-start gap-3 sm:gap-0">
                                   <div>
-                                    <p className="font-bold text-slate-900 line-through text-slate-600">{book?.title}</p>
-                                    <p className="text-xs font-mono text-slate-400 font-bold">CODE: {book?.bookCode}</p>
+                                    <p className="font-bold text-slate-900">{book?.title}</p>
+                                    <p className="text-[11px] font-mono text-slate-400 font-bold font-bengali">কোড: {book?.bookCode}</p>
                                   </div>
                                   <div className="text-right">
-                                    <p className="text-[10px] text-emerald-600 font-bold uppercase">RETURNED: {new Date(i.returnDate || i.issueDate).toLocaleDateString()}</p>
+                                    <p className="text-[10px] text-emerald-600 font-bold uppercase font-bengali">ফেরত দেওয়া হয়েছে: {new Date(i.returnDate || i.issueDate).toLocaleDateString('bn-BD')}</p>
                                   </div>
                                 </div>
                             </div>
@@ -397,41 +979,13 @@ export default function UserProfile() {
           </div>
           
           <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-            <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-6 flex items-center gap-2">
-               <BookmarkCheck className="w-5 h-5 text-pink-500" />
-               Purchase History
-            </h3>
-            {purchases.length === 0 ? (
-              <div className="py-8 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-sm">
-                No purchases yet.
-              </div>
-            ) : (
-                <div className="space-y-4">
-                    {purchases.sort((a,b)=>new Date(b.date).getTime()-new Date(a.date).getTime()).map(p => (
-                        <div key={p.id} className="p-4 bg-pink-50/50 border border-pink-100 rounded-xl">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <p className="font-bold text-slate-900">{p.bookTitle}</p>
-                                <p className="text-[10px] text-pink-600 font-bold uppercase">Price: ৳{p.price}</p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-[10px] text-slate-400 font-bold">{new Date(p.date).toLocaleDateString()}</p>
-                              </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-          </div>
-
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-            <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-6 flex items-center gap-2">
+            <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-6 flex items-center gap-2 font-bengali">
                <BookmarkCheck className="w-5 h-5 text-amber-500" />
-               My Pre-bookings & Reservations
+               আমার প্রি-বুকিং ও রিজার্ভেশন
             </h3>
             {prebookings.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                You have no pending requests.
+              <div className="py-12 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 font-bengali">
+                আপনার কোন পেন্ডিং রিকোয়েস্ট নেই।
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4">
@@ -439,10 +993,10 @@ export default function UserProfile() {
                     const book = books.find(b => b.id === p.bookId);
                     return (
                         <div key={p.id} className="p-5 border border-slate-100 rounded-2xl bg-white shadow-sm">
-                            <div className="flex justify-between items-start mb-2">
+                            <div className="flex flex-col sm:flex-row sm:justify-between items-start gap-3 sm:gap-0 mb-3 sm:mb-2">
                                 <div>
                                     <p className="font-bold text-slate-900">{book?.title || 'Book'}</p>
-                                    <p className="text-[10px] font-mono text-indigo-600 font-bold uppercase tracking-tighter">CODE: {book?.bookCode || 'N/A'}</p>
+                                    <p className="text-[11px] font-mono text-indigo-600 font-bold font-bengali tracking-tighter">কোড: {book?.bookCode || 'N/A'}</p>
                                 </div>
                                 <span className={`text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-widest ${
                                     p.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
@@ -456,9 +1010,9 @@ export default function UserProfile() {
                             {(p.adminNote || p.collectDate) && (
                                <div className="mt-4 p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
                                   {p.collectDate && (
-                                     <div className="flex items-center gap-2 text-blue-700">
+                                     <div className="flex items-center gap-2 text-blue-700 font-bengali">
                                         <Calendar className="w-4 h-4" />
-                                        <span className="text-xs font-bold">Collect Date: {p.collectDate}</span>
+                                        <span className="text-sm font-bold">সংগ্রহের তারিখ: {p.collectDate}</span>
                                      </div>
                                   )}
                                   {p.adminNote && (
@@ -469,8 +1023,8 @@ export default function UserProfile() {
                                </div>
                             )}
 
-                            <div className="mt-4 pt-4 border-t border-slate-50 text-right">
-                                <span className="text-[10px] text-slate-400 font-medium">Requested on: {new Date(p.date).toLocaleDateString()}</span>
+                            <div className="mt-4 pt-4 border-t border-slate-50 text-right font-bengali">
+                                <span className="text-xs text-slate-400 font-medium">অনুরোধের তারিখ: {new Date(p.date).toLocaleDateString('bn-BD')}</span>
                             </div>
                         </div>
                     );
@@ -478,8 +1032,326 @@ export default function UserProfile() {
               </div>
             )}
           </div>
+          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+            <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-6 flex items-center gap-2 font-bengali">
+               <Calendar className="w-5 h-5 text-indigo-600" />
+               পেমেন্ট হিস্ট্রি
+            </h3>
+            {payments.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 font-bengali">
+                কোন পেমেন্ট হিস্ট্রি নেই।
+              </div>
+            ) : (
+              <div className="space-y-3">
+                 {payments.sort((a,b) => b.month.localeCompare(a.month)).map(p => (
+                   <div key={p.id} className="flex items-center justify-between p-4 hover:bg-slate-50 transition rounded-xl border border-slate-100">
+                      <div className="flex items-center gap-4">
+                         <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center font-bold text-sm">
+                           {p.month.substring(0,3)}
+                         </div>
+                         <div>
+                           <p className="font-bold text-slate-900">{p.month}</p>
+                           <div className="flex items-center gap-2">
+                             <p className="text-[10px] text-slate-400 font-mono uppercase">{new Date(p.date || p.createdAt?.toDate?.() || new Date()).toLocaleDateString()}</p>
+                             {(p.status && p.status !== 'Approved' && p.status !== 'Paid') && (
+                               <span className="text-[9px] font-black uppercase tracking-wider text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                 {p.status}
+                               </span>
+                             )}
+                           </div>
+                         </div>
+                      </div>
+                      <div className={`text-lg font-black ${(p.status && p.status !== 'Approved' && p.status !== 'Paid') ? 'text-slate-400' : 'text-emerald-600'}`}>৳{p.amount}</div>
+                   </div>
+                 ))}
+              </div>
+            )}
+          </div>
+
+          {donorRecord && (
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 mt-8">
+              <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-6 flex items-center gap-2 font-bengali">
+                 <CreditCard className="w-5 h-5 text-rose-500" />
+                 দাতার পেমেন্ট সমূহ (Donor Payments)
+              </h3>
+              {donorPayments.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 font-bengali">
+                  কোনো অনুদানের রেকর্ড পাওয়া যায়নি।
+                </div>
+              ) : (
+                <div className="space-y-3">
+                   {donorPayments.sort((a,b) => b.month.localeCompare(a.month)).map(p => (
+                     <div key={p.id} className="flex items-center justify-between p-4 hover:bg-slate-50 transition rounded-xl border border-slate-100">
+                        <div className="flex items-center gap-4">
+                           <div className="w-10 h-10 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center font-bold text-sm">
+                             {p.month.substring(0,3)}
+                           </div>
+                           <div>
+                             <p className="font-bold text-slate-900 font-mono">{p.month}</p>
+                             <div className="flex items-center gap-2">
+                               <p className="text-[10px] text-slate-400 font-mono uppercase">{new Date(p.date || p.createdAt?.toDate?.() || new Date()).toLocaleDateString()}</p>
+                               {p.status === 'Unpaid' && (
+                                 <span className="text-[9px] font-black uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 font-bengali">
+                                   বকেয়া
+                                 </span>
+                               )}
+                             </div>
+                           </div>
+                        </div>
+                        <div className={`text-lg font-black ${p.status === 'Unpaid' ? 'text-slate-400' : 'text-emerald-600'}`}>৳{p.amount}</div>
+                     </div>
+                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 mt-8">
+            <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-6 flex items-center gap-2 font-bengali">
+               <BookmarkCheck className="w-5 h-5 text-pink-500" />
+               কেনার অনুরোধ করা বই
+            </h3>
+            {purchases.length === 0 ? (
+              <div className="py-8 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-sm font-bengali">
+                কোন কেনার ইতিহাস নেই।
+              </div>
+            ) : (
+                <div className="space-y-4">
+                    {purchases.sort((a,b)=>new Date(b.date).getTime()-new Date(a.date).getTime()).map(p => (
+                        <div key={p.id} className="p-4 bg-pink-50/50 border border-pink-100 rounded-xl">
+                            <div className="flex flex-col sm:flex-row sm:justify-between items-start gap-3 sm:gap-0">
+                              <div>
+                                <p className="font-bold text-slate-900">{p.bookTitle}</p>
+                                <div className="flex items-center gap-3 mt-1">
+                                  <p className="text-[10px] text-pink-600 font-black uppercase">৳{(p.price || 0) * (p.quantity || 1)}</p>
+                                  <p className="text-[11px] text-slate-400 font-bold font-bengali">পরিমাণ: {p.quantity || 1}</p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest mb-1 inline-block ${
+                                  p.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
+                                  p.status === 'Cancelled' ? 'bg-rose-100 text-rose-700' :
+                                  'bg-amber-100 text-amber-700 animate-pulse'
+                                }`}>
+                                  {p.status || 'Pending'}
+                                </div>
+                                <p className="text-[10px] text-slate-400 font-bold">{new Date(p.date).toLocaleDateString()}</p>
+                              </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+          </div>
+
+          <div className="bg-white p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-slate-100 overflow-hidden relative mt-8">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-pink-500/10 rounded-full blur-[100px] -mr-32 -mt-32"></div>
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-[100px] -ml-32 -mb-32"></div>
+            
+            <div className="relative z-10">
+              <div className="text-center mb-8">
+                <div className="w-16 h-16 bg-pink-50 text-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <CreditCard className="w-8 h-8" />
+                </div>
+                <h3 className="text-2xl font-black tracking-tight text-slate-900 mb-2 font-bengali">
+                   মাসিক ফি প্রদান করুন
+                </h3>
+                <p className="text-slate-500 font-semibold font-bengali">আপনার মাসিক ফি সহজে বিকাশ করুন</p>
+              </div>
+              
+              <div className="max-w-md mx-auto">
+                <form onSubmit={handleBkashCheckout} className="space-y-5 text-left">
+                    <div className="grid grid-cols-2 gap-4">
+                      <select 
+                        value={payFormData.month}
+                        onChange={e => setPayFormData({...payFormData, month: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm shadow-sm outline-none focus:bg-white focus:ring-2 focus:ring-pink-500 font-bengali text-slate-700 font-bold transition-all h-[46px]"
+                        required
+                      >
+                        <option value="" disabled>মাস বাছাই করুন</option>
+                        {monthOptions.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                          <span className="text-slate-500 font-black">৳</span>
+                        </div>
+                        <input 
+                            type="number" 
+                            min="0"
+                            placeholder="পরিমাণ"
+                            value={user?.hasGiftSubscription ? '0' : payFormData.amount}
+                            disabled={!!user?.hasGiftSubscription}
+                            onChange={e => setPayFormData({...payFormData, amount: e.target.value})}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-4 py-3 text-sm shadow-sm outline-none focus:bg-white focus:ring-2 focus:ring-pink-500 font-black text-slate-900 transition-all disabled:bg-indigo-50"
+                            required
+                        />
+                      </div>
+                    </div>
+                    {user?.hasGiftSubscription && (
+                      <div className="mt-2 text-xs font-bold text-indigo-600 font-bengali">
+                        আপনার জন্য সাবস্ক্রিপশন ফি ফ্রি! আপনাকে কোনো টাকা দিতে হবে না।
+                      </div>
+                    )}
+
+                    <div className="bg-pink-50/50 border border-pink-100 rounded-2xl p-6 mt-4 space-y-6 shadow-sm">
+                        <div className="bg-white border border-pink-200 p-4 rounded-xl text-center shadow-sm relative overflow-hidden">
+                          <div className="absolute top-0 right-0 w-16 h-16 bg-pink-100 rounded-full blur-2xl"></div>
+                          <p className="text-xs text-pink-400 uppercase tracking-widest font-black mb-2 relative z-10 font-bengali">বিকাশ পেমেন্ট নাম্বার</p>
+                          <div className="font-mono text-3xl font-black text-pink-600 relative z-10 tracking-tight">01570206953</div>
+                          <div className="text-[10px] text-pink-400 mt-2 font-black uppercase tracking-widest bg-pink-50 inline-block px-3 py-1 rounded-full relative z-10 font-bengali">(শুধুমাত্র বিকাশ)</div>
+                        </div>
+                        
+                        <div className="space-y-4">
+                          <div>
+                              <label className="block text-[10px] font-black text-slate-600 uppercase tracking-wider mb-2 font-bengali">সেন্ডার মোবাইল নাম্বার</label>
+                              <input
+                                type="text"
+                                required
+                                value={payFormData.paymentNumber}
+                                onChange={e => setPayFormData({...payFormData, paymentNumber: e.target.value})}
+                                placeholder="01XXXXXXXXX"
+                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-pink-500 font-mono shadow-sm"
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-[10px] font-black text-slate-600 uppercase tracking-wider mb-2 font-bengali">ট্রানজ্যাকশন আইডি (TrxID)</label>
+                              <input
+                                type="text"
+                                required
+                                value={payFormData.trxId}
+                                onChange={e => setPayFormData({...payFormData, trxId: e.target.value})}
+                                placeholder="8NXXXXXXX"
+                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-pink-500 font-mono uppercase shadow-sm"
+                              />
+                          </div>
+                        </div>
+                    </div>
+
+                    <button 
+                        type="submit" 
+                        disabled={payLoading}
+                        className="w-full bg-slate-900 text-white font-black py-4 rounded-xl text-sm hover:bg-black transition shadow-xl shadow-slate-900/20 mt-6 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] font-bengali"
+                    >
+                        {payLoading ? 'প্রক্রিয়াধীন...' : <><CreditCard className="w-5 h-5" /> পেমেন্ট নিশ্চিত করুন</>}
+                    </button>
+                </form>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
+
+      {isEditingProfile && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-8 shadow-2xl border border-slate-100">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center">
+                <Pencil className="w-5 h-5" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 font-bengali">প্রোফাইল আপডেট করুন</h3>
+            </div>
+            
+            <form onSubmit={handleUpdateProfile} className="space-y-4">
+               <div>
+                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 font-bengali">পুরো নাম</label>
+                 <input 
+                  type="text" 
+                  required
+                  value={profileFormData.name}
+                  onChange={e => setProfileFormData({...profileFormData, name: e.target.value})}
+                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 bg-slate-50 focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
+                 />
+               </div>
+               <div>
+                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 font-bengali">মোবাইল নাম্বার</label>
+                 <input 
+                  type="text" 
+                  value={profileFormData.phone}
+                  onChange={e => setProfileFormData({...profileFormData, phone: e.target.value})}
+                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 bg-slate-50 focus:ring-2 focus:ring-indigo-500 transition-all outline-none font-mono"
+                 />
+               </div>
+               <div>
+                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 font-bengali">ঠিকানা</label>
+                 <textarea 
+                  value={profileFormData.address}
+                  onChange={e => setProfileFormData({...profileFormData, address: e.target.value})}
+                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 bg-slate-50 focus:ring-2 focus:ring-indigo-500 transition-all outline-none min-h-[100px]"
+                 />
+               </div>
+               
+               <div className="flex gap-3 pt-4 border-t border-slate-100">
+                  <button 
+                    type="button" 
+                    onClick={() => setIsEditingProfile(false)}
+                    className="flex-1 px-4 py-2.5 font-bold text-slate-500 hover:text-slate-700 transition font-bengali"
+                  >
+                    বাতিল
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={saveLoading}
+                    className="flex-2 px-8 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-md shadow-indigo-200 transition disabled:opacity-50 font-bengali"
+                  >
+                    {saveLoading ? 'সেভ হচ্ছে...' : 'সেভ করুন'}
+                  </button>
+               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Write Book Review Modal */}
+      {showReviewModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl p-8 shadow-xl relative animate-in fade-in zoom-in duration-200">
+            <h3 className="text-xl font-bold mb-6 tracking-tight text-slate-900 font-bengali">বুক রিভিও পোস্ট করুন</h3>
+            <form onSubmit={handleReviewSubmit} className="space-y-5">
+              <div>
+                <label className="block text-sm font-bold mb-2 text-slate-700 font-bengali">বইয়ের নাম ও লেখকের নাম</label>
+                <input 
+                  type="text" 
+                  autoFocus
+                  required 
+                  value={reviewFormData.title} 
+                  onChange={e=>setReviewFormData({...reviewFormData, title: e.target.value})} 
+                  className="w-full border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-sm outline-none font-bengali" 
+                  placeholder="যেমন: প্যারাডক্সিক্যাল সাজিদ - আরিফ আজাদ" 
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-2 text-slate-700 font-bengali">আপনার রিভিও</label>
+                <textarea 
+                  required 
+                  rows={8}
+                  value={reviewFormData.content} 
+                  onChange={e=>setReviewFormData({...reviewFormData, content: e.target.value})} 
+                  className="w-full border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-sm outline-none resize-none font-bengali" 
+                  placeholder="বইটি সম্পর্কে আপনার মতামত এখানে লিখুন..." 
+                ></textarea>
+              </div>
+              
+              <div className="flex gap-3 pt-6 mt-4 border-t border-slate-100">
+                 <button 
+                   type="button" 
+                   onClick={() => setShowReviewModal(false)}
+                   className="flex-1 px-6 py-2.5 font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition font-bengali"
+                 >
+                   বাতিল
+                 </button>
+                 <button 
+                   type="submit"
+                   className="flex-2 px-8 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-md shadow-indigo-200 transition font-bengali"
+                 >
+                   রিভিও পাবলিশ করুন
+                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

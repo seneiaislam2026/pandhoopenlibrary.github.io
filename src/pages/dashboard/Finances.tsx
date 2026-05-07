@@ -2,6 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../store/AuthContext';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { DollarSign, ArrowUpRight, ArrowDownRight, Plus, Edit2, Trash2 } from 'lucide-react';
+import { onSnapshot, collection, doc, setDoc, deleteDoc, updateDoc, writeBatch, query, getDocs } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import toast from 'react-hot-toast';
+
+import { useLocation } from 'react-router-dom';
 
 interface Finance {
   id: string;
@@ -14,7 +19,8 @@ interface Finance {
 export default function Finances() {
   const [finances, setFinances] = useState<Finance[]>([]);
   const [loading, setLoading] = useState(true);
-  const { token } = useAuth();
+  const { user } = useAuth();
+  const location = useLocation();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -27,36 +33,34 @@ export default function Finances() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
 
-  const loadData = () => {
-    fetch('/api/finances', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(data => {
-        setFinances(data);
-        setLoading(false);
-      });
-  };
-
   useEffect(() => {
-    loadData();
-  }, [token]);
+    const unsubscribe = onSnapshot(collection(db, 'finances'), (snapshot) => {
+      setFinances(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Finance[]);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const url = editingId ? `/api/finances/${editingId}` : '/api/finances';
-    const method = editingId ? 'PUT' : 'POST';
-
-    await fetch(url, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify(formData)
-    });
-    setShowForm(false);
-    setEditingId(null);
-    loadData();
-    setFormData({ type: 'expense', amount: 0, description: '' });
+    try {
+      if (editingId) {
+        await updateDoc(doc(db, 'finances', editingId), formData);
+      } else {
+        const newDocRef = doc(collection(db, 'finances'));
+        await setDoc(newDocRef, { 
+          ...formData, 
+          id: newDocRef.id,
+          date: new Date().toISOString()
+        });
+      }
+      setShowForm(false);
+      setEditingId(null);
+      setFormData({ type: 'expense', amount: 0, description: '' });
+    } catch (error) {
+      console.error('Error saving finance record:', error);
+      toast.error('Failed to save record');
+    }
   };
 
   const handleEdit = (f: Finance) => {
@@ -70,15 +74,12 @@ export default function Finances() {
       setDeletingId(id);
       return;
     }
-    const res = await fetch(`/api/finances/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok) {
-        setDeletingId(null);
-        loadData();
-    } else {
-        alert('Failed to delete finance record');
+    try {
+      await deleteDoc(doc(db, 'finances', id));
+      setDeletingId(null);
+    } catch (error) {
+      console.error('Failed to delete finance record:', error);
+      toast.error('Failed to delete record');
     }
   };
 
@@ -87,15 +88,18 @@ export default function Finances() {
       setResetting(true);
       return;
     }
-    const res = await fetch('/api/finances/reset', {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok) {
-        setResetting(false);
-        loadData();
-    } else {
-        alert('Failed to reset records');
+    try {
+      const q = query(collection(db, 'finances'));
+      const snapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      snapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
+      setResetting(false);
+    } catch (error) {
+      console.error('Failed to reset records:', error);
+      toast.error('Failed to reset records');
     }
   };
 
@@ -103,61 +107,66 @@ export default function Finances() {
   const totalExpense = finances.filter(f => f.type === 'expense').reduce((acc, curr) => acc + Number(curr.amount), 0);
   const balance = totalIncome - totalExpense;
 
+  const isAdmin = user?.role === 'admin';
+  const isDashboard = location.pathname.startsWith('/dashboard');
+
   const chartData = [
-    { name: 'Income', value: totalIncome },
-    { name: 'Expense', value: totalExpense }
+    { name: 'আয়', value: totalIncome },
+    { name: 'ব্যয়', value: totalExpense }
   ];
   const COLORS = ['#10b981', '#f43f5e'];
 
-  return (
+  const content = (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-semibold text-slate-900 tracking-tight">Finances & Reports</h2>
-        <button 
-          onClick={() => { setShowForm(!showForm); setEditingId(null); setFormData({ type: 'expense', amount: 0, description: '' }); }}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" /> {editingId ? 'Editing Record' : 'Add Record'}
-        </button>
+        <h2 className="text-2xl font-bold font-bengali text-slate-900 tracking-tight">হিসাব-নিকাশ</h2>
+        {isAdmin && (
+          <button 
+            onClick={() => { setShowForm(!showForm); setEditingId(null); setFormData({ type: 'expense', amount: 0, description: '' }); }}
+            className="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold font-bengali hover:bg-slate-800 transition flex items-center gap-2 shadow-sm"
+          >
+            <Plus className="w-4 h-4" /> {editingId ? 'রেকর্ড এডিট করুন' : 'নতুন রেকর্ড যোগ করুন'}
+          </button>
+        )}
       </div>
 
-      {showForm && (
+      {showForm && isAdmin && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
+            <label className="block text-sm font-bold text-slate-700 mb-1.5 font-bengali">খাতের ধরণ</label>
             <select
               value={formData.type}
               onChange={e => setFormData({ ...formData, type: e.target.value as 'income' | 'expense' })}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl font-bengali font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors"
             >
-              <option value="income">Income</option>
-              <option value="expense">Expense</option>
+              <option value="income">আয়</option>
+              <option value="expense">ব্যয়</option>
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Amount (৳)</label>
+            <label className="block text-sm font-bold text-slate-700 mb-1.5 font-bengali">পরিমাণ (৳)</label>
             <input
               type="number"
               required
               min="0"
               value={formData.amount || ''}
               onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl font-mono font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors"
             />
           </div>
           <div className="md:col-span-2 flex gap-4">
             <div className="flex-1">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+              <label className="block text-sm font-bold text-slate-700 mb-1.5 font-bengali">বিবরণ</label>
               <input
                 type="text"
                 required
-                value={formData.description}
+                value={formData.description || ''}
                 onChange={e => setFormData({ ...formData, description: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl font-bengali font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors"
               />
             </div>
-            <button type="submit" className="bg-slate-900 text-white px-6 py-2 rounded-lg font-medium hover:bg-slate-800 h-[42px] self-end">
-              Save
+            <button type="submit" className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-700 h-[46px] self-end font-bengali shadow-sm">
+              সংরক্ষণ
             </button>
           </div>
         </form>
@@ -165,96 +174,103 @@ export default function Finances() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-center">
-          <div className="flex items-center gap-3 text-emerald-600 mb-2">
-             <ArrowUpRight className="w-5 h-5 bg-emerald-100 rounded-full p-0.5" />
-             <span className="font-semibold tracking-wide">TOTAL INCOME</span>
+          <div className="flex items-center gap-3 text-emerald-600 mb-3">
+             <ArrowUpRight className="w-6 h-6 bg-emerald-100 rounded-full p-1" />
+             <span className="font-bold tracking-widest text-[11px] uppercase font-bengali text-slate-500">মোট আয়</span>
           </div>
-          <p className="text-4xl font-bold text-slate-900">৳{totalIncome}</p>
+          <p className="text-4xl font-black text-slate-900 tracking-tight font-mono">৳{totalIncome}</p>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-center">
-          <div className="flex items-center gap-3 text-rose-600 mb-2">
-             <ArrowDownRight className="w-5 h-5 bg-rose-100 rounded-full p-0.5" />
-             <span className="font-semibold tracking-wide">TOTAL EXPENSES</span>
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-center transition-all hover:shadow-md">
+          <div className="flex items-center gap-3 text-rose-600 mb-3">
+             <ArrowDownRight className="w-6 h-6 bg-rose-100 rounded-full p-1" />
+             <span className="font-bold tracking-widest text-[11px] uppercase font-bengali text-slate-500">মোট ব্যয়</span>
           </div>
-          <p className="text-4xl font-bold text-slate-900">৳{totalExpense}</p>
+          <p className="text-4xl font-black text-slate-900 tracking-tight font-mono">৳{totalExpense}</p>
         </div>
 
-        <div className="bg-slate-900 rounded-2xl p-6 shadow-sm flex flex-col justify-center text-white">
-          <div className="flex items-center gap-3 text-slate-400 mb-2">
-             <DollarSign className="w-5 h-5 bg-slate-800 rounded-full p-0.5" />
-             <span className="font-semibold tracking-wide">NET BALANCE</span>
+        <div className="bg-slate-900 rounded-2xl p-6 shadow-sm flex flex-col justify-center text-white transition-all hover:shadow-md border border-slate-800 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500 rounded-full blur-[80px] opacity-20 pointer-events-none"></div>
+          <div className="relative z-10">
+            <div className="flex items-center gap-3 text-indigo-400 mb-3">
+               <DollarSign className="w-6 h-6 bg-indigo-500/20 rounded-full p-1 text-indigo-400" />
+               <span className="font-bold tracking-widest text-[11px] uppercase font-bengali text-slate-400">বর্তমান ব্যালেন্স</span>
+            </div>
+            <p className="text-4xl font-black text-white tracking-tight font-mono">৳{balance}</p>
           </div>
-          <p className="text-4xl font-bold text-white">৳{balance}</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 lg:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-lg">Transaction History</h3>
-            {resetting ? (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-rose-500 font-medium">Are you sure?</span>
-                <button onClick={() => handleResetAll(true)} className="text-xs bg-rose-600 text-white hover:bg-rose-700 px-3 py-1.5 rounded-lg font-bold transition whitespace-nowrap shadow-sm">Yes, Reset</button>
-                <button onClick={() => setResetting(false)} className="text-xs bg-slate-200 text-slate-700 hover:bg-slate-300 px-3 py-1.5 rounded-lg font-bold transition whitespace-nowrap">Cancel</button>
-              </div>
-            ) : (
-              <button 
-                onClick={() => handleResetAll(false)} 
-                className="text-xs bg-rose-50 text-rose-600 hover:bg-rose-100 px-3 py-1.5 rounded-lg font-bold border border-rose-100 transition whitespace-nowrap"
-              >
-                Reset All
-              </button>
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 lg:col-span-2 overflow-hidden flex flex-col">
+          <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-[#f8fafc]">
+            <h3 className="font-bold text-lg font-bengali text-slate-800">লেনদেনের রেকর্ড</h3>
+            {isAdmin && (
+              resetting ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-rose-500 font-bold font-bengali">আপনি কি নিশ্চিত?</span>
+                  <button onClick={() => handleResetAll(true)} className="text-xs bg-rose-600 text-white hover:bg-rose-700 px-4 py-2 rounded-xl font-bold transition whitespace-nowrap shadow-sm font-bengali">হ্যাঁ, মুছুন</button>
+                  <button onClick={() => setResetting(false)} className="text-xs bg-slate-200 text-slate-700 hover:bg-slate-300 px-4 py-2 rounded-xl font-bold transition whitespace-nowrap font-bengali">বাতিল</button>
+                </div>
+              ) : (
+                <button 
+                  onClick={() => handleResetAll(false)} 
+                  className="text-xs bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white px-4 py-2 rounded-xl font-bold border border-rose-100 transition whitespace-nowrap font-bengali active:scale-95"
+                >
+                  সব মুছুন
+                </button>
+              )
             )}
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
+          <div className="overflow-x-auto flex-1">
+            <table className="w-full text-left">
+              <thead className="bg-[#f8fafc] border-b border-slate-200">
                 <tr>
-                  <th className="border-b border-slate-100 p-3 text-xs font-semibold text-slate-500 uppercase">Date</th>
-                  <th className="border-b border-slate-100 p-3 text-xs font-semibold text-slate-500 uppercase">Description</th>
-                  <th className="border-b border-slate-100 p-3 text-xs font-semibold text-slate-500 uppercase text-right">Amount</th>
-                  <th className="border-b border-slate-100 p-3 text-xs font-semibold text-slate-500 uppercase text-right">Actions</th>
+                  <th className="p-4 text-xs font-black text-[#64748B] uppercase tracking-widest font-bengali">তারিখ</th>
+                  <th className="p-4 text-xs font-black text-[#64748B] uppercase tracking-widest font-bengali">বিবরণ</th>
+                  <th className="p-4 text-xs font-black text-[#64748B] uppercase tracking-widest text-right font-bengali">পরিমাণ</th>
+                  {isAdmin && <th className="p-4 text-xs font-black text-[#64748B] uppercase tracking-widest text-right font-bengali">অ্যাকশন</th>}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100/80">
                 {finances.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(f => (
-                  <tr key={f.id} className="hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors">
-                    <td className="p-3 text-sm text-slate-500">
+                  <tr key={f.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="p-4 text-sm font-medium text-slate-500 font-mono">
                       {new Date(f.date).toLocaleDateString()}
                     </td>
-                    <td className="p-3 font-medium text-slate-900">{f.description}</td>
-                    <td className={`p-3 font-semibold text-right ${f.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    <td className="p-4 font-bold text-slate-800 font-bengali">{f.description}</td>
+                    <td className={`p-4 text-right font-black font-mono text-base ${f.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
                       {f.type === 'income' ? '+' : '-'}৳{f.amount}
                     </td>
-                    <td className="p-3 text-right">
-                       {deletingId === f.id ? (
-                          <div className="flex justify-end gap-2">
-                             <button onClick={() => handleDelete(f.id, true)} className="px-2 py-1 bg-rose-600 text-white text-xs rounded font-bold shadow-sm">Delete</button>
-                             <button onClick={() => setDeletingId(null)} className="px-2 py-1 bg-slate-200 text-slate-700 text-xs rounded font-bold">Cancel</button>
-                          </div>
-                       ) : (
-                          <div className="flex justify-end gap-2">
-                            <button onClick={() => handleEdit(f)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"><Edit2 className="w-4 h-4" /></button>
-                            <button onClick={() => handleDelete(f.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"><Trash2 className="w-4 h-4" /></button>
-                          </div>
-                       )}
-                    </td>
+                    {isAdmin && (
+                      <td className="p-4 text-right flex justify-end">
+                         {deletingId === f.id ? (
+                            <div className="flex justify-end gap-2 items-center">
+                               <button onClick={() => handleDelete(f.id, true)} className="px-3 py-1.5 bg-rose-600 text-white text-xs rounded-lg font-bold shadow-sm font-bengali">নিশ্চিত</button>
+                               <button onClick={() => setDeletingId(null)} className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs rounded-lg font-bold font-bengali">বাতিল</button>
+                            </div>
+                         ) : (
+                            <div className="flex justify-end gap-1">
+                              <button onClick={() => handleEdit(f)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all active:scale-95"><Edit2 className="w-4 h-4" /></button>
+                              <button onClick={() => handleDelete(f.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all active:scale-95"><Trash2 className="w-4 h-4" /></button>
+                            </div>
+                         )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
-            {finances.length === 0 && <div className="text-center p-8 text-slate-500">No records found.</div>}
+            {finances.length === 0 && <div className="text-center p-12 text-slate-400 font-bold font-bengali">কোনো লেনদেনের রেকর্ড পাওয়া যায়নি।</div>}
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col items-center justify-center">
-           <h3 className="font-semibold text-lg mb-4 self-start">Income vs Expense</h3>
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-center">
+           <h3 className="font-bold text-lg mb-6 self-start font-bengali text-slate-800">আয় বনাম ব্যয়</h3>
            {totalIncome === 0 && totalExpense === 0 ? (
-             <div className="text-slate-400 py-12">No data to display</div>
+             <div className="text-slate-400 py-12 text-center font-bold font-bengali bg-slate-50 rounded-xl border border-dashed border-slate-200">কোনো ডেটা নেই</div>
            ) : (
-             <div className="w-full h-64">
+             <div className="w-full h-72">
                <ResponsiveContainer width="100%" height="100%">
                  <PieChart>
                    <Pie
@@ -278,6 +294,16 @@ export default function Finances() {
            )}
         </div>
       </div>
+    </div>
+  );
+
+  if (isDashboard) return content;
+
+  return (
+    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
+       <div className="max-w-7xl mx-auto">
+          {content}
+       </div>
     </div>
   );
 }

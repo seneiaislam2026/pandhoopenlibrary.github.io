@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Bell, AlertCircle, Info, Calendar } from 'lucide-react';
 import { motion } from 'motion/react';
+import { onSnapshot, collection, query, orderBy } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+
+import { useAuth } from '../../store/AuthContext';
 
 interface Notice {
   id: string;
@@ -13,32 +17,35 @@ interface Notice {
 export default function UserNotices() {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
   useEffect(() => {
-    fetch('/api/notices')
-      .then(r => r.json())
-      .then(data => {
-        setNotices(data);
-        setLoading(false);
-      });
-  }, []);
+    const q = query(collection(db, "notices"), orderBy("date", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setNotices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Notice[]);
+      setLoading(false);
+      
+      // Update last seen timestamp
+      if (user?.id) {
+          localStorage.setItem(`last_seen_notices_${user.id}`, new Date().toISOString());
+          window.dispatchEvent(new Event('notices_seen')); // To update the layout notification badge
+      }
+    }, (err) => {
+      console.error(err);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [user]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-20">
       <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tighter">Notice Board</h2>
-          <p className="text-slate-500 font-medium mt-1">Stay updated with the latest library library announcements.</p>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tighter font-bengali">নোটিশ বোর্ড</h2>
+          <p className="text-slate-500 font-medium mt-1 font-bengali">লাইব্রেরির সর্বশেষ নোটিশগুলো দেখে নিন।</p>
         </div>
-        <div className="flex -space-x-2">
-            {[1,2,3].map(i => (
-                <div key={i} className="w-10 h-10 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center overflow-hidden">
-                    <img src={`https://i.pravatar.cc/150?u=lib${i}`} className="w-full h-full object-cover" alt="" />
-                </div>
-            ))}
-            <div className="w-10 h-10 rounded-full border-2 border-white bg-indigo-600 flex items-center justify-center text-white text-xs font-black">
-                {notices.length}+
-            </div>
+        <div className="flex items-center text-slate-500 text-xs font-bold font-bengali">
+            মোট {notices.length} টি নোটিশ
         </div>
       </div>
 
@@ -46,12 +53,12 @@ export default function UserNotices() {
         {loading ? (
           <div className="p-20 text-center">
             <div className="animate-spin w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-            <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Loading Announcements</p>
+            <p className="text-slate-400 font-bold tracking-widest text-[12px] font-bengali">লোডিং হচ্ছে...</p>
           </div>
         ) : notices.length === 0 ? (
           <div className="bg-white p-16 rounded-3xl border border-dashed border-slate-200 text-center">
             <Bell className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-            <p className="text-slate-400 font-semibold italic text-lg">No announcements at the moment.</p>
+            <p className="text-slate-400 font-semibold italic text-lg font-bengali">এই মুহূর্তে কোনো নোটিশ নেই</p>
           </div>
         ) : (
           notices.map((notice, idx) => (

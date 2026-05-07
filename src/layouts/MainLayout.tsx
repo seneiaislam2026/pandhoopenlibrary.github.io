@@ -1,5 +1,6 @@
 import React from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import { Logo } from '../components/Logo';
 import {
   BookOpen,
   UserCircle,
@@ -14,12 +15,21 @@ import {
   Users,
   FileText,
   Globe,
+  MapPin,
+  Phone,
+  Clock,
+  LayoutDashboard,
+  Bell,
+  MessageSquare,
+  DollarSign
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../store/AuthContext";
 import { cn } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { useTranslation } from "react-i18next";
+import { db } from "../lib/firebase";
+import { collection, query, where, onSnapshot, orderBy } from "firebase/firestore";
 
 export default function MainLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -27,6 +37,46 @@ export default function MainLayout() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { t, i18n } = useTranslation();
+  const [unreadNoticesCount, setUnreadNoticesCount] = useState(0);
+  const [messagesCount, setMessagesCount] = useState(0);
+
+  useEffect(() => {
+    if (user) {
+      // Get unread messages count
+      const qMsgs = query(collection(db, 'messages'), where('toUserId', '==', user.id));
+      const unsubscribeMessages = onSnapshot(qMsgs, (snapshot) => {
+        const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const unread = msgs.filter((m: any) => !m.isRead && m.toUserId === user.id).length;
+        setMessagesCount(unread);
+      }, (err) => console.error("Messages count error:", err));
+
+      const noticesQuery = query(collection(db, "notices"), orderBy("date", "desc"));
+      let currentNotices: any[] = [];
+
+      const updateUnreadNotices = () => {
+        const lastSeen = localStorage.getItem(`last_seen_notices_${user.id}`);
+        if (lastSeen) {
+           const count = currentNotices.filter(n => new Date(n.date) > new Date(lastSeen)).length;
+           setUnreadNoticesCount(count);
+        } else {
+           setUnreadNoticesCount(currentNotices.length);
+        }
+      };
+
+      const unsubscribeNotices = onSnapshot(noticesQuery, (snapshot) => {
+        currentNotices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+        updateUnreadNotices();
+      }, (err) => console.error("Notices count error:", err));
+
+      window.addEventListener('notices_seen', updateUnreadNotices);
+
+      return () => {
+        unsubscribeMessages();
+        unsubscribeNotices();
+        window.removeEventListener('notices_seen', updateUnreadNotices);
+      };
+    }
+  }, [user]);
 
   const toggleLanguage = () => {
     i18n.changeLanguage(i18n.language === "en" ? "bn" : "en");
@@ -35,11 +85,12 @@ export default function MainLayout() {
   const links = [
     { name: t("nav.home"), path: "/", icon: Home },
     { name: t("nav.books"), path: "/books", icon: Library },
+    { name: "ইভেন্ট", path: "/events", icon: CalendarHeart },
     { name: t("nav.buy"), path: "/buy-books", icon: ShoppingCart },
-    { name: "Donors", path: "/donors", icon: Heart },
-    { name: "Monthly Donors", path: "/monthly-donors", icon: CalendarHeart },
+    { name: t("nav.donors"), path: "/donors", icon: Heart },
     { name: t("nav.team"), path: "/team", icon: Users },
-    { name: "Blog", path: "/blog", icon: FileText },
+    { name: t("nav.constitution"), path: "/constitution", icon: FileText },
+    { name: t("nav.blog"), path: "/blog", icon: FileText },
   ];
 
   return (
@@ -50,7 +101,13 @@ export default function MainLayout() {
             <div className="flex items-center gap-3">
               {location.pathname !== "/" && (
                 <button
-                  onClick={() => navigate("/")}
+                  onClick={() => {
+                    if (user && (location.pathname === "/books" || location.pathname === "/finances")) {
+                      navigate("/dashboard");
+                    } else {
+                      navigate("/");
+                    }
+                  }}
                   className="p-2 -ml-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-full transition-colors"
                   aria-label="Go back"
                 >
@@ -58,15 +115,15 @@ export default function MainLayout() {
                 </button>
               )}
               <Link to="/" className="flex items-center gap-2">
-                <BookOpen className="h-6 w-6 text-indigo-600" />
-                <span className="font-semibold text-lg tracking-normal">
-                  Pandhoa Open Library
+                <Logo className="h-8 w-8" />
+                <span className="font-bold text-lg tracking-normal text-indigo-900">
+                  পানধোয়া উন্মুক্ত পাঠাগার
                 </span>
               </Link>
             </div>
 
             {/* Desktop Nav */}
-            <div className="hidden md:flex items-center space-x-8">
+          <div className="hidden md:flex items-center space-x-8">
               {links.map((link) => (
                 <Link
                   key={link.path}
@@ -92,10 +149,10 @@ export default function MainLayout() {
                   {i18n.language === "en" ? "BN" : "EN"}
                 </button>
                 <Link
-                  to="/donors"
-                  className="bg-rose-500 text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-rose-600 transition-colors"
+                  to="/finances"
+                  className="bg-emerald-500 text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-emerald-600 transition-colors shadow-sm shadow-emerald-500/20 font-bengali"
                 >
-                  Donate
+                  আয়-ব্যয় হিসাব
                 </Link>
                 {user ? (
                   <Link
@@ -189,12 +246,12 @@ export default function MainLayout() {
 
                 <div className="pt-6 mt-6 border-t border-slate-200 flex flex-col gap-3">
                   <Link
-                    to="/donors"
+                    to="/finances"
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="flex justify-center items-center gap-2 px-4 py-3.5 rounded-xl text-base font-bold bg-[#E2136E] text-white hover:bg-[#c91162] transition-colors shadow-md shadow-pink-200"
+                    className="flex justify-center items-center gap-2 px-4 py-3.5 rounded-xl text-base font-bold bg-emerald-500 text-white hover:bg-emerald-600 transition-colors shadow-md shadow-emerald-200 font-bengali"
                   >
-                    <Heart className="w-5 h-5" />
-                    Donate Now
+                    <CalendarHeart className="w-5 h-5" />
+                    আয়-ব্যয় হিসাব
                   </Link>
                   {user ? (
                     <Link
@@ -235,19 +292,82 @@ export default function MainLayout() {
         <Outlet />
       </main>
 
-      <footer className="bg-white border-t border-slate-200 mt-20">
+      {/* Mobile Bottom Navigation (Authenticated only) */}
+      {user && (
+        <div className="fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 md:hidden flex items-center justify-around px-2 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+           {user?.role === 'admin' ? (
+             <>
+               <Link to="/dashboard/books" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/dashboard/books' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <Library className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">বই তালিকা</span>
+               </Link>
+               <Link to="/dashboard/donors" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/donors' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <Heart className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">দাতা সদস্য</span>
+               </Link>
+               <Link to="/dashboard/pre-bookings" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/pre-bookings' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <Clock className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">প্রি বুকিং</span>
+                  {/* Need prebookings count, we can use 0 for main layout or add state if needed, using 0 for now */}
+               </Link>
+               <Link to="/dashboard/users" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/users' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <Users className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">সদস্য ব্যবস্থাপনা</span>
+               </Link>
+               <Link to="/dashboard" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/dashboard' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <LayoutDashboard className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">ওভারভিউ</span>
+               </Link>
+             </>
+           ) : (
+             <>
+               <Link to="/books" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/books' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <Library className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">বই তালিকা</span>
+               </Link>
+               <Link to="/dashboard/notice-board" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/notice-board' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <Bell className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">নোটিশ</span>
+                  {unreadNoticesCount > 0 && (
+                    <span className="absolute top-0 right-2 w-4 h-4 bg-rose-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border border-white">
+                      {unreadNoticesCount}
+                    </span>
+                  )}
+               </Link>
+               <Link to="/dashboard/inbox" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/inbox' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <MessageSquare className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">মেসেজ</span>
+                  {messagesCount > 0 && (
+                    <span className="absolute top-0 right-2 w-4 h-4 bg-indigo-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border border-white">
+                      {messagesCount}
+                    </span>
+                  )}
+               </Link>
+               <Link to="/dashboard/book-requests" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/book-requests' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <BookOpen className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">বই অনুরোধ</span>
+               </Link>
+               <Link to="/dashboard/profile" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/dashboard/profile' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <UserCircle className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">প্রোফাইল</span>
+               </Link>
+             </>
+           )}
+        </div>
+      )}
+
+      <footer className={cn("bg-white border-t border-slate-200 mt-20", user && "pb-20 md:pb-0")}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="col-span-1 md:col-span-2">
               <Link to="/" className="flex items-center gap-2 mb-4">
-                <BookOpen className="h-6 w-6 text-indigo-600" />
-                <span className="font-semibold text-lg">
-                  Pandhoa Open Library
+                <Logo className="h-8 w-8" />
+                <span className="font-bold text-lg text-indigo-900">
+                  পানধোয়া উন্মুক্ত পাঠাগার
                 </span>
               </Link>
               <p className="text-slate-500 text-sm max-w-sm">
-                A community-driven library aimed at providing accessible
-                knowledge for everyone. Support us with a donation.
+                এটি একটি সামাজিক পাঠাগার যা সবার জন্য উন্মুক্ত। আপনার একটি বই উপহার বা আর্থিক অনুদান আমাদের পথচলাকে আরও সুসংহত করতে পারে।
               </p>
             </div>
             <div>
@@ -295,6 +415,9 @@ export default function MainLayout() {
               </h3>
               <ul className="space-y-3">
                 <li className="text-slate-500 text-sm">
+                  ঠিকানা: পানধোয়া, সেনওয়ালিয়া-1344, আশুলিয়া, সাভার, ঢাকা।
+                </li>
+                <li className="text-slate-500 text-sm">
                   WhatsApp: 01570206953
                 </li>
                 <li>
@@ -312,8 +435,7 @@ export default function MainLayout() {
           </div>
           <div className="border-t border-slate-200 mt-12 pt-8 text-sm text-slate-400 flex justify-between items-center">
             <p>
-              &copy; {new Date().getFullYear()} Pandhoa Open Library. All rights
-              reserved.
+              &copy; {new Date().getFullYear()} পানধোয়া উন্মুক্ত পাঠাগার। সর্বস্বত্ব সংরক্ষিত।
             </p>
           </div>
         </div>

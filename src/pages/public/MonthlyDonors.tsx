@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { Heart, Calendar } from 'lucide-react';
+import { Heart } from 'lucide-react';
+import { doc, setDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import toast from 'react-hot-toast';
 
 export default function MonthlyDonors() {
   const [formName, setFormName] = useState('');
@@ -9,24 +12,35 @@ export default function MonthlyDonors() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName || !formAmount || !month) return;
 
-    // We can handle this as a donation in the backend later, for now we will just show success
-    await fetch('/api/donations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: formName + ' (Monthly Member)', amount: formAmount, type: 'monthly', month })
-    });
-    
-    setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
-      setFormName('');
-      setFormAmount(500);
-    }, 4000);
+    setLoading(true);
+    try {
+      const newDocRef = doc(collection(db, "donations"));
+      await setDoc(newDocRef, {
+        name: formName + ' (Monthly Member)',
+        amount: formAmount,
+        type: 'monthly',
+        month,
+        date: new Date().toISOString(),
+        createdAt: serverTimestamp()
+      });
+      setSubmitted(true);
+      setTimeout(() => {
+        setSubmitted(false);
+        setFormName('');
+        setFormAmount(500);
+      }, 4000);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to submit");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

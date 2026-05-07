@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Logo } from '../components/Logo';
 import { 
   LayoutDashboard, 
+  CalendarHeart,
   Users, 
   Library, 
   DollarSign, 
@@ -25,11 +27,19 @@ import {
   ShoppingCart,
   Search,
   Moon,
-  Sun
+  Sun,
+  MapPin,
+  Phone,
+  Heart,
+  Package,
+  QrCode,
+  Settings
 } from 'lucide-react';
 import { useAuth } from '../store/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { db } from '../lib/firebase';
+import { collection, query, where, orderBy, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 
 export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -49,111 +59,130 @@ export default function DashboardLayout() {
   const { user, logout, token } = useAuth();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [messagesCount, setMessagesCount] = useState(0);
+  const [bookRequestsCount, setBookRequestsCount] = useState(0);
+  const [resetRequestsCount, setResetRequestsCount] = useState(0);
+  const [preBookingsCount, setPreBookingsCount] = useState(0);
+  const [unreadNoticesCount, setUnreadNoticesCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (user?.role === 'admin') {
-      fetch('/api/notifications', { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.json())
-        .then(d => {
-            if(Array.isArray(d)) {
-              let notifs = [...d];
-              const autoMarkIds: string[] = [];
-              if (location.pathname === '/dashboard/pre-bookings') {
-                notifs.forEach(n => {
-                  if (!n.read && n.type === 'prebooking') {
-                    n.read = true;
-                    autoMarkIds.push(n.id);
-                  }
-                });
-              } else if (location.pathname === '/dashboard/users') {
-                notifs.forEach(n => {
-                  if (!n.read && n.type === 'registration') {
-                    n.read = true;
-                    autoMarkIds.push(n.id);
-                  }
-                });
-              }
-              setNotifications(notifs);
-              
-              // Only call API if we auto-marked any
-              autoMarkIds.forEach(id => {
-                fetch(`/api/notifications/${id}/read`, {
-                  method: 'PATCH',
-                  headers: { Authorization: `Bearer ${token}` }
-                }).catch(console.error);
-              });
-            }
-        })
-        .catch(console.error);
+      const q = query(collection(db, 'notifications'), orderBy('createdAt', 'desc'));
+      const unsubscribeNotifications = onSnapshot(q, (snapshot) => {
+        setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }, (err) => {
+        console.error("Notifications snapshot error:", err);
+      });
+
+      const qBookReq = query(collection(db, 'book-requests'), where('status', '==', 'Pending'));
+      const unsubscribeBookReq = onSnapshot(qBookReq, (snapshot) => {
+        setBookRequestsCount(snapshot.docs.length);
+      }, (err) => console.error(err));
+
+      const qResetReq = query(collection(db, 'reset-requests'));
+      const unsubscribeResetReq = onSnapshot(qResetReq, (snapshot) => {
+        // filter clientside if 'status' doesn't exist on older records
+        const pendingCount = snapshot.docs.filter(doc => doc.data().status === 'Pending').length;
+        setResetRequestsCount(pendingCount);
+      }, (err) => console.error(err));
+
+      const qPreBook = query(collection(db, 'pre-bookings'), where('status', '==', 'Pending'));
+      const unsubscribePreBook = onSnapshot(qPreBook, (snapshot) => {
+        setPreBookingsCount(snapshot.docs.length);
+      }, (err) => console.error(err));
+
+      return () => {
+        unsubscribeNotifications();
+        unsubscribeBookReq();
+        unsubscribeResetReq();
+        unsubscribePreBook();
+      };
     }
-  }, [user, token, location.pathname]);
+  }, [user]);
 
   useEffect(() => {
-    // Fetch unread messages count for any user (both admin and reader can have inbox)
-    fetch('/api/messages', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          const unread = data.filter((m: any) => !m.isRead && String(m.toUserId) === String(user?.id)).length;
-          setMessagesCount(unread);
+    if (user) {
+      const q = query(collection(db, 'messages'), where('toUserId', '==', user.id));
+      const unsubscribeMessages = onSnapshot(q, (snapshot) => {
+        const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const unread = msgs.filter((m: any) => !m.isRead && m.toUserId === user.id).length;
+        setMessagesCount(unread);
+      }, (err) => {
+        console.error("Messages count snapshot error:", err);
+      });
+
+      const noticesQuery = query(collection(db, "notices"), orderBy("date", "desc"));
+      let currentNotices: any[] = [];
+      
+      const updateUnreadCount = () => {
+        const lastSeen = localStorage.getItem(`last_seen_notices_${user.id}`);
+        if (lastSeen) {
+           const unreadCount = currentNotices.filter(n => new Date(n.date) > new Date(lastSeen)).length;
+           setUnreadNoticesCount(unreadCount);
+        } else {
+           setUnreadNoticesCount(currentNotices.length);
         }
-      })
-      .catch(console.error);
-  }, [user, token, location.pathname]);
+      };
 
+      const unsubscribeNotices = onSnapshot(noticesQuery, (snapshot) => {
+        currentNotices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+        updateUnreadCount();
+      }, (err) => console.error("Notices snapshot error:", err));
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowNotifications(false);
-      }
+      window.addEventListener('notices_seen', updateUnreadCount);
+
+      return () => {
+         unsubscribeMessages();
+         unsubscribeNotices();
+         window.removeEventListener('notices_seen', updateUnreadCount);
+      };
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [dropdownRef]);
+  }, [user]);
 
   const markAsRead = async (id: string) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    await fetch(`/api/notifications/${id}/read`, {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    try {
+      await updateDoc(doc(db, 'notifications', id), { read: true });
+    } catch (err) {
+      console.error('Error marking as read:', err);
+    }
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const adminLinks = [
-    { name: 'My Profile', path: '/dashboard/profile', icon: UserCircle },
-    { name: 'Overview', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Manage Users', path: '/dashboard/users', icon: Users },
-    { name: 'Add New Member', path: '/dashboard/users?add=true', icon: Plus },
-    { name: 'Delete Members', path: '/dashboard/delete-users', icon: UserX },
-    { name: 'Books Inventory', path: '/dashboard/books', icon: Library },
-    { name: 'Issue / Return', path: '/dashboard/issues', icon: ClipboardList },
-    { name: 'Buy Requests', path: '/dashboard/purchases', icon: ShoppingCart },
-    { name: 'Member Dues', path: '/dashboard/dues', icon: DollarSign },
-    { name: 'Donor Members', path: '/dashboard/donors', icon: DollarSign },
-    { name: 'Finances', path: '/dashboard/finances', icon: DollarSign },
-    { name: 'Manage Team', path: '/dashboard/manageteam', icon: Users },
-    { name: 'Manage Blog', path: '/dashboard/manageblog', icon: FileText },
-    { name: 'Notices', path: '/dashboard/notices', icon: Bell },
-    { name: 'Messenger', path: '/dashboard/messages', icon: MessageSquare },
-    { name: 'Book Requests', path: '/dashboard/book-requests', icon: BookOpen },
-    { name: 'Reset Requests', path: '/dashboard/reset-requests', icon: ShieldAlert },
-    { name: 'Pre-bookings', path: '/dashboard/pre-bookings', icon: Clock },
+    { name: 'আমার প্রোফাইল', path: '/dashboard/profile', icon: UserCircle },
+    { name: 'ওভারভিউ (Overview)', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'সদস্য ব্যবস্থাপনা (Users)', path: '/dashboard/users', icon: Users },
+    { name: 'গঠনতন্ত্র', path: '/dashboard/constitution', icon: FileText },
+    { name: 'সদস্য ডিলিট করুন', path: '/dashboard/delete-users', icon: UserX },
+    { name: 'বইয়ের তালিকা (Inventory)', path: '/dashboard/books', icon: Library },
+    { name: 'স্টিকার ও QR (Stickers)', path: '/dashboard/stickers', icon: QrCode },
+    { name: 'ইস্যু ও ফেরত (Issues)', path: '/dashboard/issues', icon: ClipboardList },
+    { name: 'শপ বই ব্যবস্থাপনা', path: '/dashboard/shop-books', icon: Library },
+    { name: 'বই বিক্রয় অর্ডার', path: '/dashboard/shop-orders', icon: Package },
+    { name: 'সদস্যদের বকেয়া (Dues)', path: '/dashboard/dues', icon: DollarSign },
+    { name: 'দাতা সদস্য (Donors)', path: '/dashboard/donors', icon: DollarSign },
+    { name: 'হিসাব-নিকাশ (Finances)', path: '/dashboard/finances', icon: DollarSign },
+    { name: 'পরিচালনা পর্ষদ', path: '/dashboard/manageteam', icon: Users },
+    { name: 'বুক রিভিও ম্যানেজমেন্ট', path: '/dashboard/manageblog', icon: FileText },
+    { name: 'নোটিশ', path: '/dashboard/notices', icon: Bell },
+    { name: 'মেসেজসমূহ', path: '/dashboard/messages', icon: MessageSquare },
+    { name: 'বইয়ের অনুরোধ (Requests)', path: '/dashboard/book-requests', icon: BookOpen },
+    { name: 'রিসেট রিকোয়েস্ট', path: '/dashboard/reset-requests', icon: ShieldAlert },
+    { name: 'প্রি-বুকিং', path: '/dashboard/pre-bookings', icon: Clock },
+    { name: 'ওয়েবসাইট সেটিংস', path: '/dashboard/settings', icon: Settings },
   ];
 
   const readerLinks = [
-    { name: 'My Profile', path: '/dashboard/profile', icon: UserCircle },
-    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Browse Books', path: '/books', icon: Library },
-    { name: 'Buy Books', path: '/buy-books', icon: Library },
-    { name: 'Notice Board', path: '/dashboard/notice-board', icon: Bell },
-    { name: 'My Inbox', path: '/dashboard/inbox', icon: MessageSquare },
-    { name: 'My Books', path: '/dashboard/my-books', icon: BookmarkCheck },
-    { name: 'Request a Book', path: '/dashboard/book-requests', icon: BookOpen },
+    { name: 'আমার প্রোফাইল', path: '/dashboard/profile', icon: UserCircle },
+    { name: 'ড্যাশবোর্ড', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'বইয়ের তালিকা', path: '/books', icon: Library },
+    { name: 'বই কিনুন', path: '/buy-books', icon: Library },
+    { name: 'নোটিশ বোর্ড', path: '/dashboard/notice-board', icon: Bell },
+    { name: 'আমার ইনবক্স', path: '/dashboard/inbox', icon: MessageSquare },
+    { name: 'আমার বই ও প্রি-বুকিং', path: '/dashboard/my-books', icon: BookmarkCheck },
+    { name: 'বইয়ের অনুরোধ', path: '/dashboard/book-requests', icon: BookOpen },
   ];
 
   const links = user?.role === 'admin' ? adminLinks : readerLinks;
@@ -164,8 +193,9 @@ export default function DashboardLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      {/* Mobile sidebar backdrop */}
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      <div className="flex-1 flex">
+        {/* Mobile sidebar backdrop */}
       <AnimatePresence>
         {sidebarOpen && (
           <motion.div
@@ -186,29 +216,31 @@ export default function DashboardLayout() {
         )}
       >
         {/* Header */}
-        <div className="h-20 flex items-center px-6 border-b border-[#1B253B]/60 bg-[#0A0F1C] shrink-0 sticky top-0 z-10">
-          <Link to="/" className="flex items-center gap-3 w-full group">
-             <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform">
-               <Library className="w-5 h-5 text-white" />
-             </div>
-             <div className="flex flex-col flex-1 min-w-0">
-               <span className="font-bold text-white tracking-wide truncate text-sm">Pandhoa Library</span>
-               <span className="text-[10px] text-indigo-300/80 font-medium uppercase tracking-widest truncate">{user?.role === 'admin' ? 'Admin Gateway' : 'Member Portal'}</span>
-             </div>
-          </Link>
-          <button 
-            onClick={() => setSidebarOpen(false)}
-            className="md:hidden text-slate-500 hover:text-white p-2"
-          >
-            <X className="w-5 h-5" />
-          </button>
+        <div className="flex flex-col px-6 py-4 border-b border-[#1B253B]/60 bg-[#0A0F1C] shrink-0 sticky top-0 z-10 gap-3">
+          <div className="flex justify-between items-center w-full">
+            <Link to="/dashboard" className="flex items-center gap-3 group">
+               <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform overflow-hidden shrink-0">
+                 <Logo className="w-8 h-8" />
+               </div>
+               <div className="flex flex-col min-w-0">
+                 <span className="font-bold text-white tracking-wide truncate text-sm">পানধোয়া পাঠাগার</span>
+                 <span className="text-[10px] text-indigo-300/80 font-medium uppercase tracking-widest truncate">{user?.role === 'admin' ? 'Admin Gateway' : 'Member Portal'}</span>
+               </div>
+            </Link>
+            <button 
+              onClick={() => setSidebarOpen(false)}
+              className="md:hidden text-slate-500 hover:text-white p-2 shrink-0"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* User Card */}
         <div className="px-6 py-5 border-b border-[#1B253B]/60">
            <div className="flex items-center gap-4 bg-[#111827] p-3 rounded-2xl border border-[#1F2937]">
               {user?.avatar ? (
-                <img src={user.avatar} alt={user.name} className="w-12 h-12 rounded-full object-cover border-2 border-indigo-500/30" />
+                <img src={user.avatar} alt={user.name} referrerPolicy="no-referrer" className="w-12 h-12 rounded-full object-cover border-2 border-indigo-500/30" />
               ) : (
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-600/20 flex items-center justify-center border-2 border-indigo-500/30">
                   <UserCircle className="w-6 h-6 text-indigo-400" />
@@ -243,14 +275,17 @@ export default function DashboardLayout() {
             
             let badgeCount = 0;
             if (user?.role === 'admin') {
-              if (link.name === 'Pre-bookings') {
-                badgeCount = notifications.filter(n => !n.read && n.type === 'prebooking').length;
-              } else if (link.name === 'Manage Users') {
-                badgeCount = notifications.filter(n => !n.read && n.type === 'registration').length;
-              }
+              if (link.name === 'প্রি-বুকিং') badgeCount = preBookingsCount;
+              if (link.name === 'সদস্য ব্যবস্থাপনা (Users)') badgeCount = notifications.filter((n: any) => !n.read && n.type === 'registration').length;
+              if (link.name === 'বইয়ের অনুরোধ (Requests)') badgeCount = bookRequestsCount;
+              if (link.name === 'রিসেট রিকোয়েস্ট') badgeCount = resetRequestsCount;
+              if (link.name === 'মেসেজসমূহ') badgeCount = messagesCount;
             }
-            if (link.name === 'My Inbox') {
+            if (link.name === 'My Inbox' || link.name === 'আমার ইনবক্স') {
                badgeCount = messagesCount;
+            }
+            if (link.name === 'নোটিশ' || link.name === 'নোটিশ বোর্ড') {
+               badgeCount = unreadNoticesCount;
             }
 
             return (
@@ -260,11 +295,11 @@ export default function DashboardLayout() {
                 onClick={() => {
                   setSidebarOpen(false);
                   if (badgeCount > 0 && link.name !== 'My Inbox') {
-                     const toMark = notifications.filter(n => !n.read && (
-                        (link.name === 'Pre-bookings' && n.type === 'prebooking') ||
-                        (link.name === 'Manage Users' && n.type === 'registration')
+                     const toMark = notifications.filter((n: any) => !n.read && (
+                        (link.name === 'প্রি-বুকিং' && n.type === 'prebooking') ||
+                        (link.name === 'সদস্য ব্যবস্থাপনা (Users)' && n.type === 'registration')
                      ));
-                     toMark.forEach(n => markAsRead(n.id));
+                     toMark.forEach((n: any) => markAsRead(n.id));
                   }
                 }}
                 className={cn(
@@ -314,29 +349,44 @@ export default function DashboardLayout() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50 dark:bg-slate-900 transition-colors">
-        {/* Mobile header */}
-        <div className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-4 md:hidden shadow-sm z-30 transition-colors">
-          <div className="flex items-center">
+      {/* Mobile Topbar */}
+        <div className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-4 md:hidden shadow-sm z-30 transition-colors shrink-0">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-2 -ml-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
+              className="p-2 -ml-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-50 dark:bg-slate-700 rounded-xl transition-colors"
             >
               <Menu className="w-6 h-6" />
             </button>
-            <span className="font-semibold text-slate-900 dark:text-white ml-2">Dashboard</span>
+            <div className="flex flex-col ml-1">
+              <span className="font-bold text-slate-900 dark:text-white leading-tight text-sm">Dashboard</span>
+              <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-wider">{user?.role}</span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-50 dark:bg-slate-700 rounded-full transition-colors"
+              className="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-50 dark:bg-slate-700 rounded-full transition-colors border border-slate-200 dark:border-slate-600"
             >
               {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
+            {user?.role === 'admin' && (
+              <button 
+                onClick={() => navigate('/dashboard/messages')}
+                className="relative p-2 text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-700 rounded-full transition-colors border border-slate-200 dark:border-slate-600"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full border border-white">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+            )}
             {location.pathname !== '/dashboard' && (
               <button 
                 onClick={() => navigate('/dashboard')}
-                className="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-full transition-colors flex items-center justify-center border border-slate-200 dark:border-slate-600"
-                aria-label="Go back"
+                className="p-2 text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-700 rounded-full transition-colors border border-slate-200 dark:border-slate-600"
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
@@ -351,7 +401,7 @@ export default function DashboardLayout() {
               <button 
                 onClick={() => navigate('/dashboard')}
                 className="p-2 -ml-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-full transition-colors flex items-center justify-center border border-slate-200 dark:border-slate-600"
-                aria-label="Go back to dashboard"
+                aria-label="Go back"
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
@@ -361,6 +411,13 @@ export default function DashboardLayout() {
             </h1>
           </div>
           <div className="flex items-center gap-6">
+            <Link
+              to="/books"
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 rounded-full transition-colors border border-indigo-100 dark:border-indigo-500/20 font-bengali text-sm font-bold"
+            >
+              <Search className="w-4 h-4" />
+              বই ব্রাউজ করুন
+            </Link>
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
               className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white bg-slate-50 dark:bg-slate-700 rounded-full transition-colors"
@@ -387,11 +444,11 @@ export default function DashboardLayout() {
                       initial={{ opacity: 0, y: 10, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 shadow-xl rounded-2xl overflow-hidden z-50"
+                      className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-2xl overflow-hidden z-50"
                     >
-                      <div className="bg-slate-50 border-b border-slate-100 p-3 flex items-center justify-between">
-                        <span className="font-bold text-slate-800 text-sm">Notifications</span>
-                        <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">{unreadCount} New</span>
+                      <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 p-3 flex items-center justify-between">
+                        <span className="font-bold text-slate-800 dark:text-white text-sm">Notifications</span>
+                        <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded-full">{unreadCount} New</span>
                       </div>
                       <div className="max-h-[70vh] overflow-y-auto">
                         {notifications.length === 0 && (
@@ -402,18 +459,18 @@ export default function DashboardLayout() {
                             key={n.id} 
                             onClick={() => !n.read && markAsRead(n.id)}
                             className={cn(
-                              "p-4 border-b border-slate-50 hover:bg-slate-50 transition cursor-pointer flex gap-3",
-                              !n.read ? "bg-indigo-50/30" : "opacity-75"
+                              "p-4 border-b border-slate-50 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition cursor-pointer flex gap-3",
+                              !n.read ? "bg-indigo-50/30 dark:bg-indigo-500/5" : "opacity-75"
                             )}
                           >
                             <div className="flex-1 min-w-0">
                                <div className="flex items-center justify-between mb-1">
-                                  <p className={cn("text-sm font-bold truncate", !n.read ? "text-slate-900" : "text-slate-600")}>{n.title}</p>
+                                  <p className={cn("text-sm font-bold truncate", !n.read ? "text-slate-900 dark:text-white" : "text-slate-600 dark:text-slate-400")}>{n.title}</p>
                                   <span className="text-[10px] text-slate-400 font-medium ml-2 shrink-0">
                                     {new Date(n.createdAt).toLocaleDateString()}
                                   </span>
                                </div>
-                               <p className="text-xs text-slate-500 leading-relaxed max-w-[250px]">{n.message}</p>
+                               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-[250px]">{n.message}</p>
                             </div>
                             {!n.read && <div className="w-2 h-2 rounded-full bg-indigo-500 self-center shrink-0 shadow-sm" />}
                           </div>
@@ -425,14 +482,14 @@ export default function DashboardLayout() {
               </div>
             )}
             
-            <div className="w-px h-6 bg-slate-200"></div>
+            <div className="w-px h-6 bg-slate-200 dark:bg-slate-700"></div>
             
             <div className="flex items-center gap-3">
               <div className="text-sm text-right">
-                <p className="font-bold text-slate-900">{user?.name}</p>
-                <p className="text-slate-500 text-xs font-medium capitalize tracking-wider">{user?.role}</p>
+                <p className="font-bold text-slate-900 dark:text-white">{user?.name}</p>
+                <p className="text-slate-500 dark:text-slate-400 text-xs font-medium capitalize tracking-wider">{user?.role}</p>
               </div>
-              <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-black shadow-inner">
+              <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 flex items-center justify-center font-black shadow-inner border border-indigo-100 dark:border-indigo-500/20">
                 {user?.name?.charAt(0) || 'U'}
               </div>
             </div>
@@ -440,12 +497,84 @@ export default function DashboardLayout() {
         </header>
 
         {/* Scrollable area */}
-        <main className="flex-1 overflow-y-auto bg-slate-50/50 p-4 md:p-8">
+        <main className="flex-1 overflow-y-auto bg-slate-50/50 dark:bg-slate-900/50 p-4 md:p-8 pb-24 md:pb-8">
           <div className="max-w-6xl mx-auto">
             <Outlet />
           </div>
         </main>
+
+        {/* Mobile Bottom Navigation */}
+        <div className="fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 md:hidden flex items-center justify-around px-2 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+           {user?.role === 'admin' ? (
+             <>
+               <Link to="/dashboard/books" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/dashboard/books' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <Library className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">বই তালিকা</span>
+               </Link>
+               <Link to="/dashboard/donors" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/donors' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <Heart className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">দাতা সদস্য</span>
+               </Link>
+               <Link to="/dashboard/pre-bookings" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/pre-bookings' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <Clock className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">প্রি বুকিং</span>
+                  {preBookingsCount > 0 && (
+                    <span className="absolute top-0 right-2 w-4 h-4 bg-amber-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border border-white">
+                      {preBookingsCount}
+                    </span>
+                  )}
+               </Link>
+               <Link to="/dashboard/users" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/users' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <Users className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter whitespace-nowrap">সদস্য ব্যবস্থাপনা</span>
+                  {notifications.filter((n: any) => !n.read && n.type === 'registration').length > 0 && (
+                    <span className="absolute top-0 right-0 w-4 h-4 bg-rose-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border border-white">
+                      {notifications.filter((n: any) => !n.read && n.type === 'registration').length}
+                    </span>
+                  )}
+               </Link>
+               <Link to="/dashboard" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/dashboard' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <LayoutDashboard className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">ওভারভিউ</span>
+               </Link>
+             </>
+           ) : (
+             <>
+               <Link to="/books" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/books' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <Library className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">বই তালিকা</span>
+               </Link>
+               <Link to="/dashboard/notice-board" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/notice-board' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <Bell className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">নোটিশ</span>
+                  {unreadNoticesCount > 0 && (
+                    <span className="absolute top-0 right-2 w-4 h-4 bg-rose-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border border-white">
+                      {unreadNoticesCount}
+                    </span>
+                  )}
+               </Link>
+               <Link to="/dashboard/inbox" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/inbox' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <MessageSquare className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">মেসেজ</span>
+                  {messagesCount > 0 && (
+                    <span className="absolute top-0 right-2 w-4 h-4 bg-indigo-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border border-white">
+                      {messagesCount}
+                    </span>
+                  )}
+               </Link>
+               <Link to="/dashboard/book-requests" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/book-requests' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <BookOpen className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">বই অনুরোধ</span>
+               </Link>
+               <Link to="/dashboard/profile" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/dashboard/profile' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <UserCircle className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">প্রোফাইল</span>
+               </Link>
+             </>
+           )}
+        </div>
       </div>
+    </div>
     </div>
   );
 }

@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../store/AuthContext';
+import { onSnapshot, collection, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { Clock, Check, X, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface PreBooking {
   id: string;
@@ -18,55 +21,36 @@ export default function ManagePreBookings() {
   const [books, setBooks] = useState<any[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [editData, setEditData] = useState({ adminNote: '', collectDate: '' });
-  const { token } = useAuth();
-
-  const fetchData = () => {
-    Promise.all([
-      fetch('/api/pre-bookings', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-      fetch('/api/books').then(r => r.json())
-    ]).then(([preData, bookData]) => {
-      setBookings(preData || []);
-      setBooks(bookData || []);
-    });
-  };
+  const { user } = useAuth();
 
   useEffect(() => {
-    fetchData();
+    const unsubBookings = onSnapshot(collection(db, "pre-bookings"), (snapshot) => {
+      setBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PreBooking[]);
+    });
+    const unsubBooks = onSnapshot(collection(db, "books"), (snapshot) => {
+      setBooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => {
+      unsubBookings();
+      unsubBooks();
+    };
   }, []);
 
   const handleUpdateNotes = async (id: string) => {
     try {
-      const res = await fetch(`/api/pre-bookings/${id}`, {
-        method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify(editData)
-      });
-      if (res.ok) {
-        setEditId(null);
-        fetchData();
-        alert('Notes updated successfully!');
-      }
+      await updateDoc(doc(db, "pre-bookings", id), editData);
+      setEditId(null);
+      toast.success('Notes updated successfully!');
     } catch (err) {
       console.error(err);
+      toast.error('Failed to update notes');
     }
   };
 
   const handleStatus = async (id: string, status: string) => {
     try {
-      const res = await fetch(`/api/pre-bookings/${id}`, {
-        method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify({ status })
-      });
-      if (res.ok) {
-        fetchData();
-      }
+      await updateDoc(doc(db, "pre-bookings", id), { status });
     } catch (err) {
       console.error(err);
     }
@@ -75,95 +59,91 @@ export default function ManagePreBookings() {
   const handleDelete = async (id: string) => {
     if (!window.confirm('Remove this pre-booking record?')) return;
     try {
-       const res = await fetch(`/api/pre-bookings/${id}`, {
-         method: 'DELETE',
-         headers: { Authorization: `Bearer ${token}` }
-       });
-       if (res.ok) {
-           fetchData();
-       } else {
-           alert('Failed to delete pre-booking');
-       }
+      await deleteDoc(doc(db, "pre-bookings", id));
     } catch (err) {
-       console.error(err);
-       alert('Connection error');
+      console.error(err);
+      toast.error('Error deleting record');
     }
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
         <div>
-          <h2 className="text-2xl font-semibold text-slate-900 tracking-tight">Pre-bookings Requests</h2>
-          <p className="text-slate-500 text-sm mt-1">Review and manage member requests for books.</p>
+          <h2 className="text-3xl font-black text-slate-800 tracking-tight font-bengali">প্রিবুকিং রিকোয়েস্ট</h2>
+          <p className="text-slate-500 font-medium mt-2 font-bengali">সদস্যদের প্রিবুকিং রিকোয়েস্ট পর্যালোচনা এবং পরিচালনা করুন।</p>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 border-b">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-[#f8fafc] border-b border-slate-200">
               <tr>
-                <th className="p-4 text-xs font-semibold text-slate-500 uppercase">User</th>
-                <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Book</th>
-                <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Request Date</th>
-                <th className="p-4 text-xs font-semibold text-slate-500 uppercase">Status</th>
-                <th className="p-4 text-xs font-semibold text-slate-500 uppercase text-right">Actions</th>
+                <th className="p-5 text-[11px] font-black tracking-widest text-[#64748B] uppercase font-bengali">সদস্য</th>
+                <th className="p-5 text-[11px] font-black tracking-widest text-[#64748B] uppercase font-bengali">বই</th>
+                <th className="p-5 text-[11px] font-black tracking-widest text-[#64748B] uppercase font-bengali">অর্ডার তারিখ</th>
+                <th className="p-5 text-[11px] font-black tracking-widest text-[#64748B] uppercase font-bengali">স্ট্যাটাস</th>
+                <th className="p-5 text-[11px] font-black tracking-widest text-[#64748B] uppercase font-bengali text-right">অ্যাকশন</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-slate-100">
               {bookings.map(b => {
                 const book = books.find(bk => String(bk.id) === String(b.bookId));
                 return (
-                  <tr key={b.id} className="hover:bg-slate-50 transition">
-                    <td className="p-4">
-                      <div className="font-semibold text-slate-900">{b.userName}</div>
-                      <div className="text-[10px] text-slate-400 font-mono tracking-tighter">USER_ID: {b.userId}</div>
+                  <tr key={b.id} className="hover:bg-slate-50 transition-colors group">
+                    <td className="p-5 align-middle">
+                      <div className="font-bold text-slate-900 font-bengali text-lg">{b.userName}</div>
+                      <div className="text-[11px] font-bold text-slate-500 bg-slate-100 mt-1 md:mt-1.5 px-2.5 py-1 rounded-md inline-flex font-mono tracking-widest border border-slate-200 uppercase">ID: {b.userId?.substring(0, 3)}</div>
                     </td>
-                    <td className="p-4">
-                      <div className="font-medium text-slate-700">{book?.title || 'Unknown Book'}</div>
-                      <div className="text-xs font-mono text-indigo-600 font-bold">{book?.bookCode || 'NO_CODE'}</div>
+                    <td className="p-5 align-middle">
+                      <div className="font-bold text-slate-800 font-bengali text-base">{book?.title || 'অজানা বই'}</div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] font-mono text-indigo-700 font-bold bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100 tracking-widest uppercase">
+                          কোড: {book?.bookCode || 'N/A'}
+                        </span>
+                      </div>
                       {b.adminNote && (
-                         <div className="mt-1 text-[10px] text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded inline-block">
-                           Msg: {b.adminNote}
+                         <div className="mt-2 text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-md inline-block border border-emerald-100 font-bengali">
+                           মেসেজ: {b.adminNote}
                          </div>
                       )}
                       {b.collectDate && (
-                         <div className="mt-1 text-[10px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded inline-block block mt-1">
-                           Collect Date: {b.collectDate}
+                         <div className="mt-2 text-[11px] text-blue-700 font-bold bg-blue-50 px-2.5 py-1 rounded-md inline-block border border-blue-100 font-bengali block mt-1">
+                           সংগ্রহের তারিখ: {b.collectDate}
                          </div>
                       )}
                     </td>
-                    <td className="p-4 text-sm text-slate-500">
+                    <td className="p-5 align-middle text-sm font-bold text-slate-500 font-mono">
                       {new Date(b.date).toLocaleDateString()}
                     </td>
-                    <td className="p-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        b.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
-                        b.status === 'Cancelled' ? 'bg-rose-100 text-rose-700' :
-                        'bg-amber-100 text-amber-700 animate-pulse'
+                    <td className="p-5 align-middle">
+                      <span className={`inline-flex items-center px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest border ${
+                        b.status === 'Completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 shadow-sm' :
+                        b.status === 'Cancelled' ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm' :
+                        'bg-amber-50 text-amber-600 border-amber-200 animate-pulse shadow-sm'
                       }`}>
-                        {b.status}
+                        {b.status === 'Completed' ? 'সম্পন্ন' : b.status === 'Cancelled' ? 'বাতিল' : 'অপেক্ষমান'}
                       </span>
                     </td>
-                    <td className="p-4">
-                      <div className="flex flex-col items-end gap-2">
-                        <div className="flex items-center gap-2">
+                    <td className="p-5 pr-6 align-middle">
+                      <div className="flex flex-col items-end gap-2.5">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
                             {b.status === 'Pending' && (
                             <>
                                 <button 
                                 onClick={() => handleStatus(b.id, 'Completed')}
-                                className="p-1.5 bg-emerald-50 text-emerald-600 rounded hover:bg-emerald-100 transition shadow-sm border border-emerald-100"
-                                title="Mark as Completed"
+                                className="px-3 py-2 transition-all rounded-xl font-bold font-bengali text-[12px] flex items-center justify-center gap-1.5 text-emerald-700 bg-emerald-50 hover:bg-emerald-600 hover:text-white ring-1 ring-emerald-200/60 shadow-sm"
+                                title="সম্পন্ন করুন"
                                 >
-                                <Check className="w-3.5 h-3.5" />
+                                <Check className="w-3.5 h-3.5" /> <span>অনুমোদন</span>
                                 </button>
                                 <button 
                                 onClick={() => handleStatus(b.id, 'Cancelled')}
-                                className="p-1.5 bg-rose-50 text-rose-600 rounded hover:bg-rose-100 transition shadow-sm border border-rose-100"
-                                title="Cancel Request"
+                                className="px-3 py-2 transition-all rounded-xl font-bold font-bengali text-[12px] flex items-center justify-center gap-1.5 text-rose-700 bg-rose-50 hover:bg-rose-600 hover:text-white ring-1 ring-rose-200/60 shadow-sm"
+                                title="বাতিল করুন"
                                 >
-                                <X className="w-3.5 h-3.5" />
+                                <X className="w-3.5 h-3.5" /> <span>বাতিল</span>
                                 </button>
                             </>
                             )}
@@ -172,38 +152,44 @@ export default function ManagePreBookings() {
                                     setEditId(b.id);
                                     setEditData({ adminNote: b.adminNote || '', collectDate: b.collectDate || '' });
                                 }}
-                                className="p-1.5 bg-slate-50 text-slate-600 rounded hover:bg-slate-100 transition border border-slate-200"
-                                title="Edit Note/Date"
+                                className="px-3 py-2 text-slate-600 bg-slate-50 hover:bg-slate-800 hover:text-white rounded-xl transition-colors ring-1 ring-slate-200/60 shadow-sm font-bengali font-bold text-[12px] flex items-center gap-1.5"
+                                title="এডিট তারিখ/নোট"
                             >
-                                <Clock className="w-3.5 h-3.5" />
+                                <Clock className="w-3.5 h-3.5" /> <span>নোট</span>
                             </button>
                             <button 
-                            onClick={() => handleDelete(b.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 transition"
-                            title="Delete Record"
+                               onClick={() => handleDelete(b.id)}
+                               className="px-3 py-2 text-rose-600 bg-red-50 hover:bg-red-600 hover:text-white rounded-xl transition-colors ring-1 ring-red-200/50 shadow-sm flex items-center gap-1.5 font-bengali font-bold text-[12px]"
+                               title="ডিলিট করুন"
                             >
-                            <Trash2 className="w-3.5 h-3.5" />
+                               <Trash2 className="w-3.5 h-3.5" /> <span>ডিলিট</span>
                             </button>
                         </div>
                         {editId === b.id && (
-                           <div className="mt-2 p-3 bg-slate-50 border rounded-xl space-y-2 w-64 text-left shadow-lg scale-95 origin-top-right transition-all">
-                              <input 
-                                type="text" 
-                                placeholder="Admin Message (e.g. Boiti collect korun)"
-                                className="w-full p-2 text-xs border rounded bg-white"
-                                value={editData.adminNote}
-                                onChange={e => setEditData({...editData, adminNote: e.target.value})}
-                              />
-                              <input 
-                                type="text" 
-                                placeholder="Collect Date (e.g. 30 April)"
-                                className="w-full p-2 text-xs border rounded bg-white"
-                                value={editData.collectDate}
-                                onChange={e => setEditData({...editData, collectDate: e.target.value})}
-                              />
-                              <div className="flex gap-2">
-                                <button onClick={() => handleUpdateNotes(b.id)} className="flex-1 bg-indigo-600 text-white py-1.5 rounded text-[10px] font-bold">Save</button>
-                                <button onClick={() => setEditId(null)} className="flex-1 bg-slate-200 py-1.5 rounded text-[10px] font-bold">Cancel</button>
+                           <div className="mt-2 p-4 bg-white border border-slate-200 rounded-2xl space-y-3 w-72 text-left shadow-xl scale-95 origin-top-right transition-all z-10 relative">
+                              <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1 font-bengali">অ্যাডমিন মেসেজ</label>
+                                <input 
+                                  type="text" 
+                                  placeholder="যেমন: বইটি সংগ্রহ করুন"
+                                  className="w-full p-2.5 text-sm font-bengali font-bold border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                                  value={editData.adminNote}
+                                  onChange={e => setEditData({...editData, adminNote: e.target.value})}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1 font-bengali">সংগ্রহের সম্ভাব্য তারিখ</label>
+                                <input 
+                                  type="text" 
+                                  placeholder="যেমন: ৩০ এপ্রিল"
+                                  className="w-full p-2.5 text-sm font-bengali font-bold border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                                  value={editData.collectDate}
+                                  onChange={e => setEditData({...editData, collectDate: e.target.value})}
+                                />
+                              </div>
+                              <div className="flex gap-2 pt-2">
+                                <button onClick={() => handleUpdateNotes(b.id)} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-xl text-sm font-bold font-bengali transition-colors shadow-sm">সেভ করুন</button>
+                                <button onClick={() => setEditId(null)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-2 rounded-xl text-sm font-bold font-bengali transition-colors border border-slate-200">বাতিল</button>
                               </div>
                            </div>
                         )}
@@ -216,9 +202,11 @@ export default function ManagePreBookings() {
           </table>
         </div>
         {bookings.length === 0 && (
-          <div className="p-12 text-center text-slate-400">
-            <Clock className="w-12 h-12 mx-auto mb-4 opacity-10" />
-            <p>No pre-bookings found.</p>
+          <div className="p-16 text-center bg-[#f8fafc] text-slate-400 font-bold font-bengali text-lg flex flex-col items-center gap-4">
+              <span className="bg-white p-4 rounded-full shadow-sm border border-slate-200/50">
+                 <Clock className="w-8 h-8 text-slate-300" />
+              </span>
+              কোনো রিকোয়েস্ট পাওয়া যায়নি।
           </div>
         )}
       </div>

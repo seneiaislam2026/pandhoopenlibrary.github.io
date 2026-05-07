@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '../../store/AuthContext';
 import { ShieldAlert, Trash2, Check, User, Phone, Clock } from 'lucide-react';
 import { motion } from 'motion/react';
+import { onSnapshot, collection, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 interface ResetRequest {
     id: string;
@@ -11,30 +12,35 @@ interface ResetRequest {
     phone: string;
     status: string;
     date: string;
+    createdAt?: any;
 }
 
 export default function ManageResetRequests() {
     const [requests, setRequests] = useState<ResetRequest[]>([]);
     const [loading, setLoading] = useState(true);
-    const { token } = useAuth();
 
     useEffect(() => {
-        fetchRequests();
-    }, [token]);
-
-    const fetchRequests = async () => {
-        const res = await fetch('/api/reset-requests', { headers: { Authorization: `Bearer ${token}` } });
-        setRequests(await res.json());
-        setLoading(false);
-    };
+        const q = query(collection(db, "reset-requests"), orderBy("createdAt", "desc"));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ResetRequest[]);
+            setLoading(false);
+        }, (err) => {
+            console.error(err);
+            // Fallback for docs without createdAt
+            const unsub2 = onSnapshot(collection(db, "reset-requests"), (s) => {
+                setRequests(s.docs.map(d => ({ id: d.id, ...d.data() })) as ResetRequest[]);
+                setLoading(false);
+            });
+        });
+        return () => unsubscribe();
+    }, []);
 
     const deleteRequest = async (id: string) => {
-
-        const res = await fetch(`/api/reset-requests/${id}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.ok) fetchRequests();
+        try {
+            await deleteDoc(doc(db, "reset-requests", id));
+        } catch (err) {
+            console.error(err);
+        }
     };
 
     return (
