@@ -10,17 +10,27 @@ export const handler = async (event: any) => {
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY_HERE" || apiKey === "your_api_key_here") {
     return {
-      statusCode: 500,
+      statusCode: 400,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: "GEMINI_API_KEY is not set in Netlify Environment Variables" })
+      body: JSON.stringify({ error: "GEMINI_API_KEY is not set or is a placeholder in Netlify Environment Variables. Please add a valid API Key." })
+    };
+  }
+
+  let genAI;
+  try {
+     genAI = new GoogleGenAI({ apiKey: apiKey as string });
+  } catch (initErr: any) {
+     return {
+      statusCode: 400,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: "Invalid API key string format provided to GenAI SDK." })
     };
   }
 
   try {
     const { contents, systemInstruction } = JSON.parse(event.body || '{}');
-    const genAI = new GoogleGenAI({ apiKey: apiKey as string });
     const result = await genAI.models.generateContent({ 
       model: "gemini-2.5-flash",
       contents: contents,
@@ -37,6 +47,14 @@ export const handler = async (event: any) => {
       body: JSON.stringify({ text })
     };
   } catch (error: any) {
+    const msg = error?.message || String(error);
+    if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
+       return {
+          statusCode: 400,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: "The provided GEMINI_API_KEY is invalid. Please check your API key in the Netlify settings." })
+       };
+    }
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json' },

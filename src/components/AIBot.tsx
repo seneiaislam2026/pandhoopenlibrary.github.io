@@ -174,21 +174,29 @@ const AIBot = () => {
 
       let responseText = '';
       
-      const apiUrl = '/api/gemini';
+      const GEMINI_API_KEY = "AIzaSyC2c4nH-uaGGjSCyLl_LI5uCxLQR8d4Vf4";
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents, systemInstruction: systemPrompt })
+        body: JSON.stringify({ 
+           contents, 
+           systemInstruction: { parts: [{ text: systemPrompt }] } 
+        })
       });
 
       const responseData = await response.json();
       
       if (!response.ok) {
-        throw new Error(responseData.error || 'Failed to fetch AI response');
+        throw new Error(responseData.error?.message || 'Failed to fetch AI response');
       }
 
-      responseText = responseData.text;
+      if (responseData.candidates && responseData.candidates.length > 0) {
+        responseText = responseData.candidates[0].content.parts[0].text || '';
+      } else {
+        throw new Error('No content generated');
+      }
 
       const aiMessage: Message = {
         id: `msg-ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
