@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { Plus, Trash2, Calendar, FileText, CheckCircle, Clock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -105,7 +105,10 @@ export default function ManageEvents() {
         deadline: '',
         status: 'Upcoming',
         type: 'Competition',
-        image: ''
+        image: '',
+        isScholarship: false,
+        requiredDocuments: ['মার্কশিট', 'প্রত্যয়নপত্র'],
+        customQuestions: ['কেন আপনার এই বৃত্তি প্রয়োজন?']
       });
       setShowAddForm(false);
       fetchEvents();
@@ -160,7 +163,7 @@ export default function ManageEvents() {
             exit={{ opacity: 0, y: -20 }}
             className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8"
           >
-            <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <form id="event-create-form" onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 font-bengali mb-1">ইভেন্ট টাইটেল</label>
@@ -266,23 +269,25 @@ export default function ManageEvents() {
                     placeholder="https://images.unsplash.com/..."
                   />
                 </div>
-                <div className="flex gap-4 pt-4">
-                  <button
-                    type="submit"
-                    className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-bengali font-bold hover:bg-slate-900 transition-all active:scale-95 shadow-lg shadow-indigo-50"
-                  >
-                    ইভেন্ট পাবলিশ করুন
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddForm(false)}
-                    className="px-6 py-2 border rounded-lg font-bengali"
-                  >
-                    বাতিল
-                  </button>
-                </div>
               </div>
             </form>
+            <div className="flex flex-col sm:flex-row gap-3 pt-8 border-t mt-8">
+              <button
+                type="submit"
+                form="event-create-form"
+                className="flex-[2] bg-indigo-600 text-white py-4 rounded-2xl font-bengali font-black text-xl hover:bg-slate-900 shadow-xl shadow-indigo-100 transition-all active:scale-[0.98] flex items-center justify-center gap-3"
+              >
+                <CheckCircle size={24} />
+                ইভেন্ট পাবলিশ করুন
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddForm(false)}
+                className="flex-1 bg-slate-100 text-slate-600 py-4 rounded-2xl font-bengali font-black text-xl hover:bg-slate-200 transition-all active:scale-[0.98]"
+              >
+                বাতিল করুন
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
