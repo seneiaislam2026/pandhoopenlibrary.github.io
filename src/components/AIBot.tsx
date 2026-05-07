@@ -108,7 +108,7 @@ const AIBot = () => {
     if (!finalInput.trim() || isLoading) return;
 
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       role: 'user',
       content: finalInput,
       timestamp: new Date()
@@ -174,7 +174,7 @@ const AIBot = () => {
 
       let responseText = '';
       
-      const apiUrl = (import.meta as any).env.PROD ? '/.netlify/functions/gemini' : '/api/gemini';
+      const apiUrl = '/api/gemini';
 
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -191,7 +191,7 @@ const AIBot = () => {
       responseText = responseData.text;
 
       const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: `msg-ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         role: 'model',
         content: responseText || 'দুঃখিত, আমি কোনো উত্তর জেনারেট করতে পারিনি।',
         timestamp: new Date()
@@ -203,14 +203,14 @@ const AIBot = () => {
       let errorMsg = `দুঃখিত, কিছু একটা ভুল হয়েছে। চ্যাটবটটি কাজ করছে না। দয়া করে আবার চেষ্টা করুন।`;
       
       // Provide more specific error for missing API keys
-      if (error && error.message && error.message.includes('GEMINI_API_KEY')) {
-        errorMsg = `⚠️ System Error: GEMINI_API_KEY is missing. Please add this environment variable in your Netlify settings.`;
+      if (error && error.message && (error.message.includes('GEMINI_API_KEY') || error.message.includes('API_KEY_INVALID') || error.message.includes('API key not valid'))) {
+        errorMsg = `⚠️ System Error: GEMINI_API_KEY is missing or invalid. Please add a valid Gemini API key to your environment variables.`;
       } else if (error && error.message && error.message.includes('JSON')) {
-        errorMsg = `⚠️ Server Connection Error: AI endpoint returned an invalid response (possible 404). Please ensure Netlify functions are deployed correctly.`;
+        errorMsg = `⚠️ Server Connection Error: AI endpoint returned an invalid response (possible 404). Please ensure the server is running correctly.`;
       }
 
       setMessages(prev => [...prev, {
-        id: 'error',
+        id: `msg-err-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         role: 'model',
         content: errorMsg,
         timestamp: new Date()

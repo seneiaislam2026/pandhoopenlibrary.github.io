@@ -11,20 +11,37 @@ async function startServer() {
   app.post('/api/gemini', async (req, res) => {
     try {
       const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({ error: "GEMINI_API_KEY is not set" });
+      if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY_HERE" || apiKey === "your_api_key_here") {
+        return res.status(400).json({ error: "GEMINI_API_KEY is not set or is a placeholder. Please set a valid Gemini API key in your AI Studio Environment settings." });
       }
+
       const { GoogleGenAI } = await import('@google/genai');
-      const genAI = new GoogleGenAI({ apiKey });
+      let genAI;
+      try {
+         genAI = new GoogleGenAI({ apiKey });
+      } catch (err: any) {
+         return res.status(400).json({ error: "Invalid API key provided to Google Gen AI SDK." });
+      }
+
       const { contents, systemInstruction } = req.body;
-      const result = await genAI.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: contents,
-        config: {
-          systemInstruction: systemInstruction 
+      try {
+        const result = await genAI.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: contents,
+          config: {
+            systemInstruction: systemInstruction 
+          }
+        });
+        res.json({ text: result.text });
+      } catch (genError: any) {
+        console.error('Gemini Generate Error Details:', genError);
+        // Gen AI throws errors that sometimes have specific status formats
+        const msg = genError?.message || String(genError);
+        if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
+            return res.status(400).json({ error: "The provided GEMINI_API_KEY is invalid. Please check your API key in the settings." });
         }
-      });
-      res.json({ text: result.text });
+        throw genError;
+      }
     } catch (error: any) {
       console.error('Server Gemini API error:', error);
       res.status(500).json({ error: error.message });

@@ -34,43 +34,25 @@ export default function Home() {
       <section className="relative pt-24 md:pt-32 pb-32 md:pb-40 px-6 overflow-hidden">
         {/* Abstract Background Shapes */}
         <motion.div 
-          animate={{ 
-            y: [0, -20, 0],
-            scale: [1, 1.05, 1],
-            rotate: [0, 5, 0]
-          }}
-          transition={{ 
-            duration: 8, 
-            repeat: Infinity, 
-            ease: "easeInOut" 
-          }}
-          className="absolute top-0 right-0 w-[500px] md:w-[800px] h-[500px] md:h-[800px] bg-indigo-500/5 rounded-full blur-[80px] md:blur-[120px] -mr-48 md:-mr-96 -mt-48 md:-mt-96"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0.2, 0.4, 0.2] }}
+          transition={{ duration: 10, repeat: Infinity, ease: "linear", delay: 1 }}
+          className="absolute top-0 right-0 w-[400px] md:w-[600px] h-[400px] md:h-[600px] bg-indigo-500/10 rounded-full blur-[80px] md:blur-[100px] -mr-32 md:-mr-48 -mt-32 md:-mt-48"
+          style={{ willChange: "opacity" }}
         />
         <motion.div 
-          animate={{ 
-            y: [0, 30, 0],
-            x: [0, 20, 0],
-            scale: [1, 1.1, 1]
-          }}
-          transition={{ 
-            duration: 10, 
-            repeat: Infinity, 
-            ease: "easeInOut",
-            delay: 1
-          }}
-          className="absolute top-1/4 left-0 w-[400px] h-[400px] bg-emerald-500/5 rounded-full blur-[100px] -ml-64 opacity-50"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0.1, 0.3, 0.1] }}
+          transition={{ duration: 8, repeat: Infinity, ease: "linear", delay: 2 }}
+          className="absolute top-1/4 left-0 w-[300px] h-[300px] bg-emerald-500/10 rounded-full blur-[80px] -ml-40"
+          style={{ willChange: "opacity" }}
         />
         <motion.div 
-          animate={{ 
-            scale: [1, 1.2, 1],
-            opacity: [0.2, 0.4, 0.2]
-          }}
-          transition={{ 
-            duration: 12, 
-            repeat: Infinity, 
-            ease: "easeInOut" 
-          }}
-          className="absolute bottom-0 right-1/4 w-[300px] h-[300px] bg-rose-500/5 rounded-full blur-[80px]"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0.1, 0.2, 0.1] }}
+          transition={{ duration: 12, repeat: Infinity, ease: "linear", delay: 3 }}
+          className="absolute bottom-0 right-1/4 w-[300px] h-[300px] bg-rose-500/10 rounded-full blur-[80px]"
+          style={{ willChange: "opacity" }}
         />
         
         <div className="max-w-7xl mx-auto relative z-10 text-center">
@@ -85,9 +67,9 @@ export default function Home() {
           </motion.div>
 
           <motion.h1 
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.8, ease: "easeInOut" }}
             className="text-6xl md:text-8xl lg:text-7xl xl:text-8xl font-black text-slate-900 mb-10 font-bengali tracking-tight leading-[1.05]"
           >
             জ্ঞানের আলোয় <br />
@@ -95,18 +77,18 @@ export default function Home() {
           </motion.h1>
           
           <motion.p 
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.8, delay: 0.1, ease: "easeInOut" }}
             className="text-xl md:text-2xl lg:text-xl xl:text-2xl text-slate-500 font-bengali max-w-3xl mx-auto mb-16 font-medium leading-relaxed px-4"
           >
             আপনার পছন্দের বইটি এখন এক ক্লিকেই। লাইব্রেরির সদস্য হোন, ইভেন্টে অংশগ্রহণ করুন এবং নিজেকে বিকশিত করুন।
           </motion.p>
 
           <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.8, delay: 0.2, ease: "easeInOut" }}
             className="flex flex-col sm:flex-row items-center justify-center gap-4 lg:gap-6 flex-wrap px-4"
           >
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
@@ -187,12 +169,11 @@ export default function Home() {
             className="bg-slate-900 rounded-[4rem] p-16 md:p-32 text-center relative overflow-hidden"
           >
              <motion.div 
-              animate={{ 
-                scale: [1, 1.2, 1],
-                opacity: [0.1, 0.2, 0.1]
-              }}
-              transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute top-0 right-0 w-[600px] h-[600px] bg-indigo-500/20 rounded-full blur-[150px] -mr-64 -mt-64"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0.1, 0.2, 0.1] }}
+              transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+              className="absolute top-0 right-0 w-[400px] h-[400px] bg-indigo-500/20 rounded-full blur-[100px] -mr-32 -mt-32"
+              style={{ willChange: "opacity" }}
              />
              
              <div className="relative z-10">

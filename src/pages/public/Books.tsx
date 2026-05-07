@@ -184,9 +184,9 @@ export default function Books() {
                   </div>
                 </div>
 
-                <div className="flex-1 px-1 sm:px-4">
+                <div className="flex-1 px-1 sm:px-4 flex flex-col">
                   <p className="text-[8px] sm:text-[10px] font-black text-indigo-600 uppercase tracking-[0.1em] sm:tracking-[0.2em] mb-1 sm:mb-2 font-bengali">{book.category || 'সাধারণ'}</p>
-                  <h3 className="text-sm sm:text-lg font-black text-slate-900 font-bengali line-clamp-2 leading-tight group-hover:text-indigo-600 transition-colors uppercase">{book.title}</h3>
+                  <h3 className="text-sm sm:text-lg font-black text-slate-900 font-bengali leading-snug group-hover:text-indigo-600 transition-colors flex-1">{book.title}</h3>
                   <p className="text-[10px] sm:text-sm text-slate-400 font-bengali font-bold mt-1 sm:mt-2">{book.author}</p>
                 </div>
 
