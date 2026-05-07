@@ -16,6 +16,9 @@ interface Event {
   type: string;
   image?: string;
   creatorId?: string;
+  isScholarship?: boolean;
+  requiredDocuments?: string[];
+  customQuestions?: string[];
 }
 
 export default function ManageEvents() {
@@ -30,12 +33,42 @@ export default function ManageEvents() {
     deadline: '',
     status: 'Upcoming' as const,
     type: 'Competition',
-    image: ''
+    image: '',
+    isScholarship: false,
+    requiredDocuments: ['মার্কশিট', 'প্রত্যয়নপত্র'],
+    customQuestions: ['কেন আপনার এই বৃত্তি প্রয়োজন?']
   });
+  const [viewApplicants, setViewApplicants] = useState<string | null>(null);
+  const [applicants, setApplicants] = useState<any[]>([]);
+  const [loadingApplicants, setLoadingApplicants] = useState(false);
 
   useEffect(() => {
     fetchEvents();
   }, []);
+
+  useEffect(() => {
+    if (viewApplicants) {
+      fetchApplicants(viewApplicants);
+    }
+  }, [viewApplicants]);
+
+  const fetchApplicants = async (eventId: string) => {
+    setLoadingApplicants(true);
+    try {
+      const q = query(collection(db, 'event_registrations'), where('eventId', '==', eventId));
+      const querySnapshot = await getDocs(q);
+      const fetchedApplicants = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setApplicants(fetchedApplicants);
+    } catch (error) {
+      console.error("Error fetching applicants:", error);
+      toast.error("আবেদনকারী লোড করতে সমস্যা হয়েছে");
+    } finally {
+      setLoadingApplicants(false);
+    }
+  };
 
   const fetchEvents = async () => {
     try {
@@ -113,7 +146,7 @@ export default function ManageEvents() {
         </div>
         <button
           onClick={() => setShowAddForm(!showAddForm)}
-          className="bg-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-hover transition-colors font-bengali"
+          className="bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-slate-900 transition-all font-bengali shadow-lg shadow-indigo-100 active:scale-95"
         >
           <Plus size={20} /> নতুন ইভেন্ট যোগ করুন
         </button>
@@ -154,7 +187,14 @@ export default function ManageEvents() {
                   <label className="block text-sm font-medium text-gray-700 font-bengali mb-1">ইভেন্ট টাইপ</label>
                   <select
                     value={formData.type}
-                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormData({ 
+                        ...formData, 
+                        type: val,
+                        isScholarship: val === 'Scholarship'
+                      });
+                    }}
                     className="w-full px-4 py-2 border rounded-lg outline-none"
                   >
                     <option value="Competition">প্রতিযোগিতা</option>
@@ -163,6 +203,35 @@ export default function ManageEvents() {
                     <option value="Other">অন্যান্য</option>
                   </select>
                 </div>
+
+                {formData.isScholarship && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="space-y-4 pt-4 border-t"
+                  >
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 font-bengali mb-1">প্রয়োজনীয় নথিপত্র (কমা দিয়ে লিখুন)</label>
+                      <input
+                        type="text"
+                        value={formData.requiredDocuments.join(', ')}
+                        onChange={(e) => setFormData({ ...formData, requiredDocuments: e.target.value.split(',').map(s => s.trim()) })}
+                        className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+                        placeholder="উদাঃ মার্কশিট, আইডি কার্ড, প্রত্যয়নপত্র"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 font-bengali mb-1">কাস্টম প্রশ্ন (কমা দিয়ে লিখুন)</label>
+                      <input
+                        type="text"
+                        value={formData.customQuestions.join(', ')}
+                        onChange={(e) => setFormData({ ...formData, customQuestions: e.target.value.split(',').map(s => s.trim()) })}
+                        className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+                        placeholder="উদাঃ কেন আপনি এই বৃত্তির যোগ্য?, আপনার ভবিষ্যৎ পরিকল্পনা কি?"
+                      />
+                    </div>
+                  </motion.div>
+                )}
               </div>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -200,7 +269,7 @@ export default function ManageEvents() {
                 <div className="flex gap-4 pt-4">
                   <button
                     type="submit"
-                    className="flex-1 bg-primary text-white py-2 rounded-lg font-bengali font-bold"
+                    className="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-bengali font-bold hover:bg-slate-900 transition-all active:scale-95 shadow-lg shadow-indigo-50"
                   >
                     ইভেন্ট পাবলিশ করুন
                   </button>
@@ -220,7 +289,7 @@ export default function ManageEvents() {
 
       {loading ? (
         <div className="flex justify-center py-20">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -260,6 +329,12 @@ export default function ManageEvents() {
                 </div>
                 <div className="flex items-center justify-between pt-4 border-t border-gray-50">
                   <div className="flex gap-2">
+                    <button
+                      onClick={() => setViewApplicants(event.id)}
+                      className="text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-lg text-xs font-bold font-bengali transition-colors"
+                    >
+                      আবেদনকারী দেখুন
+                    </button>
                     <select
                       value={event.status}
                       onChange={(e) => updateStatus(event.id, e.target.value as any)}
@@ -287,6 +362,69 @@ export default function ManageEvents() {
           )}
         </div>
       )}
+
+      {/* Applicant View Modal */}
+      <AnimatePresence>
+        {viewApplicants && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setViewApplicants(null)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative bg-white w-full max-w-4xl rounded-[2rem] shadow-2xl p-8 overflow-y-auto max-h-[90vh]">
+               <div className="flex justify-between items-center mb-8">
+                  <h2 className="text-2xl font-black text-slate-800 font-bengali">আবেদনকারীদের তালিকা</h2>
+                  <button onClick={() => setViewApplicants(null)} className="text-slate-400 hover:text-slate-600">বন্ধ করুন</button>
+               </div>
+
+               {loadingApplicants ? (
+                 <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>
+               ) : applicants.length === 0 ? (
+                 <div className="text-center py-10 text-slate-500 font-bengali">কোন আবেদনকারী পাওয়া যায়নি</div>
+               ) : (
+                 <div className="space-y-6">
+                   {applicants.map((app) => (
+                     <div key={app.id} className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                        <div className="flex justify-between mb-4">
+                           <div>
+                              <h4 className="font-bold text-slate-800 font-bengali">{app.userName}</h4>
+                              <p className="text-sm text-slate-500">{app.userPhone}</p>
+                           </div>
+                           <span className="text-xs text-slate-400">{new Date(app.registeredAt?.seconds * 1000).toLocaleString('bn-BD')}</span>
+                        </div>
+                        
+                        {app.answers && (
+                          <div className="mb-4 space-y-2">
+                             <p className="text-xs font-bold text-indigo-600 uppercase font-bengali">প্রশ্নোত্তর:</p>
+                             {Object.entries(app.answers).map(([q, a]: any) => (
+                               <div key={q} className="bg-white p-3 rounded-lg border border-slate-100">
+                                  <p className="text-xs text-slate-400 font-bengali">{q}</p>
+                                  <p className="text-sm font-bold text-slate-700 font-bengali">{a}</p>
+                               </div>
+                             ))}
+                          </div>
+                        )}
+
+                        {app.documents && (
+                           <div className="flex flex-wrap gap-2">
+                              {Object.entries(app.documents).map(([name, url]: any) => (
+                                <a
+                                  key={name}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-slate-900 transition-colors"
+                                >
+                                  <FileText size={14} /> {name} (ডাউনলোড)
+                                </a>
+                              ))}
+                           </div>
+                        )}
+                     </div>
+                   ))}
+                 </div>
+               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

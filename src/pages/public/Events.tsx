@@ -8,6 +8,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useReactToPrint } from 'react-to-print';
 import { Helmet } from 'react-helmet-async';
 
+import { storage } from '../../lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+
 interface Event {
   id: string;
   title: string;
@@ -17,6 +20,9 @@ interface Event {
   status: 'Active' | 'Closed' | 'Upcoming';
   type: string;
   image?: string;
+  isScholarship?: boolean;
+  requiredDocuments?: string[];
+  customQuestions?: string[];
 }
 
 export default function Events() {
@@ -27,6 +33,11 @@ export default function Events() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [hasRegistered, setHasRegistered] = useState(false);
+  
+  // Scholarship Application State
+  const [scholarshipAnswers, setScholarshipAnswers] = useState<Record<string, string>>({});
+  const [scholarshipFiles, setScholarshipFiles] = useState<Record<string, File>>({});
+
   const [newEvent, setNewEvent] = useState({
     title: '',
     description: '',
@@ -94,19 +105,40 @@ export default function Events() {
 
     setRegistering(true);
     try {
-      await addDoc(collection(db, 'event_registrations'), {
+      let registrationData: any = {
         eventId: selectedEvent.id,
         userId: user.id,
         userName: user.name,
         userPhone: user.phone || '',
         registeredAt: serverTimestamp(),
         createdAt: serverTimestamp(),
-      });
-      toast.success("রেজিস্ট্রেশন সফল হয়েছে!");
+      };
+
+      // Handle Scholarship Documents & Answers
+      if (selectedEvent.isScholarship) {
+        // Upload Files
+        const documentUrls: Record<string, string> = {};
+        for (const [docName, file] of Object.entries(scholarshipFiles)) {
+          const fileRef = ref(storage, `scholarships/${selectedEvent.id}/${user.id}/${docName}_${Date.now()}`);
+          await uploadBytes(fileRef, file);
+          const url = await getDownloadURL(fileRef);
+          documentUrls[docName] = url;
+        }
+
+        registrationData = {
+          ...registrationData,
+          isScholarshipApplication: true,
+          answers: scholarshipAnswers,
+          documents: documentUrls
+        };
+      }
+
+      await addDoc(collection(db, 'event_registrations'), registrationData);
+      toast.success(selectedEvent.isScholarship ? "আবেদন সফল হয়েছে!" : "রেজিস্ট্রেশন সফল হয়েছে!");
       setHasRegistered(true);
     } catch (error) {
       console.error("Registration error:", error);
-      toast.error("রেজিস্ট্রেশন করতে সমস্যা হয়েছে");
+      toast.error(selectedEvent.isScholarship ? "আবেদন করতে সমস্যা হয়েছে" : "রেজিস্ট্রেশন করতে সমস্যা হয়েছে");
     } finally {
       setRegistering(false);
     }
@@ -302,7 +334,50 @@ export default function Events() {
                           </div>
                        </div>
                       
-                      <div className="bg-emerald-50 p-8 rounded-[2rem] border border-emerald-100">
+                        {selectedEvent.isScholarship && (
+                          <div className="space-y-8">
+                            <h4 className="font-black text-slate-800 font-bengali text-lg border-b pb-4">শিক্ষাবৃত্তি আবেদন ফরম</h4>
+                            
+                            <div className="space-y-6">
+                              {(selectedEvent.requiredDocuments || []).map((docName) => (
+                                <div key={docName} className="space-y-2">
+                                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">
+                                    {docName} আপলোড করুন (ছবি বা পিডিএফ)
+                                  </label>
+                                  <input
+                                    type="file"
+                                    required
+                                    accept="image/*,application/pdf"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (file) {
+                                        setScholarshipFiles(prev => ({ ...prev, [docName]: file }));
+                                      }
+                                    }}
+                                    className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-sm font-bengali file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-black file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100"
+                                  />
+                                </div>
+                              ))}
+
+                              {(selectedEvent.customQuestions || []).map((q) => (
+                                <div key={q} className="space-y-2">
+                                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">
+                                    {q}
+                                  </label>
+                                  <textarea
+                                    required
+                                    value={scholarshipAnswers[q] || ''}
+                                    onChange={(e) => setScholarshipAnswers(prev => ({ ...prev, [q]: e.target.value }))}
+                                    className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-bengali font-bold h-24"
+                                    placeholder="আপনার উত্তর এখানে লিখুন..."
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                       
+                       <div className="bg-emerald-50 p-8 rounded-[2rem] border border-emerald-100">
                         <h4 className="font-black text-emerald-700 mb-3 font-bengali flex items-center gap-3 text-lg">
                           <Clock size={22} /> ইভেন্ট গাইডলাইনসমূহ
                         </h4>
