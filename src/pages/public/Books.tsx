@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BookOpen, Search, Clock, CheckCircle2, Star, Sparkles, Filter, X, Info, Tag, User as UserIcon, Book as BookIcon } from 'lucide-react';
 import { useAuth } from '../../store/AuthContext';
-import { onSnapshot, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getDocs, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import toast from 'react-hot-toast';
 import Select from 'react-select';
@@ -31,19 +31,25 @@ export default function Books() {
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'books'), (snapshot) => {
-      const booksData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Book[];
-      setBooks(booksData);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'books');
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    let isMounted = true;
+    const fetchBooks = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, 'books'));
+        if (!isMounted) return;
+        const booksData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Book[];
+        setBooks(booksData);
+        setLoading(false);
+      } catch (error) {
+        if (!isMounted) return;
+        handleFirestoreError(error, OperationType.LIST, 'books');
+        setLoading(false);
+      }
+    };
+    fetchBooks();
+    return () => { isMounted = false; };
   }, []);
 
   const handlePreBook = async (bookId: string) => {

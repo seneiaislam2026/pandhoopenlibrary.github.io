@@ -129,7 +129,7 @@ const generateBookCode = (category: string) => {
   else if (category === 'একাডেমিক') prefix = 'ACA';
   else prefix = 'GEN';
   
-  const randomNum = Math.floor(10000 + Math.random() * 90000);
+  const randomNum = Math.floor(1000 + Math.random() * 9000);
   return `${prefix}-${randomNum}`;
 };
 
@@ -727,7 +727,7 @@ export default function ManageBooks() {
                           const file = e.target.files?.[0];
                           if (file) {
                             if (file.size > 2 * 1024 * 1024) {
-                              toast.error('File size must be less than 2MB');
+                              toast.error('ফাইলের সাইজ ২ এমবি-র কম হতে হবে।');
                               return;
                             }
                             const reader = new FileReader();

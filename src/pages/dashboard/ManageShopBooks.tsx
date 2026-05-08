@@ -245,7 +245,7 @@ export default function ManageShopBooks() {
                         const file = e.target.files?.[0];
                         if (file) {
                           if (file.size > 2 * 1024 * 1024) {
-                            toast.error('File size must be less than 2MB');
+                            toast.error('ফাইলের সাইজ ২ এমবি-র কম হতে হবে।');
                             return;
                           }
                           const reader = new FileReader();

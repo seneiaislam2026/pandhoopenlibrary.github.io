@@ -186,8 +186,7 @@ export default function ManageStickers() {
       for (let i = 1; i <= quantity; i++) {
         currentSeq++;
         const paddedSeq = currentSeq.toString().padStart(4, '0');
-        const bdPaddedSeq = engToBdNum(paddedSeq);
-        const code = `${basePrefix}${bdPaddedSeq}`;
+        const code = `${basePrefix}${paddedSeq}`;
         const newRef = doc(collection(db, 'book-stickers'));
         
         const url = customUrl.trim() !== '' ? customUrl.trim() : `${window.location.origin}/books?search=${code}`;
@@ -241,8 +240,6 @@ export default function ManageStickers() {
     const codesToPrint: string[] = [];
     for(let i = start; i <= end; i++) {
         const paddedSeq = i.toString().padStart(4, '0');
-        const bdPaddedSeq = engToBdNum(paddedSeq);
-        codesToPrint.push(`${batchPrintPrefix}${bdPaddedSeq}`);
         codesToPrint.push(`${batchPrintPrefix}${paddedSeq}`);
     }
 

@@ -38,24 +38,21 @@ service cloud.firestore {
     }
 
     function isValidBook(data) {
-      return data.title is string && data.title.size() <= 200 &&
-             data.author is string && data.author.size() <= 100 &&
-             data.bookCode is string && data.bookCode.size() <= 50 &&
-             data.status in ['Available', 'Issued', 'Lost'];
+      return data.title is string && 
+             data.author is string && 
+             (data.bookCode == null || data.bookCode == '' || data.bookCode is string) &&
+             (data.status == null || data.status == '' || data.status is string);
     }
 
     function isValidOrder(data) {
-      return data.customerName is string && data.customerName.size() <= 100 &&
-             data.customerPhone is string && data.customerPhone.size() <= 20 &&
-             data.customerAddress is string && data.customerAddress.size() <= 500 &&
-             data.totalPrice is number && data.totalPrice >= 0 &&
-             data.status in ['Pending', 'Confirmed', 'Processing', 'Shipping', 'Delivered', 'Cancelled', 'Confirmed'];
+      return data.customerName is string && 
+             data.customerPhone is string && 
+             data.totalPrice is number;
     }
 
     function isValidEvent(data) {
-      return data.title is string && data.title.size() <= 200 &&
-             data.description is string && data.description.size() <= 2000 &&
-             data.creatorId is string && data.creatorId.size() <= 128;
+      return data.title is string && 
+             data.description is string;
     }
 
     // --- Collection Rules ---
@@ -138,7 +135,7 @@ service cloud.firestore {
     match /messages/{messageId} {
       allow read: if isAdmin() || (isSignedIn() && (existing().toUserId == request.auth.uid || existing().fromUserId == request.auth.uid));
       allow create: if true;
-      allow update: if isAdmin() || (isSignedIn() && existing().toUserId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status']));
+      allow update: if isAdmin() || (isSignedIn() && existing().toUserId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'isRead']));
       allow delete: if isAdmin();
     }
 
