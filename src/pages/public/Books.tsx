@@ -220,10 +220,10 @@ export default function Books() {
                     <Clock size={16} />
                   ) : null}
                   <span className="hidden sm:inline">
-                    {requestedBooks.includes(book.id) ? 'অনুরোধ পাঠানো হয়েছে' : book.status === 'Available' ? 'প্রিবুক করুন' : 'বইটি অন্য সদস্যের কাছে আছে'}
+                    {requestedBooks.includes(book.id) ? 'অনুরোধ পাঠানো হয়েছে' : book.status === 'Available' ? 'প্রিবুক করুন' : 'বইটি এখন অন্য পাঠকের কাছে আছে'}
                   </span>
                   <span className="sm:hidden">
-                    {requestedBooks.includes(book.id) ? 'অনুরোধ' : book.status === 'Available' ? 'প্রিবুক' : 'অন্যের কাছে আছে'}
+                    {requestedBooks.includes(book.id) ? 'অনুরোধ' : book.status === 'Available' ? 'প্রিবুক' : 'সংগ্রহে নেই'}
                   </span>
                 </button>
               </motion.div>
@@ -286,7 +286,7 @@ export default function Books() {
                       selectedBook.status === 'Available' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
                     }`}>
                       {selectedBook.status === 'Available' ? <CheckCircle2 size={16} /> : <Clock size={16} />}
-                      {selectedBook.status === 'Available' ? 'এভেইলেবল' : 'ইস্যুকৃত'}
+                      {selectedBook.status === 'Available' ? 'এভেইলেবল' : 'বুকড'}
                     </span>
                   </div>
                   <h2 className="text-3xl md:text-5xl font-black text-slate-900 font-bengali leading-tight mb-4">{selectedBook.title}</h2>
@@ -327,11 +327,11 @@ export default function Books() {
                   </div>
                 </div>
 
-                <div className="mt-12 flex gap-4">
+                <div className="mt-12 flex flex-col gap-4">
                   <button
                     onClick={() => handlePreBook(selectedBook.id)}
                     disabled={selectedBook.status !== 'Available' || prebooking === selectedBook.id || requestedBooks.includes(selectedBook.id)}
-                    className="flex-1 bg-slate-900 text-white py-6 rounded-[2rem] font-black font-bengali text-xl hover:bg-indigo-600 shadow-2xl transition-all flex items-center justify-center gap-4 disabled:bg-slate-100 disabled:text-slate-300 active:scale-[0.98]"
+                    className="w-full bg-slate-900 text-white py-6 rounded-[2rem] font-black font-bengali text-xl hover:bg-indigo-600 shadow-2xl transition-all flex items-center justify-center gap-4 disabled:bg-slate-100 disabled:text-slate-300 active:scale-[0.98]"
                   >
                     {requestedBooks.includes(selectedBook.id) ? (
                       <><CheckCircle2 /> অনুরোধ পাঠানো হয়েছে</>
@@ -341,12 +341,20 @@ export default function Books() {
                       <><Clock /> বইটি অন্য সদস্যের কাছে আছে</>
                     )}
                   </button>
+                  
+                  {selectedBook.status !== 'Available' && activeIssues[selectedBook.id] && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-center p-6 bg-indigo-50/50 border-2 border-dashed border-indigo-100 rounded-[2rem]"
+                    >
+                      <p className="text-sm font-bengali text-slate-600 font-bold mb-1">পাঠাগারে আসার সম্ভাব্য তারিখ:</p>
+                      <p className="text-2xl font-black text-indigo-600 font-bengali">
+                        {new Date(activeIssues[selectedBook.id]).toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      </p>
+                    </motion.div>
+                  )}
                 </div>
-                {selectedBook.status !== 'Available' && activeIssues[selectedBook.id] && (
-                  <p className="mt-4 text-center text-sm font-bengali text-slate-500 font-bold bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    পাঠাগারে আসার সম্ভাব্য তারিখ: <span className="text-indigo-600">{new Date(activeIssues[selectedBook.id]).toLocaleDateString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}</span>
-                  </p>
-                )}
               </div>
             </motion.div>
           </div>
