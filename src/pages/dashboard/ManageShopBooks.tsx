@@ -43,8 +43,12 @@ export default function ManageShopBooks() {
     return () => unsubscribe();
   }, []);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       if (editingId) {
         await updateDoc(doc(db, 'shop-books', editingId), { ...formData, updatedAt: serverTimestamp() });
@@ -59,6 +63,8 @@ export default function ManageShopBooks() {
       setEditingId(null);
     } catch (err: any) {
       toast.error('সেভ করতে ব্যর্থ হয়েছে: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -292,8 +298,9 @@ export default function ManageShopBooks() {
               </div>
 
               <div className="flex justify-end gap-4 pt-8 border-t border-slate-100">
-                <button type="button" onClick={() => setShowModal(false)} className="px-8 py-4 font-black text-slate-400 hover:text-slate-600 transition">বাতিল</button>
-                <button type="submit" className="px-12 py-4 bg-slate-900 text-white rounded-2xl font-black hover:bg-rose-600 shadow-2xl transition active:scale-95">
+                <button type="button" disabled={isSubmitting} onClick={() => setShowModal(false)} className="px-8 py-4 font-black text-slate-400 hover:text-slate-600 transition disabled:opacity-50">বাতিল</button>
+                <button type="submit" disabled={isSubmitting} className="px-12 py-4 bg-slate-900 text-white rounded-2xl font-black hover:bg-rose-600 shadow-2xl transition active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2">
+                  {isSubmitting && <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
                   {editingId ? 'আপডেট করুন' : 'সেভ করুন'}
                 </button>
               </div>

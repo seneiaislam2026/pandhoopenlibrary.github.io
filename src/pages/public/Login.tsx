@@ -21,7 +21,13 @@ export default function Login() {
   const [forgotLoading, setForgotLoading] = useState(false);
 
   const navigate = useNavigate();
-  const { login, loginWithUsername } = useAuth();
+  const { user, login, loginWithUsername, loading: authLoading } = useAuth();
+
+  React.useEffect(() => {
+    if (user && !authLoading) {
+      navigate('/dashboard');
+    }
+  }, [user, authLoading, navigate]);
 
   const handleGoogleLogin = async () => {
     setError('');

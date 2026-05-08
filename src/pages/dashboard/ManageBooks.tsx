@@ -141,6 +141,7 @@ export default function ManageBooks() {
   
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<{ title: string; author: string; category: string; cover: string; status: string; bookCode: string; shelfNo: string; review: string; description: string }>({ 
     title: '', 
     author: '', 
@@ -305,18 +306,20 @@ export default function ManageBooks() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     
     try {
         if (!user) {
           throw new Error('User context missing. Are you logged in?');
         }
 
-        if (formData.bookCode) {
-          const q = query(collection(db, 'books'), where('bookCode', '==', formData.bookCode.trim()));
-          const querySnapshot = await getDocs(q);
-          const duplicate = querySnapshot.docs.find(d => d.id !== editingId);
+        const trimmedCode = (formData.bookCode || '').trim();
+        if (trimmedCode) {
+          const duplicate = books.find(b => b.id !== editingId && b.bookCode?.trim() === trimmedCode);
           if (duplicate) {
             toast.error('এই বইয়ের কোডটি ইতিপূর্বে ব্যবহার করা হয়েছে। দয়া করে ভিন্ন কোড ব্যবহার করুন।');
+            setIsSubmitting(false);
             return;
           }
         }
@@ -349,6 +352,8 @@ export default function ManageBooks() {
             toast.error(`সেভ করতে ব্যর্থ হয়েছে: ${error.message || 'Unknown error'}`);
         }
         handleFirestoreError(error, OperationType.WRITE, editingId ? `books/${editingId}` : 'books', user?.id, user?.email);
+    } finally {
+        setIsSubmitting(false);
     }
   };
 
@@ -783,8 +788,9 @@ export default function ManageBooks() {
               </div>
 
               <div className="flex justify-end gap-3 pt-6 border-t border-slate-100 mt-8">
-                <button type="button" onClick={() => setShowModal(false)} className="px-6 py-2.5 font-bold text-slate-500 hover:text-slate-700 transition">বাতিল</button>
-                <button type="submit" className="px-10 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 shadow-lg transition active:scale-95">
+                <button type="button" onClick={() => setShowModal(false)} disabled={isSubmitting} className="px-6 py-2.5 font-bold text-slate-500 hover:text-slate-700 transition disabled:opacity-50">বাতিল</button>
+                <button type="submit" disabled={isSubmitting} className="px-10 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center gap-2">
+                  {isSubmitting && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
                   {editingId ? 'আপডেট (Update)' : 'সেভ (Save)'}
                 </button>
               </div>

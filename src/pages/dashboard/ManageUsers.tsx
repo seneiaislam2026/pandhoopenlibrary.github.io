@@ -403,16 +403,14 @@ export default function ManageUsers() {
         if (targetUser?.memberId) {
           updates.memberId = targetUser.memberId;
         } else {
-          const usersSnap = await getDocs(collection(db, "users"));
           let maxId = 0;
-          usersSnap.forEach((d) => {
-            const data = d.data();
+          users.forEach((data) => {
             const dName = (data.name || "").toLowerCase().trim();
             const dEmail = (data.email || "").toLowerCase().trim();
             // Skip special users from ID calculation
             if (dName === "system admin" || dName === "seneia islam" || dName === "seneiya islam" || dEmail === "seneiaislam@gmail.com") return;
             
-            const mid = parseInt(data.memberId, 10);
+            const mid = parseInt(data.memberId || "0", 10);
             if (!isNaN(mid) && mid > maxId) maxId = mid;
           });
           updates.memberId = String(maxId + 1).padStart(3, '0');
@@ -557,7 +555,8 @@ export default function ManageUsers() {
 
   const handleEditUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editUser) return;
+    if (!editUser || loading) return;
+    setLoading(true);
     try {
       const data: any = { ...editFormData };
       if (!data.password) delete data.password;
@@ -575,6 +574,8 @@ export default function ManageUsers() {
       toast.success("সদস্যের তথ্য সফলভাবে আপডেট করা হয়েছে।");
     } catch (error) {
       toast.error("Update failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1146,7 +1147,13 @@ export default function ManageUsers() {
                   </div>
                 )}
               </div>
-              <div className="flex justify-end gap-3 pt-6"><button type="button" className="font-bengali px-4 py-2 text-slate-500 hover:bg-slate-50 rounded-xl" onClick={()=>setShowModal(false)}>বাতিল</button><button type="submit" className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold font-bengali">যুক্ত করুন</button></div>
+              <div className="flex justify-end gap-3 pt-6">
+                <button type="button" disabled={loading} className="font-bengali px-4 py-2 text-slate-500 hover:bg-slate-50 rounded-xl disabled:opacity-50" onClick={()=>setShowModal(false)}>বাতিল</button>
+                <button type="submit" disabled={loading} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold font-bengali disabled:opacity-50 flex items-center gap-2">
+                  {loading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                  যুক্ত করুন
+                </button>
+              </div>
             </form>
           </motion.div>
         </div>
@@ -1420,7 +1427,13 @@ export default function ManageUsers() {
                   rows={2}
                 />
               )}
-              <div className="flex justify-end gap-3 pt-6"><button type="button" onClick={()=>setEditUser(null)} className="font-bengali">বাতিল</button><button type="submit" className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold font-bengali">আপডেট</button></div>
+              <div className="flex justify-end gap-3 pt-6">
+                <button type="button" disabled={loading} onClick={()=>setEditUser(null)} className="font-bengali px-4 py-2 text-slate-500 hover:bg-slate-50 rounded-xl disabled:opacity-50">বাতিল</button>
+                <button type="submit" disabled={loading} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold font-bengali disabled:opacity-50 flex items-center gap-2">
+                  {loading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                  আপডেট
+                </button>
+              </div>
             </form>
           </motion.div>
         </div>

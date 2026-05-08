@@ -41,8 +41,12 @@ export default function Finances() {
     return () => unsubscribe();
   }, []);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       if (editingId) {
         await updateDoc(doc(db, 'finances', editingId), formData);
@@ -60,6 +64,8 @@ export default function Finances() {
     } catch (error) {
       console.error('Error saving finance record:', error);
       toast.error('Failed to save record');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -165,7 +171,8 @@ export default function Finances() {
                 className="w-full px-4 py-2.5 border border-slate-200 rounded-xl font-bengali font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors"
               />
             </div>
-            <button type="submit" className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-700 h-[46px] self-end font-bengali shadow-sm">
+            <button type="submit" disabled={isSubmitting} className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-700 h-[46px] self-end font-bengali shadow-sm disabled:opacity-50 flex items-center justify-center gap-2">
+              {isSubmitting && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
               সংরক্ষণ
             </button>
           </div>

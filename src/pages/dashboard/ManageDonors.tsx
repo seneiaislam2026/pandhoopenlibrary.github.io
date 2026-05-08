@@ -403,8 +403,12 @@ export default function ManageDonors() {
     };
   }, []);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleAddDonor = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const payload = {
         ...donorForm,
@@ -423,6 +427,8 @@ export default function ManageDonors() {
       setDonorForm({ name: '', phone: '', address: '', serial: '', monthlyDonation: '200' });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'donor-members');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -453,6 +459,8 @@ export default function ManageDonors() {
       toast.error('দাতা সদস্য নির্বাচন করুন।');
       return;
     }
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const newDocRef = doc(collection(db, 'donor-payments'));
       await setDoc(newDocRef, {
@@ -470,6 +478,8 @@ export default function ManageDonors() {
       setSelectedDonorId('');
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'donor-payments');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1084,8 +1094,11 @@ export default function ManageDonors() {
                   <textarea value={donorForm.address || ''} onChange={e => setDonorForm({...donorForm, address: e.target.value})} className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all font-bengali" placeholder="ঠিকানা লিখুন..." rows={2}></textarea>
                 </div>
                 <div className="flex gap-4 pt-4">
-                  <button type="button" onClick={() => setShowAddDonor(false)} className="flex-1 px-4 py-4 border-2 border-slate-200 text-slate-600 rounded-2xl text-base font-black hover:bg-slate-50 transition-all font-bengali">বাতিল</button>
-                  <button type="submit" className="flex-1 px-4 py-4 bg-slate-900 text-white rounded-2xl text-base font-black hover:bg-slate-800 shadow-lg shadow-slate-900/20 transition-all active:scale-[0.98] font-bengali">সংরক্ষণ করুন</button>
+                  <button type="button" disabled={isSubmitting} onClick={() => setShowAddDonor(false)} className="flex-1 px-4 py-4 border-2 border-slate-200 text-slate-600 rounded-2xl text-base font-black hover:bg-slate-50 transition-all font-bengali disabled:opacity-50">বাতিল</button>
+                  <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-4 bg-slate-900 text-white rounded-2xl text-base font-black hover:bg-slate-800 shadow-lg shadow-slate-900/20 transition-all active:scale-[0.98] font-bengali disabled:opacity-50 flex items-center justify-center gap-2">
+                    {isSubmitting && <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                    সংরক্ষণ করুন
+                  </button>
                 </div>
               </form>
             </motion.div>
@@ -1171,8 +1184,11 @@ export default function ManageDonors() {
                   </div>
                 </div>
                 <div className="flex gap-4 pt-4">
-                  <button type="button" onClick={() => setShowPaymentForm(false)} className="flex-1 px-4 py-4 border-2 border-slate-200 text-slate-600 rounded-2xl text-base font-black hover:bg-slate-50 transition-all font-bengali">বাতিল</button>
-                  <button type="submit" className="flex-1 px-4 py-4 bg-indigo-600 text-white rounded-2xl text-base font-black hover:bg-indigo-700 shadow-lg shadow-indigo-900/20 transition-all active:scale-[0.98] font-bengali">পেমেন্ট আপডেট করুন</button>
+                  <button type="button" disabled={isSubmitting} onClick={() => setShowPaymentForm(false)} className="flex-1 px-4 py-4 border-2 border-slate-200 text-slate-600 rounded-2xl text-base font-black hover:bg-slate-50 transition-all font-bengali disabled:opacity-50">বাতিল</button>
+                  <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-4 bg-indigo-600 text-white rounded-2xl text-base font-black hover:bg-indigo-700 shadow-lg shadow-indigo-900/20 transition-all active:scale-[0.98] font-bengali disabled:opacity-50 flex items-center justify-center gap-2">
+                    {isSubmitting && <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                    পেমেন্ট আপডেট করুন
+                  </button>
                 </div>
               </form>
             </motion.div>

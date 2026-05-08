@@ -16,9 +16,11 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { db } from '../lib/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, serverTimestamp, query, where, orderBy, limit } from 'firebase/firestore';
 import { useAuth } from '../store/AuthContext';
 import { cn } from '../lib/utils';
+import { Type, FunctionDeclaration } from '@google/genai';
+import toast from 'react-hot-toast';
 
 type Message = {
   id: string;
@@ -26,6 +28,77 @@ type Message = {
   content: string;
   timestamp: any;
 };
+
+// Define tool declarations for Gemini
+const libraryTools: FunctionDeclaration[] = [
+  {
+    name: "get_books",
+    description: "Fetch list of books from the library database. Can filter by category or status.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        category: { type: Type.STRING, description: "Filter books by category (e.g. Novel, History)" },
+        status: { type: Type.STRING, description: "Filter by status (Available, Issued)" },
+        limit: { type: Type.NUMBER, description: "Limit number of results (default 50)" }
+      }
+    }
+  },
+  {
+    name: "get_members",
+    description: "Fetch list of library members (users). Admin only.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        status: { type: Type.STRING, description: "Filter by status (active, inactive)" },
+        limit: { type: Type.NUMBER, description: "Limit results" }
+      }
+    }
+  },
+  {
+    name: "get_book_issues",
+    description: "Fetch record of issued books. Admin only.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        status: { type: Type.STRING, description: "Filter by status (ISSUED, Returned)" },
+        overdueOnly: { type: Type.BOOLEAN, description: "Only show overdue books" }
+      }
+    }
+  },
+  {
+    name: "get_finances",
+    description: "Fetch financial records (income/expense) of the library. Admin only.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, description: "Filter by type (Income, Expense)" },
+        limit: { type: Type.NUMBER, description: "Limit number of records" }
+      }
+    }
+  },
+  {
+    name: "extend_due_date",
+    description: "Extend the expected return date of a book issue. Admin only.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        issueId: { type: Type.STRING, description: "The ID of the issue record (e.g. ISS-123456789)" },
+        daysToAdd: { type: Type.NUMBER, description: "Number of days to add to current due date (default 7)" }
+      },
+      required: ["issueId"]
+    }
+  },
+  {
+    name: "get_donors",
+    description: "Fetch information about library donors and their contributions.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, description: "Donor type (Member, One-time)" }
+      }
+    }
+  }
+];
 
 const AIBot = () => {
   const { user } = useAuth();
@@ -38,6 +111,68 @@ const AIBot = () => {
 
   const isAdmin = user?.role === 'admin';
 
+  // Tool Handlers
+  const toolHandlers: Record<string, (args: any) => Promise<any>> = {
+    get_books: async ({ category, status, limit: limitCount = 50 }) => {
+      let q = query(collection(db, 'books'), limit(limitCount));
+      if (category) q = query(q, where('category', '==', category));
+      if (status) q = query(q, where('status', '==', status));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, title: d.data().title, author: d.data().author, category: d.data().category, status: d.data().status, bookCode: d.data().bookCode }));
+    },
+    get_members: async ({ status, limit: limitCount = 50 }) => {
+      if (!isAdmin) return { error: "Permission Denied: Admin access required." };
+      let q = query(collection(db, 'users'), limit(limitCount));
+      if (status) q = query(q, where('status', '==', status));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, name: d.data().name, memberId: d.data().memberId, email: d.data().email, role: d.data().role, status: d.data().status }));
+    },
+    get_book_issues: async ({ status, overdueOnly }) => {
+      if (!isAdmin) return { error: "Permission Denied: Admin access required." };
+      let q = query(collection(db, 'issues'), orderBy('expectedReturnDate', 'asc'));
+      if (status) q = query(q, where('status', '==', status));
+      const snap = await getDocs(q);
+      let data = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      if (overdueOnly) {
+        data = data.filter(i => (i.status === 'ISSUED' || i.status === 'Issued') && new Date(i.expectedReturnDate) < new Date());
+      }
+      return data;
+    },
+    get_finances: async ({ type, limit: limitCount = 20 }) => {
+      if (!isAdmin) return { error: "Permission Denied: Admin access required." };
+      let q = query(collection(db, 'finances'), orderBy('date', 'desc'), limit(limitCount));
+      if (type) q = query(q, where('type', '==', type));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    },
+    get_donors: async ({ type }) => {
+      const snap = await getDocs(collection(db, 'donors'));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    },
+    extend_due_date: async ({ issueId, daysToAdd = 7 }) => {
+      if (!isAdmin) return { error: "Permission Denied: Admin access required." };
+      try {
+        const snap = await getDocs(query(collection(db, 'issues'), where('__name__', '==', issueId)));
+        if (snap.empty) return { error: `Issue record with ID ${issueId} not found.` };
+        
+        const issueData = snap.docs[0].data();
+        const currentExpected = new Date(issueData.expectedReturnDate);
+        currentExpected.setDate(currentExpected.getDate() + daysToAdd);
+        
+        await updateDoc(doc(db, "issues", issueId), {
+          expectedReturnDate: currentExpected.toISOString(),
+          adminNote: `AI Extended: Added ${daysToAdd} days.`,
+          updatedAt: serverTimestamp()
+        });
+        
+        toast.success(`AI extended due date for ${issueData.bookTitle}`);
+        return { success: true, newDueDate: currentExpected.toISOString(), bookTitle: issueData.bookTitle };
+      } catch (e: any) {
+        return { error: e.message };
+      }
+    }
+  };
+
   const userSuggestions = [
     "বই খুঁজবো কিভাবে?",
     "নতুন বই কি কি আছে?",
@@ -49,7 +184,7 @@ const AIBot = () => {
     "লাইব্রেরি স্ট্যাটাস দেখাও",
     "অ্যাক্টিভ ইস্যু কতগুলো?",
     "সবচেয়ে জনপ্রিয় বই কোনটি?",
-    "কিভাবে নতুন বই যোগ করবো?"
+    "হিসাব নিকাশ দেখাও"
   ];
 
   const currentSuggestions = isAdmin ? adminSuggestions : userSuggestions;
@@ -65,7 +200,7 @@ const AIBot = () => {
   useEffect(() => {
     if (messages.length === 0) {
       const greeting = isAdmin 
-        ? `আসসালামু আলাইকুম অ্যাডমিন! আমি আপনার লাইব্রেরি ম্যানেজার AI। আমি আপনাকে লাইব্রেরি স্ট্যাটাস চেক করতে বা সিস্টেম পরিচালনা করতে সাহায্য করতে পারি।`
+        ? `আসসালামু আলাইকুম অ্যাডমিন! আমি আপনার লাইব্রেরি ম্যানেজার AI। আমি আপনাকে লাইব্রেরি স্ট্যাটাস চেক করতে, হিসাব নিকাশ দেখতে বা সিস্টেম পরিচালনা করতে সাহায্য করতে পারি।`
         : `আসসালামু আলাইকুম! আমি আপনার লাইব্রেরি অ্যাসিস্ট্যান্ট AI। আমি আপনাকে বই খুঁজে পেতে বা লাইব্রেরি সম্পর্কে জানতে সাহায্য করতে পারি।`;
       
       setMessages([{
@@ -89,7 +224,7 @@ const AIBot = () => {
         const membersSnap = await getDocs(collection(db, 'users'));
         const issuesSnap = await getDocs(collection(db, 'issues'));
         totalMembers = membersSnap.size;
-        activeIssues = issuesSnap.docs.filter(d => d.data().status === 'issued').length;
+        activeIssues = issuesSnap.docs.filter(d => d.data().status === 'ISSUED' || d.data().status === 'Issued').length;
       }
       
       setDbStats({
@@ -103,10 +238,11 @@ const AIBot = () => {
   };
 
   const handleSend = async (text?: string, e?: React.FormEvent) => {
-    if (e) e.preventDefault();
     const finalInput = text || input;
+    if (e) e.preventDefault();
     if (!finalInput.trim() || isLoading) return;
 
+    // Remove duplicates or old messages if hanging
     const userMessage: Message = {
       id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       role: 'user',
@@ -124,6 +260,9 @@ const AIBot = () => {
            Your name is "বইবন্ধু" (Boibondhu).
            Your role is to help the ADMIN manage the system efficiently.
            
+           DATA ACCESS: You have access to real-time tools to fetch books, members, financial records (hisab boi), and book issues.
+           CAPABILITIES: You can look up any data from the admin panel and even extend book due dates when asked.
+           
            RULES:
            1. CRITICAL: NEVER use the word "নমষ্কার" (Namaskar). Use "আসসালামু আলাইকুম" or direct professional greetings.
            2. POLICY: বই পড়ার জন্য সাধারণ সময়সীমা ৭ দিন (Standard book borrowing duration is 7 days).
@@ -137,15 +276,12 @@ const AIBot = () => {
            - Total Members: ${dbStats?.totalMembers || 'Unknown'}
            - Active Book Issues: ${dbStats?.activeIssues || 'Unknown'}
            
-           Capabilities:
-           - Provide detailed statistics and management insights.
-           - Share library address, committee info, and donor details.
-           - Assist with resolving book requests and technical guidance.
-           
            Language: Primarily Bengali, or professional Banglish.`
         : `You are a highly intelligent and friendly Library User Assistant for "পানধোয়া উন্মুক্ত পাঠাগার".
            Your name is "বইবন্ধু" (Boibondhu).
            Your role is to guide and inspire readers.
+           
+           DATA ACCESS: You can look up books, library info, and donor details using your tools.
            
            RULES:
            1. CRITICAL: NEVER use the word "নমষ্কার" (Namaskar). Use "আসসালামু আলাইকুম" or friendly greetings.
@@ -166,7 +302,7 @@ const AIBot = () => {
            
            Language: Primarily Bengali, or friendly Banglish.`;
 
-      const contents = [
+      let contents = [
         ...messages.filter(m => m.id !== '1').map(m => ({
           role: m.role,
           parts: [{ text: m.content }]
@@ -174,31 +310,68 @@ const AIBot = () => {
         { role: 'user', parts: [{ text: finalInput }] }
       ];
 
-      let responseText = '';
+      // Deep call loop for tool handling
+      let maxTurns = 5;
+      let finalAiResponse = '';
       
-      const apiUrl = (import.meta as any).env.PROD ? '/.netlify/functions/gemini' : '/api/gemini';
+      while (maxTurns > 0) {
+        const response = await fetch('/api/gemini', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            contents, 
+            systemInstruction: systemPrompt,
+            tools: [{ functionDeclarations: libraryTools }]
+          })
+        });
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-           contents, 
-           systemInstruction: systemPrompt 
-        })
-      });
+        const responseData = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(responseData.error || 'Failed to fetch AI response');
+        }
 
-      const responseData = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(responseData.error || responseData.error?.message || 'Failed to fetch AI response');
+        const { text, functionCalls } = responseData;
+        
+        if (functionCalls && functionCalls.length > 0) {
+          // Store the model's call in contents to maintain context
+          contents.push({
+            role: 'model',
+            parts: functionCalls.map((fc: any) => ({ functionCall: fc }))
+          });
+
+          const toolResults = [];
+          for (const fc of functionCalls) {
+            const handler = toolHandlers[fc.name];
+            if (handler) {
+              const result = await handler(fc.args);
+              toolResults.push({
+                functionResponse: {
+                  name: fc.name,
+                  response: { result }
+                }
+              });
+            }
+          }
+
+          // Add tool results to contents
+          contents.push({
+            role: 'user',
+            parts: toolResults
+          });
+
+          maxTurns--;
+          continue; // Call model again with tool results
+        } else {
+          finalAiResponse = text;
+          break; // Model gave a final text response
+        }
       }
-
-      responseText = responseData.text;
 
       const aiMessage: Message = {
         id: `msg-ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         role: 'model',
-        content: responseText || 'দুঃখিত, আমি কোনো উত্তর জেনারেট করতে পারিনি।',
+        content: finalAiResponse || 'দুঃখিত, আমি কোনো উত্তর জেনারেট করতে পারিনি।',
         timestamp: new Date()
       };
 
@@ -206,14 +379,14 @@ const AIBot = () => {
     } catch (error: any) {
       console.error("AI Error:", error);
       let errorMsg = `দুঃখিত, কিছু একটা ভুল হয়েছে। চ্যাটবটটি কাজ করছে না। দয়া করে আবার চেষ্টা করুন।`;
+      const serverError = error?.message || String(error);
       
-      // Provide more specific error for missing API keys
-      if (error && error.message && (error.message.includes('GEMINI_API_KEY') || error.message.includes('API_KEY_INVALID') || error.message.includes('API key not valid'))) {
+      if (serverError.includes('GEMINI_API_KEY') || serverError.includes('API_KEY_INVALID') || serverError.includes('API key not valid')) {
         errorMsg = `⚠️ System Error: GEMINI_API_KEY is missing or invalid. Please add a valid Gemini API key to your environment variables.`;
-      } else if (error && error.message && (error.message.includes('429') || error.message.includes('quota') || error.message.includes('limit'))) {
+      } else if (serverError.includes('429') || serverError.includes('quota') || serverError.includes('limit')) {
         errorMsg = `⚠️ Error: এই মুহূর্তে চ্যাটবট লিমিট শেষ হয়ে গেছে। কিছুক্ষণ পর আবার চেষ্টা করুন।`;
-      } else if (error && error.message && error.message.includes('JSON')) {
-        errorMsg = `⚠️ Server Connection Error: AI endpoint returned an invalid response. Please ensure the server is running correctly.`;
+      } else {
+        errorMsg = `⚠️ AI Error: ${serverError}`;
       }
 
       setMessages(prev => [...prev, {
@@ -426,4 +599,3 @@ const AIBot = () => {
 };
 
 export default AIBot;
-

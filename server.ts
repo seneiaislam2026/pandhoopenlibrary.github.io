@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 
@@ -12,42 +13,34 @@ async function startServer() {
     try {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY_HERE" || apiKey === "your_api_key_here") {
-        return res.status(400).json({ error: "GEMINI_API_KEY is not set or is a placeholder. Please set a valid Gemini API key in your AI Studio Environment settings." });
+        return res.status(400).json({ error: "GEMINI_API_KEY is not set. Please set it in Settings." });
       }
 
       const { GoogleGenAI } = await import('@google/genai');
-      let genAI;
-      try {
-         genAI = new GoogleGenAI({ apiKey });
-      } catch (err: any) {
-         return res.status(400).json({ error: "Invalid API key provided to Google Gen AI SDK." });
-      }
+      const ai = new GoogleGenAI({ apiKey });
+      const { contents, systemInstruction, tools, toolConfig } = req.body;
+      
+      const result = await ai.models.generateContent({
+        model: "gemini-flash-latest",
+        contents,
+        config: {
+          systemInstruction: systemInstruction,
+          tools: tools,
+          toolConfig: toolConfig
+        }
+      });
 
-      const { contents, systemInstruction } = req.body;
-      try {
-        const result = await genAI.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: contents,
-          config: {
-            systemInstruction: systemInstruction 
-          }
-        });
-        res.json({ text: result.text });
-      } catch (genError: any) {
-        console.error('Gemini Generate Error Details:', genError);
-        // Gen AI throws errors that sometimes have specific status formats
-        const msg = genError?.message || String(genError);
-        if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
-            return res.status(400).json({ error: "The provided GEMINI_API_KEY is invalid. Please check your API key in the settings." });
-        }
-        if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
-            return res.status(429).json({ error: "API limit reached. Please try again after a minute." });
-        }
-        throw genError;
-      }
+      res.json({ 
+        text: result.text,
+        functionCalls: result.functionCalls
+      });
     } catch (error: any) {
-      console.error('Server Gemini API error:', error);
-      res.status(500).json({ error: error.message });
+      console.error('Gemini API Error:', error);
+      const msg = error?.message || String(error);
+      if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
+        return res.status(400).json({ error: "Invalid Gemini API key. Please check your settings." });
+      }
+      res.status(500).json({ error: msg });
     }
   });
 

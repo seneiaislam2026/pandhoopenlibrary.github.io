@@ -161,6 +161,31 @@ export default function ManageStickers() {
       // Let's use a mapping for prefixes if we can, or just take first 2 chars safely if we don't care.
       // Wait, "বই কোড নংং বাংলায়ি হবে" maybe they want the code itself to be Bengali.
       
+      const getCategoryPrefix = (category: string) => {
+        if (category === 'ইতিহাস ও মুক্তিযুদ্ধ') return 'HIS';
+        if (category === 'উপন্যাস') return 'NOV';
+        if (category === 'ছোটগল্প') return 'SST';
+        if (category === 'কবিতা') return 'POE';
+        if (category === 'প্রবন্ধ ও গবেষণা') return 'RES';
+        if (category === 'জীবনী') return 'BIO';
+        if (category === 'সায়েন্স ফিকশন') return 'SCI';
+        if (category === 'ধর্ম ও দর্শন') return 'REL';
+        if (category === 'ইসলামী বই') return 'ISL';
+        if (category === 'শিশু-কিশোর') return 'CHI';
+        if (category === 'নাটক') return 'DRA';
+        if (category === 'ফিকশন বা রোমান্স') return 'ROM';
+        if (category === 'থ্রিলার ও অ্যাডভেঞ্চার') return 'THR';
+        if (category === 'বিজ্ঞান ও প্রযুক্তি') return 'TEC';
+        if (category === 'রাজনীতি ও অর্থনীতি') return 'POL';
+        if (category === 'আত্মউন্নয়ন ও মোটিভেশন') return 'MOT';
+        if (category === 'কমিকস ও গ্রাফিক্স নোভেল') return 'COM';
+        if (category === 'অনুবাদ সাহিত্য') return 'TRA';
+        if (category === 'ভ্রমণ কাহিনী') return 'TRAV';
+        if (category === 'ম্যাগাজিন ও সাময়িকী') return 'MAG';
+        if (category === 'একাডেমিক') return 'ACA';
+        return 'GEN';
+      };
+
       const snapSeq = await getDocs(collection(db, 'book-stickers'));
       let currentSeq = 0;
       snapSeq.docs.forEach(docSnap => {
@@ -174,12 +199,8 @@ export default function ManageStickers() {
         }
       });
       
-      // Instead of an English prefix from Bengali text (which is bad), 
-      // let's just use the category itself directly as prefix, or something simple? 
-      // User used `catPrefix = category.substring(0, 3).toUpperCase();` previously.
-      // Let's keep a simplified map or just take the category name as is (shortened).
-      const shortCat = category.substring(0, 4); 
-      const basePrefix = `${shortCat}-${shelfNo}-`;
+      const catPrefix = getCategoryPrefix(category);
+      const basePrefix = `${catPrefix}-${shelfNo}-`;
 
       const generatedStickers: Sticker[] = [];
 
@@ -475,7 +496,7 @@ export default function ManageStickers() {
                    borderRadius: '0.75rem'
                 })
               }}
-              className="sm:w-64 font-bengali text-sm z-[9999]"
+              className="sm:w-64 font-bengali text-sm"
               classNamePrefix="react-select"
             />
           </div>
@@ -602,7 +623,7 @@ export default function ManageStickers() {
                                     paddingLeft: '2.5rem' // for the icon
                                   })
                                 }}
-                                className="font-bengali text-sm z-[9999]"
+                                className="font-bengali text-sm"
                                 classNamePrefix="react-select"
                             />
                         </div>
@@ -626,7 +647,7 @@ export default function ManageStickers() {
                                 borderRadius: '0.75rem'
                               })
                             }}
-                            className="font-bengali text-sm z-[9999]"
+                            className="font-bengali text-sm"
                             classNamePrefix="react-select"
                           />
                         </div>
