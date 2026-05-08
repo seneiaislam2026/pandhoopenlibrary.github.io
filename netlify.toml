@@ -2,6 +2,9 @@
   command = "npm run build"
   publish = "dist"
 
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "GEMINI_API_KEY,SMS_API_KEY,SMS_SENDER_ID"
+
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"

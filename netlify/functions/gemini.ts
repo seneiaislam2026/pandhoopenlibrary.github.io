@@ -55,10 +55,17 @@ export const handler = async (event: any) => {
           body: JSON.stringify({ error: "The provided GEMINI_API_KEY is invalid. Please check your API key in the Netlify settings." })
        };
     }
+    if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
+       return {
+          statusCode: 429,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: "API limit reached. Please try again after a minute." })
+       };
+    }
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: error.message })
+      body: JSON.stringify({ error: msg })
     };
   }
 };

@@ -174,29 +174,24 @@ const AIBot = () => {
 
       let responseText = '';
       
-      const GEMINI_API_KEY = "AIzaSyC2c4nH-uaGGjSCyLl_LI5uCxLQR8d4Vf4";
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+      const apiUrl = (import.meta as any).env.PROD ? '/.netlify/functions/gemini' : '/api/gemini';
 
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
            contents, 
-           systemInstruction: { parts: [{ text: systemPrompt }] } 
+           systemInstruction: systemPrompt 
         })
       });
 
       const responseData = await response.json();
       
       if (!response.ok) {
-        throw new Error(responseData.error?.message || 'Failed to fetch AI response');
+        throw new Error(responseData.error || responseData.error?.message || 'Failed to fetch AI response');
       }
 
-      if (responseData.candidates && responseData.candidates.length > 0) {
-        responseText = responseData.candidates[0].content.parts[0].text || '';
-      } else {
-        throw new Error('No content generated');
-      }
+      responseText = responseData.text;
 
       const aiMessage: Message = {
         id: `msg-ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -213,8 +208,10 @@ const AIBot = () => {
       // Provide more specific error for missing API keys
       if (error && error.message && (error.message.includes('GEMINI_API_KEY') || error.message.includes('API_KEY_INVALID') || error.message.includes('API key not valid'))) {
         errorMsg = `⚠️ System Error: GEMINI_API_KEY is missing or invalid. Please add a valid Gemini API key to your environment variables.`;
+      } else if (error && error.message && (error.message.includes('429') || error.message.includes('quota') || error.message.includes('limit'))) {
+        errorMsg = `⚠️ Error: এই মুহূর্তে চ্যাটবট লিমিট শেষ হয়ে গেছে। কিছুক্ষণ পর আবার চেষ্টা করুন।`;
       } else if (error && error.message && error.message.includes('JSON')) {
-        errorMsg = `⚠️ Server Connection Error: AI endpoint returned an invalid response (possible 404). Please ensure the server is running correctly.`;
+        errorMsg = `⚠️ Server Connection Error: AI endpoint returned an invalid response. Please ensure the server is running correctly.`;
       }
 
       setMessages(prev => [...prev, {

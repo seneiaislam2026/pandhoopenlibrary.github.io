@@ -40,6 +40,9 @@ async function startServer() {
         if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
             return res.status(400).json({ error: "The provided GEMINI_API_KEY is invalid. Please check your API key in the settings." });
         }
+        if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
+            return res.status(429).json({ error: "API limit reached. Please try again after a minute." });
+        }
         throw genError;
       }
     } catch (error: any) {
