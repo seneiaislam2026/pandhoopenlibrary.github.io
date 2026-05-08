@@ -21,7 +21,7 @@ async function startServer() {
       const { contents, systemInstruction, tools } = req.body;
       
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.5-flash",
         contents: contents,
         config: {
           systemInstruction: systemInstruction,

@@ -46,17 +46,22 @@ export default function Books() {
     const fetchBooks = async () => {
       try {
         const snapshot = await getDocs(collection(db, 'books'));
-        const issuesSnapshot = await getDocs(query(collection(db, 'issues'), where('status', 'in', ['ISSUED', 'Issued'])));
         
         if (!isMounted) return;
         
         const issuesMap: Record<string, string> = {};
-        issuesSnapshot.forEach(doc => {
-          const data = doc.data();
-          if (data.bookId && data.expectedReturnDate) {
-            issuesMap[data.bookId] = data.expectedReturnDate;
-          }
-        });
+        try {
+          const issuesSnapshot = await getDocs(query(collection(db, 'issues'), where('status', 'in', ['ISSUED', 'Issued'])));
+          issuesSnapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.bookId && data.expectedReturnDate) {
+              issuesMap[data.bookId] = data.expectedReturnDate;
+            }
+          });
+        } catch (e) {
+          // Normal. Public users can't read 'issues' collection.
+        }
+        
         setActiveIssues(issuesMap);
         
         const booksData = snapshot.docs.map(doc => ({
@@ -67,8 +72,12 @@ export default function Books() {
         setLoading(false);
       } catch (error) {
         if (!isMounted) return;
-        handleFirestoreError(error, OperationType.LIST, 'books');
         setLoading(false);
+        try {
+           handleFirestoreError(error, OperationType.LIST, 'books');
+        } catch(e) {
+           console.error("Books fetch error handled", e);
+        }
       }
     };
     fetchBooks();
