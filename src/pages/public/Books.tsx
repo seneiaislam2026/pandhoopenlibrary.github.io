@@ -25,12 +25,21 @@ export default function Books() {
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const { user } = useAuth();
   const [prebooking, setPrebooking] = useState<string | null>(null);
   const [requestedBooks, setRequestedBooks] = useState<string[]>([]);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [activeIssues, setActiveIssues] = useState<Record<string, string>>({});
+
+  // Debounce search input to prevent lag
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 400); // 400ms debounce
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     let isMounted = true;
@@ -96,12 +105,14 @@ export default function Books() {
     }
   };
 
-  const filtered = books.filter(b => {
-    const term = search.toLowerCase();
-    const matchesSearch = b.title.toLowerCase().includes(term) || b.author.toLowerCase().includes(term);
-    const matchesCategory = categoryFilter === 'All' || b.category === categoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+  const filtered = React.useMemo(() => {
+    const term = debouncedSearch.toLowerCase();
+    return books.filter(b => {
+      const matchesSearch = b.title.toLowerCase().includes(term) || b.author.toLowerCase().includes(term);
+      const matchesCategory = categoryFilter === 'All' || b.category === categoryFilter;
+      return matchesSearch && matchesCategory;
+    });
+  }, [books, debouncedSearch, categoryFilter]);
 
   return (
     <div className="bg-white min-h-screen">
@@ -165,30 +176,27 @@ export default function Books() {
       <div className="max-w-7xl mx-auto px-6 py-20">
         {loading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 sm:gap-10">
-            {[1, 2, 3, 4, 10].map(i => (
-              <div key={i} className="animate-pulse">
-                <div className="aspect-[3/4] bg-slate-50 rounded-[2.5rem] mb-6 border border-slate-100"></div>
-                <div className="h-6 bg-slate-50 rounded-full w-3/4 mb-4"></div>
-                <div className="h-4 bg-slate-50 rounded-full w-1/2"></div>
+            {[...Array(10)].map((_, i) => (
+              <div key={i} className="animate-pulse flex flex-col h-full">
+                <div className="aspect-[3/4] bg-slate-100 rounded-2xl sm:rounded-3xl mb-4 sm:mb-6 border border-slate-200/60 w-full"></div>
+                <div className="h-2 sm:h-3 bg-slate-200 rounded-full w-1/3 mb-3"></div>
+                <div className="h-4 sm:h-5 bg-slate-200 rounded-full w-3/4 mb-2"></div>
+                <div className="h-3 sm:h-4 bg-slate-200 rounded-full w-1/2 mb-auto"></div>
+                <div className="mt-4 sm:mt-8 h-10 sm:h-12 bg-slate-200 rounded-xl sm:rounded-2xl w-full"></div>
               </div>
             ))}
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 sm:gap-10">
-            {filtered.map((book, index) => (
-              <motion.div
+            {filtered.map((book) => (
+              <div
                 key={book.id}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.05 }}
-                whileHover={{ y: -5 }}
-                className="bg-white rounded-[2rem] sm:rounded-[2.5rem] border border-slate-100 p-3 sm:p-4 hover:shadow-2xl transition-all group flex flex-col h-full cursor-pointer"
+                className="bg-white rounded-[2rem] sm:rounded-[2.5rem] border border-slate-100 p-3 sm:p-4 hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 group flex flex-col h-full cursor-pointer"
                 onClick={() => setSelectedBook(book)}
               >
                 <div className="relative aspect-[3/4] rounded-2xl sm:rounded-3xl overflow-hidden mb-4 sm:mb-6 bg-slate-50">
                   {book.cover ? (
-                    <img src={book.cover} alt={book.title} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    <img src={book.cover} alt={book.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center p-8 text-slate-200">
                       <BookOpen size={48} className="mb-4 opacity-10" />
@@ -227,7 +235,7 @@ export default function Books() {
                     {requestedBooks.includes(book.id) ? 'অনুরোধ' : book.status === 'Available' ? 'প্রিবুক' : 'সংগ্রহে নেই'}
                   </span>
                 </button>
-              </motion.div>
+              </div>
             ))}
           </div>
         )}

@@ -318,22 +318,45 @@ const AIBot = () => {
       const apiUrl = '/api/gemini';
       
       while (maxTurns > 0) {
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            contents, 
-            systemInstruction: systemPrompt,
-            tools: [{ functionDeclarations: libraryTools }]
-          })
-        });
+        let response;
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+          
+          response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              contents, 
+              systemInstruction: systemPrompt,
+              tools: [{ functionDeclarations: libraryTools }]
+            }),
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+        } catch (fetchErr) {
+          throw new Error('Network error or API timeout. Please check your connection.');
+        }
+
+        // Block HTML output explicitly to prevent 'Unexpected token <' parsing error
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('text/html')) {
+          throw new Error('Server returned HTML instead of JSON. The API endpoint might be missing or misconfigured.');
+        }
+
+        if (!response.ok) {
+          let errorMsg = 'Failed to fetch AI response';
+          try {
+             const errorData = await response.json();
+             errorMsg = errorData.error || errorMsg;
+          } catch (e) {
+             errorMsg = `Server error: ${response.status} ${response.statusText}`;
+          }
+          throw new Error(errorMsg);
+        }
 
         const responseData = await response.json();
         
-        if (!response.ok) {
-          throw new Error(responseData.error || 'Failed to fetch AI response');
-        }
-
         const { text, functionCalls } = responseData;
         
         if (functionCalls && functionCalls.length > 0) {
@@ -381,15 +404,19 @@ const AIBot = () => {
       setMessages(prev => [...prev, aiMessage]);
     } catch (error: any) {
       console.error("AI Error:", error);
-      let errorMsg = `দুঃখিত, কিছু একটা ভুল হয়েছে। চ্যাটবটটি কাজ করছে না। দয়া করে আবার চেষ্টা করুন।`;
+      let errorMsg = `দুঃখিত, কিছু একটা ভুল হয়েছে। চ্যাটবটটি কাজ করছে না। দয়া করে কিছুক্ষণ পর আবার চেষ্টা করুন।`;
       const serverError = error?.message || String(error);
       
       if (serverError.includes('GEMINI_API_KEY') || serverError.includes('API_KEY_INVALID') || serverError.includes('API key not valid')) {
-        errorMsg = `⚠️ System Error: GEMINI_API_KEY is missing or invalid. Please add a valid Gemini API key to your environment variables.`;
+        errorMsg = `⚠️ এপিআই কী (API Key) সঠিক নয় বা দেওয়া নেই। অনুগ্রহ করে সেটিংস থেকে সঠিক Gemini API কী আপডেট করুন।`;
       } else if (serverError.includes('429') || serverError.includes('quota') || serverError.includes('limit')) {
-        errorMsg = `⚠️ Error: এই মুহূর্তে চ্যাটবট লিমিট শেষ হয়ে গেছে। কিছুক্ষণ পর আবার চেষ্টা করুন।`;
+        errorMsg = `⚠️ এই মুহূর্তে সার্ভারে অতিরিক্ত চাপ রয়েছে বা লিমিট শেষ হয়ে গেছে। কিছুক্ষণ পর আবার চেষ্টা করুন।`;
+      } else if (serverError.includes('Network error') || serverError.includes('timeout')) {
+        errorMsg = `⚠️ ইন্টারনেট সংযোগ বিচ্ছিন্ন বা সার্ভার টাইমআউট হয়েছে। আপনার কানেকশন চেক করুন।`;
+      } else if (serverError.includes('HTML instead of JSON')) {
+        errorMsg = `⚠️ সিস্টেম এরর (API Route Missing)। অনুগ্রহ করে এডমিনকে জানান।`;
       } else {
-        errorMsg = `⚠️ AI Error: ${serverError}`;
+        errorMsg = `⚠️ সমস্যা হয়েছে: ${serverError}`;
       }
 
       setMessages(prev => [...prev, {
