@@ -16,23 +16,21 @@ async function startServer() {
         return res.status(400).json({ error: "GEMINI_API_KEY is not set. Please set it in Settings." });
       }
 
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
-      const genAI = new GoogleGenerativeAI(apiKey);
+      const { GoogleGenAI } = await import('@google/genai');
+      const ai = new GoogleGenAI({ apiKey: apiKey });
       const { contents, systemInstruction, tools } = req.body;
       
-      const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
-        systemInstruction: systemInstruction,
-        tools: tools
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: contents,
+        config: {
+          systemInstruction: systemInstruction,
+          tools: tools
+        }
       });
 
-      const result = await model.generateContent({
-        contents: contents
-      });
-
-      const response = await result.response;
-      const text = response.text();
-      const functionCalls = response.functionCalls();
+      const text = response.text;
+      const functionCalls = response.functionCalls;
 
       res.json({ 
         text: text,

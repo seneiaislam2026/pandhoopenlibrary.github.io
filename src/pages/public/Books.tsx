@@ -16,6 +16,7 @@ interface Book {
   status: 'Available' | 'Issued';
   cover?: string;
   bookCode?: string;
+  shelfNo?: string;
   description?: string;
   review?: string;
 }
@@ -276,7 +277,7 @@ export default function Books() {
                 </div>
               </div>
 
-              <div className="w-full md:w-3/5 p-6 md:p-16 flex flex-col overflow-y-auto">
+              <div className="w-full md:w-3/5 p-6 md:p-16 flex flex-col overflow-y-auto custom-scrollbar">
                 <div className="mb-8 md:mb-10 shrink-0">
                   <div className="flex flex-wrap items-center gap-3 mb-4">
                     <span className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest font-bengali inline-block">
@@ -296,7 +297,7 @@ export default function Books() {
                   </div>
                 </div>
 
-                <div className="space-y-8 flex-1 overflow-y-auto pr-4 custom-scrollbar">
+                <div className="space-y-8">
                   {selectedBook.description && (
                     <div>
                       <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -315,14 +316,18 @@ export default function Books() {
                      </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-6 bg-slate-50 rounded-2xl">
-                       <h5 className="text-[10px] font-black text-slate-400 uppercase mb-2">বই কোড</h5>
-                       <p className="font-black text-slate-700">{selectedBook.bookCode || 'N/A'}</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+                    <div className="p-3 md:p-6 bg-slate-50 rounded-2xl flex flex-col justify-center">
+                       <h5 className="text-[10px] md:text-xs font-black text-slate-400 uppercase mb-1 md:mb-2">বই কোড</h5>
+                       <p className="text-sm md:text-base font-black text-slate-700 break-all">{selectedBook.bookCode || 'N/A'}</p>
                     </div>
-                    <div className="p-6 bg-slate-50 rounded-2xl">
-                       <h5 className="text-[10px] font-black text-slate-400 uppercase mb-2">ক্যাটাগরি</h5>
-                       <p className="font-black text-slate-700 font-bengali">{selectedBook.category || 'সাধারণ'}</p>
+                    <div className="p-3 md:p-6 bg-slate-50 rounded-2xl flex flex-col justify-center">
+                       <h5 className="text-[10px] md:text-xs font-black text-slate-400 uppercase mb-1 md:mb-2">সেল্ফ নং</h5>
+                       <p className="text-sm md:text-base font-black text-slate-700 break-all font-bengali">{selectedBook.shelfNo || 'N/A'}</p>
+                    </div>
+                    <div className="p-3 md:p-6 bg-slate-50 rounded-2xl col-span-2 md:col-span-1 flex flex-col justify-center">
+                       <h5 className="text-[10px] md:text-xs font-black text-slate-400 uppercase mb-1 md:mb-2">ক্যাটাগরি</h5>
+                       <p className="text-sm md:text-base font-black text-slate-700 font-bengali">{selectedBook.category || 'সাধারণ'}</p>
                     </div>
                   </div>
                 </div>

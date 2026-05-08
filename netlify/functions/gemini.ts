@@ -18,9 +18,9 @@ export const handler = async (event: any) => {
     };
   }
 
-  let genAI;
+  let ai;
   try {
-     genAI = new GoogleGenAI({ apiKey: apiKey as string });
+     ai = new GoogleGenAI({ apiKey: apiKey as string });
   } catch (initErr: any) {
      return {
       statusCode: 400,
@@ -31,17 +31,18 @@ export const handler = async (event: any) => {
 
   try {
     const { contents, systemInstruction, tools } = JSON.parse(event.body || '{}');
-    const result = await genAI.models.generateContent({ 
-      model: "gemini-1.5-flash",
+    
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
       contents: contents,
       config: {
         systemInstruction: systemInstruction,
-        tools: tools 
+        tools: tools
       }
     });
 
-    const text = result.text;
-    const functionCalls = result.functionCalls;
+    const text = response.text;
+    const functionCalls = response.functionCalls;
 
     return {
       statusCode: 200,
@@ -71,3 +72,4 @@ export const handler = async (event: any) => {
     };
   }
 };
+

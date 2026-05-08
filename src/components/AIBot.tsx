@@ -19,7 +19,7 @@ import { db } from '../lib/firebase';
 import { collection, getDocs, doc, updateDoc, serverTimestamp, query, where, orderBy, limit } from 'firebase/firestore';
 import { useAuth } from '../store/AuthContext';
 import { cn } from '../lib/utils';
-import { FunctionDeclaration, SchemaType } from '@google/generative-ai';
+import { FunctionDeclaration, Type } from '@google/genai';
 import toast from 'react-hot-toast';
 
 type Message = {
@@ -35,11 +35,11 @@ const libraryTools: FunctionDeclaration[] = [
     name: "get_books",
     description: "Fetch list of books from the library database. Can filter by category or status.",
     parameters: {
-      type: SchemaType.OBJECT,
+      type: Type.OBJECT,
       properties: {
-        category: { type: SchemaType.STRING, description: "Filter books by category (e.g. Novel, History)" },
-        status: { type: SchemaType.STRING, description: "Filter by status (Available, Issued)" },
-        limit: { type: SchemaType.NUMBER, description: "Limit number of results (default 50)" }
+        category: { type: Type.STRING, description: "Filter books by category (e.g. Novel, History)" },
+        status: { type: Type.STRING, description: "Filter by status (Available, Issued)" },
+        limit: { type: Type.NUMBER, description: "Limit number of results (default 50)" }
       }
     }
   },
@@ -47,10 +47,10 @@ const libraryTools: FunctionDeclaration[] = [
     name: "get_members",
     description: "Fetch list of library members (users). Admin only.",
     parameters: {
-      type: SchemaType.OBJECT,
+      type: Type.OBJECT,
       properties: {
-        status: { type: SchemaType.STRING, description: "Filter by status (active, inactive)" },
-        limit: { type: SchemaType.NUMBER, description: "Limit results" }
+        status: { type: Type.STRING, description: "Filter by status (active, inactive)" },
+        limit: { type: Type.NUMBER, description: "Limit results" }
       }
     }
   },
@@ -58,10 +58,10 @@ const libraryTools: FunctionDeclaration[] = [
     name: "get_book_issues",
     description: "Fetch record of issued books. Admin only.",
     parameters: {
-      type: SchemaType.OBJECT,
+      type: Type.OBJECT,
       properties: {
-        status: { type: SchemaType.STRING, description: "Filter by status (ISSUED, Returned)" },
-        overdueOnly: { type: SchemaType.BOOLEAN, description: "Only show overdue books" }
+        status: { type: Type.STRING, description: "Filter by status (ISSUED, Returned)" },
+        overdueOnly: { type: Type.BOOLEAN, description: "Only show overdue books" }
       }
     }
   },
@@ -69,10 +69,10 @@ const libraryTools: FunctionDeclaration[] = [
     name: "get_finances",
     description: "Fetch financial records (income/expense) of the library. Admin only.",
     parameters: {
-      type: SchemaType.OBJECT,
+      type: Type.OBJECT,
       properties: {
-        type: { type: SchemaType.STRING, description: "Filter by type (Income, Expense)" },
-        limit: { type: SchemaType.NUMBER, description: "Limit number of records" }
+        type: { type: Type.STRING, description: "Filter by type (Income, Expense)" },
+        limit: { type: Type.NUMBER, description: "Limit number of records" }
       }
     }
   },
@@ -80,10 +80,10 @@ const libraryTools: FunctionDeclaration[] = [
     name: "extend_due_date",
     description: "Extend the expected return date of a book issue. Admin only.",
     parameters: {
-      type: SchemaType.OBJECT,
+      type: Type.OBJECT,
       properties: {
-        issueId: { type: SchemaType.STRING, description: "The ID of the issue record (e.g. ISS-123456789)" },
-        daysToAdd: { type: SchemaType.NUMBER, description: "Number of days to add to current due date (default 7)" }
+        issueId: { type: Type.STRING, description: "The ID of the issue record (e.g. ISS-123456789)" },
+        daysToAdd: { type: Type.NUMBER, description: "Number of days to add to current due date (default 7)" }
       },
       required: ["issueId"]
     }
@@ -92,9 +92,9 @@ const libraryTools: FunctionDeclaration[] = [
     name: "get_donors",
     description: "Fetch information about library donors and their contributions.",
     parameters: {
-      type: SchemaType.OBJECT,
+      type: Type.OBJECT,
       properties: {
-        type: { type: SchemaType.STRING, description: "Donor type (Member, One-time)" }
+        type: { type: Type.STRING, description: "Donor type (Member, One-time)" }
       }
     }
   }
