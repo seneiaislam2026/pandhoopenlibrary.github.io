@@ -397,7 +397,7 @@ const AIBot = () => {
       const aiMessage: Message = {
         id: `msg-ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         role: 'model',
-        content: finalAiResponse || 'দুঃখিত, আমি কোনো উত্তর জেনারেট করতে পারিনি।',
+        content: finalAiResponse || 'এই তথ্য এখন পাওয়া যাচ্ছে না।',
         timestamp: new Date()
       };
 
@@ -407,17 +407,7 @@ const AIBot = () => {
       let errorMsg = `দুঃখিত, কিছু একটা ভুল হয়েছে। চ্যাটবটটি কাজ করছে না। দয়া করে কিছুক্ষণ পর আবার চেষ্টা করুন।`;
       const serverError = error?.message || String(error);
       
-      if (serverError.includes('GEMINI_API_KEY') || serverError.includes('API_KEY_INVALID') || serverError.includes('API key not valid')) {
-        errorMsg = `⚠️ এপিআই কী (API Key) সঠিক নয় বা দেওয়া নেই। অনুগ্রহ করে সেটিংস থেকে সঠিক Gemini API কী আপডেট করুন।`;
-      } else if (serverError.includes('429') || serverError.includes('quota') || serverError.includes('limit')) {
-        errorMsg = `⚠️ এই মুহূর্তে সার্ভারে অতিরিক্ত চাপ রয়েছে বা লিমিট শেষ হয়ে গেছে। কিছুক্ষণ পর আবার চেষ্টা করুন।`;
-      } else if (serverError.includes('Network error') || serverError.includes('timeout')) {
-        errorMsg = `⚠️ ইন্টারনেট সংযোগ বিচ্ছিন্ন বা সার্ভার টাইমআউট হয়েছে। আপনার কানেকশন চেক করুন।`;
-      } else if (serverError.includes('HTML instead of JSON')) {
-        errorMsg = `⚠️ সিস্টেম এরর (API Route Missing)। অনুগ্রহ করে এডমিনকে জানান।`;
-      } else {
-        errorMsg = `⚠️ সমস্যা হয়েছে: ${serverError}`;
-      }
+      errorMsg = `দুঃখিত, এই মুহূর্তে সার্ভারে সমস্যা হচ্ছে। অনুগ্রহ করে কিছুক্ষণ পরে আবার চেষ্টা করুন।`;
 
       setMessages(prev => [...prev, {
         id: `msg-err-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,

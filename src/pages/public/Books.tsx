@@ -184,36 +184,44 @@ export default function Books() {
 
       <div className="max-w-7xl mx-auto px-6 py-20">
         {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 sm:gap-10">
-            {[...Array(10)].map((_, i) => (
-              <div key={i} className="animate-pulse flex flex-col h-full">
-                <div className="aspect-[3/4] bg-slate-100 rounded-2xl sm:rounded-3xl mb-4 sm:mb-6 border border-slate-200/60 w-full"></div>
-                <div className="h-2 sm:h-3 bg-slate-200 rounded-full w-1/3 mb-3"></div>
-                <div className="h-4 sm:h-5 bg-slate-200 rounded-full w-3/4 mb-2"></div>
-                <div className="h-3 sm:h-4 bg-slate-200 rounded-full w-1/2 mb-auto"></div>
-                <div className="mt-4 sm:mt-8 h-10 sm:h-12 bg-slate-200 rounded-xl sm:rounded-2xl w-full"></div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-8">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="flex flex-col h-full bg-slate-50/50 rounded-2xl sm:rounded-3xl p-3 sm:p-4 border border-slate-100 overflow-hidden relative">
+                 <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/40 to-transparent z-10" />
+                <div className="aspect-[3/4] bg-slate-200/50 rounded-xl sm:rounded-2xl mb-3 sm:mb-4 w-full"></div>
+                <div className="h-2 sm:h-3 bg-slate-200 rounded-full w-1/3 mb-2"></div>
+                <div className="h-3 sm:h-4 bg-slate-200 rounded-full w-3/4 mb-1.5"></div>
+                <div className="h-2 sm:h-3 bg-slate-200 rounded-full w-1/2 mb-auto"></div>
+                <div className="mt-3 sm:mt-6 h-8 sm:h-10 bg-slate-200 rounded-lg sm:rounded-xl w-full"></div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 sm:gap-10">
-            {filtered.map((book) => (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-8">
+            {filtered.slice(0, 100).map((book) => (
               <div
                 key={book.id}
-                className="bg-white rounded-[2rem] sm:rounded-[2.5rem] border border-slate-100 p-3 sm:p-4 hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 group flex flex-col h-full cursor-pointer"
+                className="bg-white rounded-2xl sm:rounded-[2.5rem] border border-slate-100 p-3 sm:p-4 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col h-full cursor-pointer"
                 onClick={() => setSelectedBook(book)}
               >
-                <div className="relative aspect-[3/4] rounded-2xl sm:rounded-3xl overflow-hidden mb-4 sm:mb-6 bg-slate-50">
+                <div className="relative aspect-[3/4] rounded-xl sm:rounded-3xl overflow-hidden mb-3 sm:mb-6 bg-slate-50">
                   {book.cover ? (
-                    <img src={book.cover} alt={book.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    <img 
+                      src={book.cover} 
+                      alt={book.title} 
+                      loading="lazy" 
+                      decoding="async"
+                      referrerPolicy="no-referrer" 
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                    />
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-8 text-slate-200">
-                      <BookOpen size={48} className="mb-4 opacity-10" />
-                      <span className="text-[10px] font-black text-center font-bengali opacity-30">{book.title}</span>
+                    <div className="w-full h-full flex flex-col items-center justify-center p-4 text-slate-200">
+                      <BookOpen size={32} className="mb-2 opacity-10" />
+                      <span className="text-[10px] font-black text-center font-bengali opacity-30 leading-tight">{book.title}</span>
                     </div>
                   )}
-                  <div className="absolute top-2 right-2 sm:top-4 sm:right-4">
-                    <span className={`px-2 py-1 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-[8px] sm:text-[10px] font-black font-bengali shadow-xl ${
+                  <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
+                    <span className={`px-2 py-1 rounded-md sm:rounded-lg text-[8px] sm:text-[10px] font-black font-bengali shadow-md ${
                       book.status === 'Available' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
                     }`}>
                       {book.status === 'Available' ? 'এভেইলেবল' : 'বুকড'}
@@ -221,21 +229,21 @@ export default function Books() {
                   </div>
                 </div>
 
-                <div className="flex-1 px-1 sm:px-4 flex flex-col">
-                  <p className="text-[8px] sm:text-[10px] font-black text-indigo-600 uppercase tracking-[0.1em] sm:tracking-[0.2em] mb-1 sm:mb-2 font-bengali">{book.category || 'সাধারণ'}</p>
-                  <h3 className="text-sm sm:text-lg font-black text-slate-900 font-bengali leading-snug group-hover:text-indigo-600 transition-colors flex-1">{book.title}</h3>
-                  <p className="text-[10px] sm:text-sm text-slate-400 font-bengali font-bold mt-1 sm:mt-2">{book.author}</p>
+                <div className="flex-1 px-1 flex flex-col">
+                  <p className="text-[8px] sm:text-[9px] font-black text-indigo-600 uppercase tracking-widest mb-1 font-bengali truncate">{book.category || 'সাধারণ'}</p>
+                  <h3 className="text-xs sm:text-base font-black text-slate-900 font-bengali leading-snug group-hover:text-indigo-600 transition-colors flex-1 line-clamp-2">{book.title}</h3>
+                  <p className="text-[9px] sm:text-xs text-slate-400 font-bengali font-bold mt-1 truncate">{book.author}</p>
                 </div>
 
                 <button
                   onClick={(e) => { e.stopPropagation(); handlePreBook(book.id); }}
                   disabled={book.status !== 'Available' || prebooking === book.id || requestedBooks.includes(book.id)}
-                  className="mt-4 sm:mt-8 w-full py-3 sm:py-5 rounded-xl sm:rounded-2xl font-black font-bengali text-[10px] sm:text-sm transition-all flex items-center justify-center gap-2 sm:gap-3 bg-slate-900 text-white hover:bg-indigo-600 shadow-lg shadow-slate-100 disabled:bg-slate-50 disabled:text-slate-300 disabled:shadow-none active:scale-[0.98]"
+                  className="mt-3 sm:mt-6 w-full py-2.5 sm:py-4 rounded-lg sm:rounded-xl font-black font-bengali text-[10px] sm:text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/50 flex items-center justify-center gap-1.5 sm:gap-2 bg-slate-900 text-white hover:bg-indigo-600 shadow-md shadow-slate-200 disabled:bg-slate-50 disabled:text-slate-300 disabled:shadow-none active:scale-[0.98]"
                 >
                   {requestedBooks.includes(book.id) ? (
-                    <CheckCircle2 size={16} />
+                    <CheckCircle2 size={14} className="sm:w-4 sm:h-4" />
                   ) : book.status === 'Available' ? (
-                    <Clock size={16} />
+                    <Clock size={14} className="sm:w-4 sm:h-4" />
                   ) : null}
                   <span className="hidden sm:inline">
                     {requestedBooks.includes(book.id) ? 'অনুরোধ পাঠানো হয়েছে' : book.status === 'Available' ? 'প্রিবুক করুন' : 'বইটি এখন অন্য পাঠকের কাছে আছে'}

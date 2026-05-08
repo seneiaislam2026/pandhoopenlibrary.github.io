@@ -9,6 +9,12 @@
   --font-mono: "Outfit", ui-monospace, monospace;
 }
 
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 .markdown-body p {
   margin-bottom: 0.75rem;
   line-height: 1.6;
