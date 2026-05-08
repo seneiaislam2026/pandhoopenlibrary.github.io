@@ -245,27 +245,31 @@ export default function Books() {
                 <X size={24} />
               </button>
 
-              <div className="w-full md:w-2/5 bg-slate-50 p-6 sm:p-8 md:p-12 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-slate-100">
-                <div className="w-3/5 sm:w-1/2 md:w-full max-w-[220px] md:max-w-none aspect-[3/4] rounded-3xl overflow-hidden shadow-xl shadow-indigo-500/10 mb-6 md:mb-8">
+              <div className="w-full md:w-2/5 bg-slate-50 p-6 sm:p-8 md:p-12 flex flex-col items-center justify-start border-b md:border-b-0 md:border-r border-slate-100">
+                <div className="w-3/5 sm:w-1/2 md:w-full max-w-[220px] md:max-w-[280px] aspect-[3/4] rounded-3xl overflow-hidden shadow-2xl shadow-indigo-500/20">
                   {selectedBook.cover ? (
                     <img src={selectedBook.cover} alt={selectedBook.title} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-white">
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-white border border-slate-100">
                       <BookOpen size={64} className="text-slate-100" />
                     </div>
                   )}
-                </div>
-                <div className={`w-full py-3 sm:py-4 rounded-2xl flex items-center justify-center gap-2 sm:gap-3 font-black font-bengali text-base sm:text-lg ${
-                  selectedBook.status === 'Available' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
-                }`}>
-                  {selectedBook.status === 'Available' ? <CheckCircle2 size={24} /> : <Clock size={24} />}
-                  {selectedBook.status === 'Available' ? 'এভেইলেবল (Available)' : 'পাওয়া যাবে না (Issued)'}
                 </div>
               </div>
 
               <div className="w-full md:w-3/5 p-6 sm:p-8 md:p-16 flex flex-col">
                 <div className="mb-10">
-                  <span className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest font-bengali mb-4 inline-block">{selectedBook.category || 'সাধারণ'}</span>
+                  <div className="flex flex-wrap items-center gap-3 mb-4">
+                    <span className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest font-bengali inline-block">
+                      {selectedBook.category || 'সাধারণ'}
+                    </span>
+                    <span className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest font-bengali flex items-center gap-1.5 ${
+                      selectedBook.status === 'Available' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                    }`}>
+                      {selectedBook.status === 'Available' ? <CheckCircle2 size={16} /> : <Clock size={16} />}
+                      {selectedBook.status === 'Available' ? 'এভেইলেবল' : 'ইস্যুকৃত'}
+                    </span>
+                  </div>
                   <h2 className="text-3xl md:text-5xl font-black text-slate-900 font-bengali leading-tight mb-4">{selectedBook.title}</h2>
                   <div className="flex items-center gap-3 text-slate-500">
                     <UserIcon size={20} className="text-indigo-400" />

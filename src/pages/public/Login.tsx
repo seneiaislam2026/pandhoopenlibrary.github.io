@@ -72,67 +72,62 @@ export default function Login() {
         const isMasterAdmin = (usernameLower === 'admin' && password === 'admin@@') || (usernameLower === 'seneiaislam' && password === 'admin@@') || (usernameLower === 'seneiaislam@gmail.com' && password === 'admin@@');
         const loginEmail = username.includes('@') ? username : (usernameLower === 'admin' ? 'admin@library.com' : `${usernameLower}@library.com`);
         
-        let manualUser = null;
         try {
-          // Fallback manual checks in parallel with auth login to save time if needed
-          let manualUser = null;
-          
-          if (isMasterAdmin) {
-              manualUser = {
-                  username: 'admin',
-                  password: 'admin@@',
-                  name: 'System Admin',
-                  role: 'admin',
-                  id: 'admin_master_uid'
-              };
-          } else {
-             // Only query if it isn't an admin override, to speed up queries
-              let q = query(collection(db, "users"), where("username", "==", username));
-              let querySnapshot = await getDocs(q);
-              
-              if (querySnapshot.empty && username !== usernameLower) {
-                  q = query(collection(db, "users"), where("username", "==", usernameLower));
-                  querySnapshot = await getDocs(q);
-              }
-
-              if (!querySnapshot.empty) {
-                  const userDoc = querySnapshot.docs[0];
-                  const userData = userDoc.data();
-                  if (userData.password === password) {
-                      manualUser = { ...userData, id: userDoc.id };
-                  }
-              }
-          }
-        } catch (err: any) {
-          console.error("Lookup error:", err);
-        }
-
-        try {
-          // 1. Force Firebase Auth Login
-          // This is required for Firestore writes to work
+          // 1. Force Firebase Auth Login First (FASTEST PATH)
           await signInWithEmailAndPassword(auth, loginEmail, password);
-          console.log("Logged in with Firebase Auth:", loginEmail);
           
           const currentUid = auth.currentUser?.uid;
-          if (currentUid && (isMasterAdmin || manualUser?.role === 'admin')) {
-            // Update/Verify admin record in Firestore
-            await setDoc(doc(db, 'users', currentUid), { 
-              ...(manualUser || {}),
+          if (currentUid && isMasterAdmin) {
+            // Update/Verify admin record in Firestore silently
+            setDoc(doc(db, 'users', currentUid), { 
               role: 'admin', 
               email: loginEmail,
               username: usernameLower,
               id: currentUid,
               updatedAt: serverTimestamp()
-            }, { merge: true });
+            }, { merge: true }).catch(console.error);
           }
           
           navigate('/dashboard');
           return;
-        } catch (err: any) {
-          console.warn("Firebase Auth login failed, checking migration/fallback:", err.code);
+        } catch (authErr: any) {
+          console.warn("Firebase Auth login failed, checking migration/fallback:", authErr.code);
 
-          // 2. Migration: If they exist in Firestore but NOT in Auth, create the Auth account now
-          if ((err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') && (manualUser || isMasterAdmin)) {
+          // 2. Fallback manual checks if auth login fails
+          let manualUser: any = null;
+          try {
+            if (isMasterAdmin) {
+                manualUser = {
+                    username: 'admin',
+                    password: 'admin@@',
+                    name: 'System Admin',
+                    role: 'admin',
+                    id: 'admin_master_uid'
+                };
+            } else {
+               // Only query if it isn't an admin override
+                let q = query(collection(db, "users"), where("username", "==", username));
+                let querySnapshot = await getDocs(q);
+                
+                if (querySnapshot.empty && username !== usernameLower) {
+                    q = query(collection(db, "users"), where("username", "==", usernameLower));
+                    querySnapshot = await getDocs(q);
+                }
+
+                if (!querySnapshot.empty) {
+                    const userDoc = querySnapshot.docs[0];
+                    const userData = userDoc.data();
+                    if (userData.password === password) {
+                        manualUser = { ...userData, id: userDoc.id };
+                    }
+                }
+            }
+          } catch (err: any) {
+            console.error("Lookup error:", err);
+          }
+
+          // 3. Migration: If they exist in Firestore but NOT in Auth, create the Auth account now
+          if ((authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential') && (manualUser || isMasterAdmin)) {
                try {
                   const cred = await createUserWithEmailAndPassword(auth, loginEmail, password);
                   const finalRole = (usernameLower === 'admin' || isMasterAdmin) ? 'admin' : (manualUser?.role || 'reader');
@@ -157,7 +152,7 @@ export default function Login() {
                }
           }
           
-          // 3. Last Resort: Manual session (Note: Writes might still fail if Firestore rejects non-auth users)
+          // 4. Last Resort: Manual session (Note: Writes might still fail if Firestore rejects non-auth users)
           if (manualUser && (manualUser.password === password || isMasterAdmin)) {
             console.log("Using manual session fallback.");
             await loginWithUsername(username, password);
@@ -165,7 +160,7 @@ export default function Login() {
             return;
           }
           
-          throw err;
+          throw authErr;
         }
 
       } catch (err: any) {
