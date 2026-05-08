@@ -314,8 +314,10 @@ const AIBot = () => {
       let maxTurns = 5;
       let finalAiResponse = '';
       
+      const apiUrl = (import.meta as any).env.PROD ? '/.netlify/functions/gemini' : '/api/gemini';
+      
       while (maxTurns > 0) {
-        const response = await fetch('/api/gemini', {
+        const response = await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BookOpen, Search, Clock, CheckCircle2, Star, Sparkles, Filter, X, Info, Tag, User as UserIcon, Book as BookIcon } from 'lucide-react';
 import { useAuth } from '../../store/AuthContext';
-import { getDocs, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getDocs, collection, addDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import toast from 'react-hot-toast';
 import Select from 'react-select';
@@ -29,13 +29,26 @@ export default function Books() {
   const [prebooking, setPrebooking] = useState<string | null>(null);
   const [requestedBooks, setRequestedBooks] = useState<string[]>([]);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  const [activeIssues, setActiveIssues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let isMounted = true;
     const fetchBooks = async () => {
       try {
         const snapshot = await getDocs(collection(db, 'books'));
+        const issuesSnapshot = await getDocs(query(collection(db, 'issues'), where('status', 'in', ['ISSUED', 'Issued'])));
+        
         if (!isMounted) return;
+        
+        const issuesMap: Record<string, string> = {};
+        issuesSnapshot.forEach(doc => {
+          const data = doc.data();
+          if (data.bookId && data.expectedReturnDate) {
+            issuesMap[data.bookId] = data.expectedReturnDate;
+          }
+        });
+        setActiveIssues(issuesMap);
+        
         const booksData = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
@@ -207,10 +220,10 @@ export default function Books() {
                     <Clock size={16} />
                   ) : null}
                   <span className="hidden sm:inline">
-                    {requestedBooks.includes(book.id) ? 'অনুরোধ পাঠানো হয়েছে' : book.status === 'Available' ? 'প্রিবুক করুন' : 'বইটি এখন নেই'}
+                    {requestedBooks.includes(book.id) ? 'অনুরোধ পাঠানো হয়েছে' : book.status === 'Available' ? 'প্রিবুক করুন' : 'বইটি অন্য সদস্যের কাছে আছে'}
                   </span>
                   <span className="sm:hidden">
-                    {requestedBooks.includes(book.id) ? 'অনুরোধ' : book.status === 'Available' ? 'প্রিবুক' : 'নাই'}
+                    {requestedBooks.includes(book.id) ? 'অনুরোধ' : book.status === 'Available' ? 'প্রিবুক' : 'অন্যের কাছে আছে'}
                   </span>
                 </button>
               </motion.div>
@@ -325,10 +338,15 @@ export default function Books() {
                     ) : selectedBook.status === 'Available' ? (
                       <><Clock /> প্রিবুক করুন</>
                     ) : (
-                      'বইটি এখন মিলবে না'
+                      <><Clock /> বইটি অন্য সদস্যের কাছে আছে</>
                     )}
                   </button>
                 </div>
+                {selectedBook.status !== 'Available' && activeIssues[selectedBook.id] && (
+                  <p className="mt-4 text-center text-sm font-bengali text-slate-500 font-bold bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    পাঠাগারে আসার সম্ভাব্য তারিখ: <span className="text-indigo-600">{new Date(activeIssues[selectedBook.id]).toLocaleDateString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}</span>
+                  </p>
+                )}
               </div>
             </motion.div>
           </div>

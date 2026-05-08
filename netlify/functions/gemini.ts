@@ -30,21 +30,23 @@ export const handler = async (event: any) => {
   }
 
   try {
-    const { contents, systemInstruction } = JSON.parse(event.body || '{}');
+    const { contents, systemInstruction, tools } = JSON.parse(event.body || '{}');
     const result = await genAI.models.generateContent({ 
-      model: "gemini-2.5-flash",
+      model: "gemini-1.5-flash",
       contents: contents,
       config: {
-        systemInstruction: systemInstruction 
+        systemInstruction: systemInstruction,
+        tools: tools 
       }
     });
 
     const text = result.text;
+    const functionCalls = result.functionCalls;
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ text, functionCalls })
     };
   } catch (error: any) {
     const msg = error?.message || String(error);
