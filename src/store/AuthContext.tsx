@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { onAuthStateChanged, User as FirebaseUser, signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { doc, onSnapshot, query, collection, where, getDocs } from 'firebase/firestore';
+import { doc, onSnapshot, query, collection, where, getDocs, limit } from 'firebase/firestore';
 
 interface User {
   id: string;

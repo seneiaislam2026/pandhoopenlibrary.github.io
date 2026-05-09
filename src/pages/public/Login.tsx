@@ -7,7 +7,7 @@ import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
-import { doc, getDoc, setDoc, collection, serverTimestamp, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, serverTimestamp, query, where, getDocs, deleteDoc, limit } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 
 export default function Login() {

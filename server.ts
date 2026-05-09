@@ -70,12 +70,12 @@ async function startServer() {
       }
 
       let apiKey = process.env.SMS_API_KEY;
-      if (!apiKey || apiKey === "undefined" || apiKey.includes("YOUR_")) {
+      if (!apiKey || apiKey === "undefined" || apiKey.includes("YOUR_") || apiKey.trim() === "") {
         apiKey = "T445ZnbHEELavHNv3Tdw";
       }
       
       let senderId = process.env.SMS_SENDER_ID;
-      if (!senderId || senderId === "undefined" || senderId.includes("YOUR_")) {
+      if (!senderId || senderId === "undefined" || senderId.includes("YOUR_") || senderId.trim() === "") {
         senderId = "8809617634384";
       }
       
@@ -113,7 +113,8 @@ async function startServer() {
         json.success === true || 
         json.status === "success" || 
         json.response_code === "202" ||
-        (json.message && json.message.toLowerCase().includes('success'));
+        (json.message && json.message.toLowerCase().includes('success')) ||
+        (json.success_message && json.success_message.toLowerCase().includes('success'));
       
       if (isSuccess) {
           console.log(`✅ SMS successfully submitted to ${cleanNumber}`);
