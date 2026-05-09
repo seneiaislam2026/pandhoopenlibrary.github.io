@@ -37,30 +37,8 @@ export default function Books() {
 
   useEffect(() => {
     if (selectedBook && (selectedBook.status !== 'Available' && selectedBook.status !== 'AVAILABLE')) {
-      const fetchReturnDate = async () => {
-        try {
-          const q = query(collection(db, 'issues'), where('bookId', '==', selectedBook.id), where('status', '==', 'ISSUED'));
-          const snap = await getDocs(q);
-          if (!snap.empty) {
-            const data = snap.docs[0].data();
-            setModalReturnDate(data.expectedReturnDate || data.returnDate || null);
-          } else {
-             // Try Issued with Title Case
-             const q2 = query(collection(db, 'issues'), where('bookId', '==', selectedBook.id), where('status', '==', 'Issued'));
-             const snap2 = await getDocs(q2);
-             if (!snap2.empty) {
-                const data2 = snap2.docs[0].data();
-                setModalReturnDate(data2.expectedReturnDate || data2.returnDate || null);
-             } else {
-                setModalReturnDate(selectedBook.expectedReturnDate || null);
-             }
-          }
-        } catch (e) {
-          console.error("Error fetching issue for modal", e);
-          setModalReturnDate(selectedBook.expectedReturnDate || null);
-        }
-      };
-      fetchReturnDate();
+      // Just use the data already in the selectedBook object which is updated by admins
+      setModalReturnDate(selectedBook.expectedReturnDate || null);
     } else {
       setModalReturnDate(null);
     }

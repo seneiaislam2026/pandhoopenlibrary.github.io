@@ -121,11 +121,11 @@ export default function Login() {
                 };
             } else {
                // Only query if it isn't an admin override
-                let q = query(collection(db, "users"), where("username", "==", username));
+                let q = query(collection(db, "users"), where("username", "==", username), limit(1));
                 let querySnapshot = await getDocs(q);
                 
                 if (querySnapshot.empty && username !== usernameLower) {
-                    q = query(collection(db, "users"), where("username", "==", usernameLower));
+                    q = query(collection(db, "users"), where("username", "==", usernameLower), limit(1));
                     querySnapshot = await getDocs(q);
                 }
 

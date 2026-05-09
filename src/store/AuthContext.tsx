@@ -160,11 +160,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       console.warn("Firebase Auth sign-in failed, falling back to manual Firestore check:", authError.message);
       
       // Fallback: Manual Firestore check (for older users or sync issues)
-      let q = query(collection(db, "users"), where("username", "==", username));
+      let q = query(collection(db, "users"), where("username", "==", username), limit(1));
       let querySnapshot = await getDocs(q);
       
       if (querySnapshot.empty && username !== usernameLower) {
-        q = query(collection(db, "users"), where("username", "==", usernameLower));
+        q = query(collection(db, "users"), where("username", "==", usernameLower), limit(1));
         querySnapshot = await getDocs(q);
       }
       
