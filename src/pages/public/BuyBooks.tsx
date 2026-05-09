@@ -72,11 +72,6 @@ export default function BuyBooks() {
   }, []);
 
   const addToCart = (book: ShopBook) => {
-    if (!user) {
-      toast.error('বই কিনতে হলে আপনাকে প্রথমে লগইন করতে হবে');
-      navigate('/login');
-      return;
-    }
     setCart(prev => {
       const existing = prev.find(item => item.bookId === book.id);
       if (existing) {

@@ -97,36 +97,48 @@ const bdToEngNum = (str: string) => {
 };
 
 export const BOOK_CATEGORIES = [
-  "ইতিহাস ও মুক্তিযুদ্ধ", "উপন্যাস", "ছোটগল্প", "কবিতা", "প্রবন্ধ ও গবেষণা", 
-  "জীবনী", "সায়েন্স ফিকশন", "ধর্ম ও দর্শন", "ইসলামী বই", "শিশু-কিশোর", 
-  "নাটক", "ফিকশন বা রোমান্স", "থ্রিলার ও অ্যাডভেঞ্চার", "বিজ্ঞান ও প্রযুক্তি", 
-  "রাজনীতি ও অর্থনীতি", "আত্মউন্নয়ন ও মোটিভেশন", "কমিকস ও গ্রাফিক্স নোভেল", 
-  "অনুবাদ সাহিত্য", "ভ্রমণ কাহিনী", "ম্যাগাজিন ও সাময়িকী", "একাডেমিক", "অন্যান্য"
+  "মুক্তিযুদ্ধ", "ইতিহাস", "উপন্যাস", "ছোটগল্প", "কবিতা", "প্রবন্ধ", "গবেষণা", 
+  "জীবনী ও স্মৃতিচারণ", "সায়েন্স ফিকশন", "ধর্ম ও দর্শন", "ইসলামী বই", 
+  "শিশু-কিশোর", "অনুবাদ সাহিত্য", "গোয়েন্দা, থ্রিলার ও অ্যাডভেঞ্চার", 
+  "রহস্য ও ভৌতিক", "বিজ্ঞান ও প্রযুক্তি", "রাজনীতি", "অর্থনীতি", 
+  "সমাজতত্ত্ব", "আইন ও বিচার", "স্বাস্থ্য ও চিকিৎসা", "কৃষি ও পরিবেশ", 
+  "ভ্রমণ কাহিনী", "মোটিভেশন ও আত্মউন্নয়ন", "স্যাটায়ার ও রম্য", "রান্নাবান্না", 
+  "নাটক", "ফিকশন", "একাডেমিক", "অভিধান ও রেফারেন্স", "ম্যাগাজিন ও সাময়িকী", "অন্যান্য"
 ];
 
 const generateBookCode = (category: string) => {
   let prefix = 'B';
-  if (category === 'ইতিহাস ও মুক্তিযুদ্ধ') prefix = 'HIS';
+  if (category === 'মুক্তিযুদ্ধ') prefix = 'LIB';
+  else if (category === 'ইতিহাস') prefix = 'HIS';
   else if (category === 'উপন্যাস') prefix = 'NOV';
   else if (category === 'ছোটগল্প') prefix = 'SST';
   else if (category === 'কবিতা') prefix = 'POE';
-  else if (category === 'প্রবন্ধ ও গবেষণা') prefix = 'RES';
-  else if (category === 'জীবনী') prefix = 'BIO';
+  else if (category === 'প্রবন্ধ') prefix = 'ESS';
+  else if (category === 'গবেষণা') prefix = 'RES';
+  else if (category === 'জীবনী ও স্মৃতিচারণ') prefix = 'BIO';
   else if (category === 'সায়েন্স ফিকশন') prefix = 'SCI';
   else if (category === 'ধর্ম ও দর্শন') prefix = 'REL';
   else if (category === 'ইসলামী বই') prefix = 'ISL';
   else if (category === 'শিশু-কিশোর') prefix = 'CHI';
-  else if (category === 'নাটক') prefix = 'DRA';
-  else if (category === 'ফিকশন বা রোমান্স') prefix = 'ROM';
-  else if (category === 'থ্রিলার ও অ্যাডভেঞ্চার') prefix = 'THR';
-  else if (category === 'বিজ্ঞান ও প্রযুক্তি') prefix = 'TEC';
-  else if (category === 'রাজনীতি ও অর্থনীতি') prefix = 'POL';
-  else if (category === 'আত্মউন্নয়ন ও মোটিভেশন') prefix = 'MOT';
-  else if (category === 'কমিকস ও গ্রাফিক্স নোভেল') prefix = 'COM';
   else if (category === 'অনুবাদ সাহিত্য') prefix = 'TRA';
-  else if (category === 'ভ্রমণ কাহিনী') prefix = 'TRAV';
-  else if (category === 'ম্যাগাজিন ও সাময়িকী') prefix = 'MAG';
+  else if (category === 'গোয়েন্দা, থ্রিলার ও অ্যাডভেঞ্চার') prefix = 'THR';
+  else if (category === 'রহস্য ও ভৌতিক') prefix = 'HOR';
+  else if (category === 'বিজ্ঞান ও প্রযুক্তি') prefix = 'TEC';
+  else if (category === 'রাজনীতি') prefix = 'POL';
+  else if (category === 'অর্থনীতি') prefix = 'ECO';
+  else if (category === 'সমাজতত্ত্ব') prefix = 'SOC';
+  else if (category === 'আইন ও বিচার') prefix = 'LAW';
+  else if (category === 'স্বাস্থ্য ও চিকিৎসা') prefix = 'HEA';
+  else if (category === 'কৃষি ও পরিবেশ') prefix = 'AGR';
+  else if (category === 'ভ্রমণ কাহিনী') prefix = 'TRV';
+  else if (category === 'মোটিভেশন ও আত্মউন্নয়ন') prefix = 'MOT';
+  else if (category === 'স্যাটায়ার ও রম্য') prefix = 'SAT';
+  else if (category === 'রান্নাবান্না') prefix = 'COO';
+  else if (category === 'নাটক') prefix = 'DRA';
+  else if (category === 'ফিকশন') prefix = 'FIC';
   else if (category === 'একাডেমিক') prefix = 'ACA';
+  else if (category === 'অভিধান ও রেফারেন্স') prefix = 'REF';
+  else if (category === 'ম্যাগাজিন ও সাময়িকী') prefix = 'MAG';
   else prefix = 'GEN';
   
   const randomNum = Math.floor(1000 + Math.random() * 9000);

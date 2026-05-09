@@ -1,10 +1,25 @@
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+};
+
 export const handler = async (event: any) => {
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: corsHeaders,
+      body: ''
+    };
+  }
+
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
+      headers: corsHeaders,
       body: 'Method Not Allowed'
     };
   }
@@ -39,7 +54,7 @@ export const handler = async (event: any) => {
 
     return {
       statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, functionCalls, content })
     };
   } catch (error: any) {
@@ -47,20 +62,20 @@ export const handler = async (event: any) => {
     if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
        return {
           statusCode: 400,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           body: JSON.stringify({ error: "The provided GEMINI_API_KEY is invalid. Please check your API key in the Netlify settings." })
        };
     }
     if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
        return {
           statusCode: 429,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           body: JSON.stringify({ error: "API limit reached. Please try again after a minute." })
        };
     }
     return {
       statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: msg })
     };
   }
