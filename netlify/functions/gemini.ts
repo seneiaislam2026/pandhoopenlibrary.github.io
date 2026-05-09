@@ -9,17 +9,17 @@ export const handler = async (event: any) => {
     };
   }
 
-  const apiKey = process.env.GEMINI_API_KEY || "AIzaSyC7HnIFbb2E15H15lf-MN_K463mcQoFwuA";
-  if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY_HERE" || apiKey === "your_api_key_here") {
-    return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: "GEMINI_API_KEY is not set or is a placeholder in Netlify Environment Variables. Please add a valid API Key." })
-    };
+  let apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY_HERE" || apiKey === "your_api_key_here" || apiKey === "undefined") {
+    apiKey = "AIzaSyC7HnIFbb2E15H15lf-MN_K463mcQoFwuA";
   }
 
   try {
-    const { contents, systemInstruction, tools } = JSON.parse(event.body || '{}');
+    let body = event.body || '{}';
+    if (event.isBase64Encoded) {
+      body = Buffer.from(body, 'base64').toString('utf-8');
+    }
+    const { contents, systemInstruction, tools } = JSON.parse(body);
     
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ 

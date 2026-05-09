@@ -4,7 +4,11 @@ export const handler = async (event: any) => {
   }
 
   try {
-    const { number, message } = JSON.parse(event.body || '{}');
+    let body = event.body || '{}';
+    if (event.isBase64Encoded) {
+      body = Buffer.from(body, 'base64').toString('utf-8');
+    }
+    const { number, message } = JSON.parse(body);
     
     if (!number || !message) {
       return {
@@ -23,8 +27,15 @@ export const handler = async (event: any) => {
       cleanNumber = '880' + cleanNumber;
     }
 
-    const apiKey = process.env.SMS_API_KEY || "T445ZnbHEELavHNv3Tdw";
-    let senderId = process.env.SMS_SENDER_ID || "8809617634384";
+    let apiKey = process.env.SMS_API_KEY;
+    if (!apiKey || apiKey === "undefined" || apiKey.includes("YOUR_")) {
+      apiKey = "T445ZnbHEELavHNv3Tdw";
+    }
+    
+    let senderId = process.env.SMS_SENDER_ID;
+    if (!senderId || senderId === "undefined" || senderId.includes("YOUR_")) {
+      senderId = "8809617634384";
+    }
     
     if (senderId.startsWith('+')) senderId = senderId.substring(1);
     

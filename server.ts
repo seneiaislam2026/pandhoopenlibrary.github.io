@@ -11,9 +11,9 @@ async function startServer() {
   // API route for AI bot
   app.post('/api/gemini', async (req, res) => {
     try {
-      const apiKey = process.env.GEMINI_API_KEY || "AIzaSyC7HnIFbb2E15H15lf-MN_K463mcQoFwuA";
-      if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY_HERE" || apiKey === "your_api_key_here") {
-        return res.status(400).json({ error: "GEMINI_API_KEY is not set. Please set it in Settings." });
+      let apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY_HERE" || apiKey === "your_api_key_here" || apiKey === "undefined") {
+        apiKey = "AIzaSyC7HnIFbb2E15H15lf-MN_K463mcQoFwuA";
       }
 
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
@@ -69,8 +69,15 @@ async function startServer() {
         cleanNumber = '880' + cleanNumber;
       }
 
-      const apiKey = process.env.SMS_API_KEY || "T445ZnbHEELavHNv3Tdw";
-      let senderId = process.env.SMS_SENDER_ID || "8809617634384";
+      let apiKey = process.env.SMS_API_KEY;
+      if (!apiKey || apiKey === "undefined" || apiKey.includes("YOUR_")) {
+        apiKey = "T445ZnbHEELavHNv3Tdw";
+      }
+      
+      let senderId = process.env.SMS_SENDER_ID;
+      if (!senderId || senderId === "undefined" || senderId.includes("YOUR_")) {
+        senderId = "8809617634384";
+      }
       
       // bulksmsbd.net expects the senderId without the + symbol usually
       if (senderId.startsWith('+')) {
