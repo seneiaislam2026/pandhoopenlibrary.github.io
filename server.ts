@@ -11,7 +11,7 @@ async function startServer() {
   // API route for AI bot
   app.post('/api/gemini', async (req, res) => {
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = process.env.GEMINI_API_KEY || "AIzaSyC7HnIFbb2E15H15lf-MN_K463mcQoFwuA";
       if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY_HERE" || apiKey === "your_api_key_here") {
         return res.status(400).json({ error: "GEMINI_API_KEY is not set. Please set it in Settings." });
       }
@@ -21,7 +21,7 @@ async function startServer() {
       const { contents, systemInstruction, tools } = req.body;
       
       const response = await ai.models.generateContent({
-        model: "gemini-flash-latest",
+        model: "gemini-1.5-flash",
         contents: contents,
         config: {
           systemInstruction: systemInstruction,
@@ -62,8 +62,13 @@ async function startServer() {
         cleanNumber = '880' + cleanNumber;
       }
 
-      const apiKey = process.env.SMS_API_KEY;
-      const senderId = process.env.SMS_SENDER_ID;
+      const apiKey = process.env.SMS_API_KEY || "T445ZnbHEELavHNv3Tdw";
+      let senderId = process.env.SMS_SENDER_ID || "8809617634384";
+      
+      // bulksmsbd.net expects the senderId without the + symbol usually
+      if (senderId.startsWith('+')) {
+        senderId = senderId.substring(1);
+      }
       
       if (!apiKey || !senderId) {
         console.error('❌ SMS Config Missing:', { hasKey: !!apiKey, hasSender: !!senderId });
@@ -73,26 +78,14 @@ async function startServer() {
         });
       }
       
-      // Try bulksmsbd.com (most stable) but keep .net as an option if needed
-      const baseURL = 'https://bulksmsbd.com/api/smsapi';
+      const baseURL = 'https://bulksmsbd.net/api/smsapi';
       
       console.log(`📡 Sending SMS to ${cleanNumber} via ${baseURL}...`);
       
-      const params = new URLSearchParams();
-      params.append('api_key', apiKey);
-      params.append('type', 'unicode');
-      params.append('number', cleanNumber);
-      params.append('senderid', senderId);
-      params.append('message', message);
+      const url = `${baseURL}?api_key=${apiKey}&type=unicode&number=${cleanNumber}&senderid=${senderId}&message=${encodeURIComponent(message)}`;
 
-      // Make the POST request
-      const proxyResponse = await fetch(baseURL, {
-        method: 'POST',
-        body: params,
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
-      });
+      // Make the GET request
+      const proxyResponse = await fetch(url);
       
       const data = await proxyResponse.text();
       console.log('📬 SMS API raw response:', data);

@@ -23,8 +23,10 @@ export const handler = async (event: any) => {
       cleanNumber = '880' + cleanNumber;
     }
 
-    const apiKey = process.env.SMS_API_KEY;
-    const senderId = process.env.SMS_SENDER_ID;
+    const apiKey = process.env.SMS_API_KEY || "T445ZnbHEELavHNv3Tdw";
+    let senderId = process.env.SMS_SENDER_ID || "8809617634384";
+    
+    if (senderId.startsWith('+')) senderId = senderId.substring(1);
     
     if (!apiKey || !senderId) {
       return {

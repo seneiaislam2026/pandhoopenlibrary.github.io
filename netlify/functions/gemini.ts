@@ -9,7 +9,7 @@ export const handler = async (event: any) => {
     };
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || "AIzaSyC7HnIFbb2E15H15lf-MN_K463mcQoFwuA";
   if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY_HERE" || apiKey === "your_api_key_here") {
     return {
       statusCode: 400,
