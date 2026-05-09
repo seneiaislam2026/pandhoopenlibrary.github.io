@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../store/AuthContext';
 import { BookOpen, Send, Clock, CheckCircle, Trash2, Library, BookHeart, XCircle, CheckCircle2, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { onSnapshot, collection, doc, setDoc, deleteDoc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { onSnapshot, collection, doc, setDoc, deleteDoc, updateDoc, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import toast from 'react-hot-toast';
+import { sendSMS } from '../../lib/sms';
 
 interface BookRequest {
   id: string;
@@ -69,27 +70,32 @@ export default function BookRequests() {
         
         let messageText = '';
         if (status === 'Approved') {
-            messageText = `আপনার অনুরোধ টি গ্রহন করা হয়েছে খুব শিঘ্রই আমরা বইটি যুক্ত করবো এবং আপনাকে৷ জানিয়ে দিবো`;
+            messageText = `প্রিয় ${req.userName}, আপনার অনুরোধকৃত "${req.bookTitle}" বইটি গ্রহন করা হয়েছে। খুব শীঘ্রই আমরা বইটি পাঠাগারে যুক্ত করব ইনশাআল্লাহ। পানধোয়া উন্মুক্ত পাঠাগার`;
         } else if (status === 'Added') {
-            messageText = `আপনার অনুরোধের ভিত্তিতে বইটি যুক্ত করা হয়েছে।`;
+            messageText = `প্রিয় ${req.userName}, আপনার অনুরোধের ভিত্তিতে "${req.bookTitle}" বইটি পাঠাগারে যুক্ত করা হয়েছে। পানধোয়া উন্মুক্ত পাঠাগার`;
         } else if (status === 'Rejected') {
-            messageText = `আপনার অনুরোধকৃত "${req.bookTitle}" বইটি এই মুহূর্তে যুক্ত করা সম্ভব হচ্ছেনা।`;
+            messageText = `প্রিয় ${req.userName}, আপনার অনুরোধকৃত "${req.bookTitle}" বইটি এই মুহূর্তে যুক্ত করা সম্ভব হচ্ছে না। পানধোয়া উন্মুক্ত পাঠাগার`;
         }
 
         if (messageText) {
-            await addDoc(collection(db, "messages"), {
-                toUserId: req.userId,
-                toUserName: req.userName,
-                fromUserId: "system",
-                fromUserName: "পানধোয়া উন্মুক্ত পাঠাগার টীম",
-                subject: "বইয়ের রিকোয়েস্ট আপডেট",
-                content: messageText,
-                date: new Date().toISOString(),
-                createdAt: serverTimestamp(),
-                isRead: false
-            });
+            // Fetch user's phone number
+            const userDoc = await getDoc(doc(db, "users", req.userId));
+            const phone = userDoc.data()?.phone;
+            
+            if (phone) {
+                console.log(`Sending SMS to ${phone} for book request ${status}`);
+                // Use the background worker to avoid blocking
+                (async () => {
+                    const success = await sendSMS(phone, messageText);
+                    if (!success) {
+                        toast.error("সদস্যের মোবাইলে SMS পাঠানো সম্ভব হয়নি।", { icon: '⚠️' });
+                    }
+                })();
+            } else {
+                console.warn(`User ${req.userId} has no phone number, skipping SMS.`);
+            }
         }
-        toast.success('স্ট্যাটাস আপডেট করা হয়েছে এবং ইউজারকে মেসেজ পাঠানো হয়েছে!');
+        toast.success(`স্ট্যাটাস ${status === 'Added' ? 'সম্পন্ন' : status === 'Approved' ? 'গৃহীত' : 'বাতিল'} করা হয়েছে।`);
     } catch (err) {
         console.error("Error updating request:", err);
         toast.error("স্ট্যাটাস আপডেট করতে সমস্যা হয়েছে");

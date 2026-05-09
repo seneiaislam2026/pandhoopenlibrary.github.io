@@ -1,5 +1,5 @@
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const handler = async (event: any) => {
   if (event.httpMethod !== 'POST') {
@@ -18,36 +18,29 @@ export const handler = async (event: any) => {
     };
   }
 
-  let ai;
-  try {
-     ai = new GoogleGenAI({ apiKey: apiKey as string });
-  } catch (initErr: any) {
-     return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: "Invalid API key string format provided to GenAI SDK." })
-    };
-  }
-
   try {
     const { contents, systemInstruction, tools } = JSON.parse(event.body || '{}');
     
-    const response = await ai.models.generateContent({
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ 
       model: "gemini-1.5-flash",
+      systemInstruction: systemInstruction 
+    });
+    
+    const result = await model.generateContent({
       contents: contents,
-      config: {
-        systemInstruction: systemInstruction,
-        tools: tools
-      }
+      tools: tools
     });
 
-    const text = response.text;
-    const functionCalls = response.functionCalls;
+    const response = result.response;
+    const text = response.text();
+    const functionCalls = response.functionCalls();
+    const content = response.candidates?.[0]?.content;
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, functionCalls })
+      body: JSON.stringify({ text, functionCalls, content })
     };
   } catch (error: any) {
     const msg = error?.message || String(error);

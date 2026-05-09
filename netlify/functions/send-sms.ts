@@ -39,12 +39,28 @@ export const handler = async (event: any) => {
     const url = `https://bulksmsbd.net/api/smsapi?api_key=${apiKey}&type=unicode&number=${cleanNumber}&senderid=${senderId}&message=${encodeURIComponent(message)}`;
     
     const response = await fetch(url);
-    const data = await response.text();
+    const rawData = await response.text();
+    console.log('📬 SMS API raw response (Netlify):', rawData);
+
+    let json: any = {};
+    try { json = JSON.parse(rawData); } catch(e) {}
     
+    const isSuccess = 
+      Number(json.response_code) === 202 || 
+      json.success === true || 
+      json.status === "success" || 
+      json.response_code === "202" ||
+      (json.message && json.message.toLowerCase().includes('success'));
+
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ success: true, apiResponse: data })
+      body: JSON.stringify({ 
+        success: isSuccess, 
+        data: json,
+        rawData: rawData,
+        message: isSuccess ? 'SMS sent successfully' : (json.message || 'SMS API error')
+      })
     };
   } catch (error: any) {
     return {
