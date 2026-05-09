@@ -448,8 +448,30 @@ export default function ManageUsers() {
     }
 
     try {
+      const deletedUser = users.find(u => u.id === id);
+      const deletedMemberId = deletedUser?.memberId ? parseInt(deletedUser.memberId, 10) : null;
+
       await deleteDoc(doc(db, "users", id));
+      
+      // Auto-correct serial numbers (memberId) to avoid gaps
+      if (deletedMemberId !== null && !isNaN(deletedMemberId)) {
+        const usersToUpdate = users.filter(u => {
+          if (!u.memberId) return false;
+          const currentId = parseInt(u.memberId, 10);
+          return !isNaN(currentId) && currentId > deletedMemberId;
+        });
+        
+        usersToUpdate.sort((a, b) => parseInt(a.memberId, 10) - parseInt(b.memberId, 10));
+        
+        for (const u of usersToUpdate) {
+            const currentId = parseInt(u.memberId, 10);
+            const newMemberId = String(currentId - 1).padStart(3, '0');
+            await updateDoc(doc(db, "users", u.id), { memberId: newMemberId });
+        }
+      }
+
       setDeletingId(null);
+      toast.success("সদস্য ডিলিট করা হয়েছে এবং সিরিয়াল আপডেট করা হয়েছে।");
     } catch (error: any) {
       handleFirestoreError(error, OperationType.DELETE, `users/${id}`);
     }

@@ -453,7 +453,27 @@ export default function ManageDonors() {
   const handleDeleteDonor = async (id: string) => {
     if(!confirm('আপনি কি এই দাতা সদস্যকে ডিলিট করতে চান?')) return;
     try {
+       const deletedDonor = donors.find(d => d.id === id);
+       const deletedSerial = deletedDonor?.serial ? parseInt(String(deletedDonor.serial), 10) : null;
+       
        await deleteDoc(doc(db, 'donor-members', id));
+       
+       if (deletedSerial !== null && !isNaN(deletedSerial)) {
+          const donorsToUpdate = donors.filter(d => {
+            if (!d.serial) return false;
+            const currentId = parseInt(String(d.serial), 10);
+            return !isNaN(currentId) && currentId > deletedSerial;
+          });
+          
+          donorsToUpdate.sort((a, b) => parseInt(String(a.serial), 10) - parseInt(String(b.serial), 10));
+          
+          for (const d of donorsToUpdate) {
+             const currentId = parseInt(String(d.serial), 10);
+             const newSerial = String(currentId - 1);
+             await updateDoc(doc(db, 'donor-members', d.id), { serial: newSerial });
+          }
+       }
+       toast.success("সদস্য ডিলিট করা হয়েছে এবং সিরিয়াল আপডেট করা হয়েছে।");
     } catch (error) {
        console.error(error);
     }

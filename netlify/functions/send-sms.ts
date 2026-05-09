@@ -32,7 +32,9 @@ export const handler = async (event: any) => {
       };
     }
 
-    let cleanNumber = number.replace(/\D/g, '');
+    // First convert Bengali numerals to English numerals
+    const englishNumber = number.replace(/[০-৯]/g, (d: string) => String.fromCharCode(d.charCodeAt(0) - 2486));
+    let cleanNumber = englishNumber.replace(/\D/g, '');
     if (cleanNumber.startsWith('880')) {
       cleanNumber = cleanNumber;
     } else if (cleanNumber.startsWith('0')) {
