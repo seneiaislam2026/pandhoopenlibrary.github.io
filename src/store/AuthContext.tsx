@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
+import { onAuthStateChanged, User as FirebaseUser, signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { doc, onSnapshot, query, collection, where, getDocs } from 'firebase/firestore';
 
@@ -92,7 +92,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             if (isSuperAdmin && data.role !== 'admin') {
               data.role = 'admin';
             }
-            setUser({ ...data, email: firebaseUser.email || undefined, id: firebaseUser.uid });
+            if (data.status === 'pending' && !isSuperAdmin) {
+               setUser(null);
+               setToken(null);
+               signOut(auth);
+            } else {
+               setUser({ ...data, email: firebaseUser.email || undefined, id: firebaseUser.uid });
+            }
           } else {
             // Fallback if no profile yet
             const isSuperAdmin = 
@@ -138,35 +144,51 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
     const loginWithUsername = async (username: string, pass: string) => {
-    const usernameLower = username.toLowerCase();
+    const usernameLower = username.toLowerCase().trim();
+    const emailToSignIn = `${usernameLower}@library.com`;
     
-    // Try exact match first, then lowercase
-    let q = query(collection(db, "users"), where("username", "==", username));
-    let querySnapshot = await getDocs(q);
-    
-    if (querySnapshot.empty && username !== usernameLower) {
-      q = query(collection(db, "users"), where("username", "==", usernameLower));
-      querySnapshot = await getDocs(q);
-    }
-    
-    if (querySnapshot.empty) {
-      throw new Error("User not found");
-    }
-    
-    const userDoc = querySnapshot.docs[0];
-    const userData = userDoc.data() as User;
-    
-    if (userData.password === pass) {
-      const fullUser = { ...userData, id: userDoc.id };
-      // Master override for system admins
-      if (usernameLower === 'admin' || usernameLower === 'seneiaislam') {
-        fullUser.role = 'admin';
+    try {
+      // Try to sign in with Firebase Auth first
+      // This ensures request.auth is established for Firestore rules
+      const userCred = await signInWithEmailAndPassword(auth, emailToSignIn, pass);
+      const firebaseUser = userCred.user;
+      
+      // The onAuthStateChanged listener in useEffect will handle fetching the profile
+      // and setting the user state. We just need to wait or return.
+      console.log("Logged in with Firebase Auth for username:", usernameLower);
+    } catch (authError: any) {
+      console.warn("Firebase Auth sign-in failed, falling back to manual Firestore check:", authError.message);
+      
+      // Fallback: Manual Firestore check (for older users or sync issues)
+      let q = query(collection(db, "users"), where("username", "==", username));
+      let querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty && username !== usernameLower) {
+        q = query(collection(db, "users"), where("username", "==", usernameLower));
+        querySnapshot = await getDocs(q);
       }
-      setUser(fullUser);
-      setToken('manual_session');
-      localStorage.setItem('pandho_manual_user', JSON.stringify(fullUser));
-    } else {
-      throw new Error("Invalid password");
+      
+      if (querySnapshot.empty) {
+        throw new Error("User not found");
+      }
+      
+      const userDoc = querySnapshot.docs[0];
+      const userData = userDoc.data() as User;
+      
+      if (userData.password === pass) {
+        if (userData.status === 'pending' && usernameLower !== 'admin' && usernameLower !== 'seneiaislam') {
+           throw new Error("আপনার একাউন্টটি বর্তমানে পাঠাগার কর্তৃপক্ষের অনুমোদনের অপেক্ষায় আছে। অ্যাডমিন এপ্রুভ না করা পর্যন্ত লগইন করা যাবে না।");
+        }
+        const fullUser = { ...userData, id: userDoc.id };
+        if (usernameLower === 'admin' || usernameLower === 'seneiaislam') {
+          fullUser.role = 'admin';
+        }
+        setUser(fullUser);
+        setToken('manual_session');
+        localStorage.setItem('pandho_manual_user', JSON.stringify(fullUser));
+      } else {
+        throw new Error("Invalid password");
+      }
     }
   };
 

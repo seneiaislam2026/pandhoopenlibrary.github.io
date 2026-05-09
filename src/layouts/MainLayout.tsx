@@ -29,7 +29,7 @@ import { useAuth } from "../store/AuthContext";
 import { cn } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { useTranslation } from "react-i18next";
-import { db } from "../lib/firebase";
+import { db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { collection, query, where, onSnapshot, orderBy } from "firebase/firestore";
 
 export default function MainLayout() {
@@ -49,7 +49,9 @@ export default function MainLayout() {
         const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const unread = msgs.filter((m: any) => !m.isRead && m.toUserId === user.id).length;
         setMessagesCount(unread);
-      }, (err) => console.error("Messages count error:", err));
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, 'messages');
+      });
 
       const noticesQuery = query(collection(db, "notices"), orderBy("date", "desc"));
       let currentNotices: any[] = [];
@@ -67,7 +69,9 @@ export default function MainLayout() {
       const unsubscribeNotices = onSnapshot(noticesQuery, (snapshot) => {
         currentNotices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
         updateUnreadNotices();
-      }, (err) => console.error("Notices count error:", err));
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, 'notices');
+      });
 
       window.addEventListener('notices_seen', updateUnreadNotices);
 
@@ -186,11 +190,11 @@ export default function MainLayout() {
                 </Link>
                 {user ? (
                   <Link
-                    to="/dashboard"
-                    className="flex items-center gap-2 text-[13px] lg:text-sm font-bold text-slate-700 bg-slate-100 px-4 py-2 rounded-xl hover:bg-indigo-600 hover:text-white transition-all active:scale-95 whitespace-nowrap"
+                    to="/"
+                    className="flex items-center gap-2 text-[13px] lg:text-sm font-bold text-slate-700 bg-slate-100 px-4 py-2 rounded-xl hover:bg-emerald-600 hover:text-white transition-all active:scale-95 whitespace-nowrap"
                   >
-                    <UserCircle className="w-4 h-4" />
-                    {t("nav.dashboard")}
+                    <Home className="w-4 h-4" />
+                    হোম পেজ
                   </Link>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -285,12 +289,12 @@ export default function MainLayout() {
                   </Link>
                   {user ? (
                     <Link
-                      to="/dashboard"
+                      to="/"
                       onClick={() => setIsMobileMenuOpen(false)}
                       className="flex justify-center items-center gap-2 px-4 py-3.5 rounded-xl text-base font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors"
                     >
-                      <UserCircle className="w-6 h-6 text-slate-500" />
-                      Go to Dashboard
+                      <Home className="w-6 h-6 text-slate-500" />
+                      হোম পেজ
                     </Link>
                   ) : (
                     <>

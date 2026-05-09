@@ -33,7 +33,8 @@ import {
   Heart,
   Package,
   QrCode,
-  Settings
+  Settings,
+  Replace
 } from 'lucide-react';
 import { useAuth } from '../store/AuthContext';
 import { cn } from '../lib/utils';
@@ -174,10 +175,25 @@ export default function DashboardLayout() {
     { name: 'ওয়েবসাইট সেটিংস', path: '/dashboard/settings', icon: Settings },
   ];
 
+  const subadminLinks = [
+    { name: 'আমার প্রোফাইল', path: '/dashboard/profile', icon: UserCircle },
+    { name: 'ওভারভিউ', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'বইয়ের তালিকা', path: '/dashboard/books', icon: Library },
+    { name: 'দাতা সদস্য', path: '/dashboard/donors', icon: Heart },
+  ];
+
+  const issueAdminLinks = [
+    { name: 'আমার প্রোফাইল', path: '/dashboard/profile', icon: UserCircle },
+    { name: 'ওভারভিউ', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'বইয়ের তালিকা', path: '/dashboard/books', icon: Library },
+    { name: 'বই ইস্যু ও ফেরত', path: '/dashboard/issues', icon: Replace },
+    { name: 'প্রি-বুকিং', path: '/dashboard/pre-bookings', icon: Clock },
+  ];
+
   const readerLinks = [
     { name: 'আমার প্রোফাইল', path: '/dashboard/profile', icon: UserCircle },
     { name: 'ড্যাশবোর্ড', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'বইয়ের তালিকা', path: '/books', icon: Library },
+    { name: 'বইয়ের তালিকা', path: '/dashboard/books', icon: Library },
     { name: 'বই কিনুন', path: '/buy-books', icon: Library },
     { name: 'নোটিশ বোর্ড', path: '/dashboard/notice-board', icon: Bell },
     { name: 'আমার ইনবক্স', path: '/dashboard/inbox', icon: MessageSquare },
@@ -185,7 +201,7 @@ export default function DashboardLayout() {
     { name: 'বইয়ের অনুরোধ', path: '/dashboard/book-requests', icon: BookOpen },
   ];
 
-  const links = user?.role === 'admin' ? adminLinks : readerLinks;
+  const links = user?.role === 'admin' ? adminLinks : user?.role === 'subadmin' ? subadminLinks : user?.role === 'issue_admin' ? issueAdminLinks : readerLinks;
   const filteredLinks = links.filter(l => l.name.toLowerCase().includes(sidebarSearch.toLowerCase()));
 
   const handleLogout = () => {
@@ -223,7 +239,7 @@ export default function DashboardLayout() {
                  <Logo className="w-8 h-8" />
                </div>
                <div className="flex flex-col min-w-0">
-                 <span className="font-bold text-white tracking-wide truncate text-sm">পানধোয়া পাঠাগার</span>
+                 <span className="font-bold text-white tracking-wide truncate text-sm">পানধোয়া উন্মুক্ত পাঠাগার</span>
                  <span className="text-[10px] text-indigo-300/80 font-medium uppercase tracking-widest truncate">{user?.role === 'admin' ? 'Admin Gateway' : 'Member Portal'}</span>
                </div>
             </Link>
@@ -495,6 +511,15 @@ export default function DashboardLayout() {
             </div>
           </div>
         </header>
+
+        {user?.status === 'pending' && (
+          <div className="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-500/20 px-4 flex items-center justify-center gap-2 py-3 z-20 relative">
+            <ShieldAlert className="w-5 h-5 text-amber-500 shrink-0" />
+            <p className="text-sm text-amber-800 dark:text-amber-400 font-bold font-bengali text-center">
+              আপনার একাউন্টটি বর্তমানে পাঠাগার কর্তৃপক্ষের অনুমোদনের অপেক্ষায় আছে। পাঠাগার কর্তৃপক্ষ এপ্রুভ না করলে মেম্বার হওয়া যাবে না।
+            </p>
+          </div>
+        )}
 
         {/* Scrollable area */}
         <main className="flex-1 overflow-y-auto bg-slate-50/50 dark:bg-slate-900/50 p-4 md:p-8 pb-24 md:pb-8">

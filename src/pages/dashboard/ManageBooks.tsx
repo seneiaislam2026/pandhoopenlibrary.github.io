@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../store/AuthContext';
 import { Search, Plus, Edit2, Trash2, BookOpen, ShieldAlert, Download } from 'lucide-react';
-import { onSnapshot, collection, doc, setDoc, deleteDoc, updateDoc, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
+import { onSnapshot, collection, doc, setDoc, deleteDoc, updateDoc, addDoc, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { firebaseService } from '../../services/firebaseService';
 import toast from 'react-hot-toast';
@@ -405,7 +405,41 @@ export default function ManageBooks() {
     return searchMatch && categoryMatch;
   });
 
-  const isActuallyAdmin = user?.role === 'admin' || user?.username === 'admin' || user?.email === 'seneiaislam@gmail.com' || user?.email === 'admin@library.com';
+  const isActuallyAdmin = user?.role === 'admin' || user?.role === 'subadmin' || user?.role === 'issue_admin' || user?.username === 'admin' || user?.email === 'seneiaislam@gmail.com' || user?.email === 'admin@library.com';
+  const isAdminRole = user?.role === 'admin';
+
+  const [prebooking, setPrebooking] = useState<string | null>(null);
+  const [requestedBooks, setRequestedBooks] = useState<string[]>([]);
+
+  const handlePreBook = async (bookId: string) => {
+    if (!user) {
+      toast.error('বই রিকুয়েস্ট করতে দয়া করে লগইন করুন।');
+      return;
+    }
+
+    if (user.status !== 'active') {
+      toast.error('আপনার অ্যাকাউন্টটি এখনো সক্রিয় নয়। এডমিনের অনুমোদনের অপেক্ষা করুন।');
+      return;
+    }
+
+    setPrebooking(bookId);
+    try {
+      await addDoc(collection(db, 'pre-bookings'), {
+        bookId,
+        userId: user.id,
+        userName: user.name,
+        date: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        status: 'Pending'
+      });
+      toast.success('রিকুয়েষ্ট সম্পন্ন হয়েছে');
+      setRequestedBooks(prev => [...prev, bookId]);
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.CREATE, 'pre-bookings');
+    } finally {
+      setPrebooking(null);
+    }
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -435,13 +469,15 @@ export default function ManageBooks() {
                 <Download className="w-5 h-5 text-indigo-300" />
                 তালিকা ডাউনলোড
               </button>
-              <button
-                onClick={() => { setFormData({ title: '', author: '', category: '', cover: '', status: 'Available', bookCode: '', shelfNo: '', review: '', description: '' }); setEditingId(null); setShowModal(true); }}
-                className="bg-indigo-500 hover:bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-indigo-500/20 transition-all active:scale-95 group whitespace-nowrap min-w-[160px]"
-              >
-                <Plus className="w-5 h-5" /> 
-                বই যুক্ত করুন 
-              </button>
+              {isActuallyAdmin && (
+                <button
+                  onClick={() => { setFormData({ title: '', author: '', category: '', cover: '', status: 'Available', bookCode: '', shelfNo: '', review: '', description: '' }); setEditingId(null); setShowModal(true); }}
+                  className="bg-indigo-500 hover:bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-indigo-500/20 transition-all active:scale-95 group whitespace-nowrap min-w-[160px]"
+                >
+                  <Plus className="w-5 h-5" /> 
+                  বই যুক্ত করুন 
+                </button>
+              )}
             </div>
           </div>
 
@@ -577,12 +613,25 @@ export default function ManageBooks() {
                           রিটার্ন
                        </button>
                     )}
-                    <button onClick={() => handleEdit(book)} className="p-2 text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition" title="এডিট">
-                      <Edit2 className="w-4 h-4"/>
-                    </button>
-                    <button onClick={() => handleDelete(book.id)} className="p-2 text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 rounded-lg transition" title="ডিলিট">
-                      <Trash2 className="w-4 h-4"/>
-                    </button>
+                    {!isActuallyAdmin && (String(book.status).toLowerCase() === 'available') && (
+                        <button
+                          onClick={() => handlePreBook(book.id!)}
+                          disabled={prebooking === book.id || requestedBooks.includes(book.id!)}
+                          className="text-[10px] bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-200 transition font-bengali disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {requestedBooks.includes(book.id!) ? 'রিকুয়েষ্ট করা হয়েছে' : prebooking === book.id ? 'অপেক্ষা করুন...' : 'ইস্যুর অনুরোধ'}
+                        </button>
+                    )}
+                    {isAdminRole && (
+                      <>
+                        <button onClick={() => handleEdit(book)} className="p-2 text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition" title="এডিট">
+                          <Edit2 className="w-4 h-4"/>
+                        </button>
+                        <button onClick={() => handleDelete(book.id)} className="p-2 text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 rounded-lg transition" title="ডিলিট">
+                          <Trash2 className="w-4 h-4"/>
+                        </button>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>

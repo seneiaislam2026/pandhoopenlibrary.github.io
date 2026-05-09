@@ -193,6 +193,9 @@ export default function ManageIssues() {
       console.log('Updating Book Status for book:', selectedBook.id);
       await updateDoc(doc(db, "books", String(selectedBook.id)), { 
         status: "ISSUED",
+        currentReaderName: selectedUser.name || 'Anonymous',
+        currentReaderId: selectedUser.id,
+        expectedReturnDate: formData.expectedReturnDate,
         updatedAt: serverTimestamp()
       });
       console.log('Book status updated successfully');
@@ -204,8 +207,18 @@ export default function ManageIssues() {
       if (selectedUser.phone) {
         const bdDate = new Date(formData.expectedReturnDate).toLocaleDateString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486));
         const smsMessage = `প্রিয় ${selectedUser.name}, পানধোয়া উন্মুক্ত পাঠাগার থেকে আপনাকে "${selectedBook.title}" বইটি ইস্যু করা হয়েছে। ফেরত দেওয়ার শেষ তারিখ: ${bdDate}। পাঠাগারের সাথে থাকার জন্য ধন্যবাদ। ওয়েবসাইট: www.pandhoalibrary.org`;
-        console.log("Sending SMS payload:", selectedUser.phone, smsMessage);
-        sendSMS(selectedUser.phone, smsMessage);
+        
+        // Send SMS in background to avoid blocking
+        (async () => {
+          try {
+            const success = await sendSMS(selectedUser.phone || '', smsMessage);
+            if (!success) {
+              toast.error("সদস্যের মোবাইলে SMS পাঠানো সম্ভব হয়নি। দয়া করে API ব্যালেন্স চেক করুন।", { icon: '⚠️' });
+            }
+          } catch (e) {
+            console.error("SMS Error:", e);
+          }
+        })();
       } else {
         console.warn("User has no phone number, skipping SMS.");
       }
@@ -452,6 +465,9 @@ export default function ManageIssues() {
       console.log('Updating Book status to Available for bookId:', issue.bookId);
       await updateDoc(doc(db, "books", issue.bookId), { 
         status: 'Available',
+        currentReaderName: null,
+        currentReaderId: null,
+        expectedReturnDate: null,
         updatedAt: serverTimestamp()
       });
       console.log('Book status updated successfully');
@@ -461,7 +477,18 @@ export default function ManageIssues() {
       const issueBook = books.find(b => b.id === issue.bookId);
       if (issueUser && issueUser.phone) {
         const smsMessage = `প্রিয় ${issueUser.name}, আপনার জমাকৃত "${issueBook?.title || 'বইটি'}" বইটির ফেরত প্রক্রিয়া সফলভাবে সম্পন্ন হয়েছে। পানধোয়া উন্মুক্ত পাঠাগারের সাথে থাকার জন্য ধন্যবাদ। ওয়েবসাইট: www.pandhoalibrary.org`;
-        sendSMS(issueUser.phone, smsMessage);
+        
+        // Send SMS in background
+        (async () => {
+          try {
+            const success = await sendSMS(issueUser.phone || '', smsMessage);
+            if (!success) {
+              toast.error("ফেরত মেসেজটি পাঠানো সম্ভব হয়নি।", { icon: '⚠️' });
+            }
+          } catch (e) {
+            console.error("SMS Error:", e);
+          }
+        })();
       }
     } catch (err: any) {
       console.error('Error during return process:', err);

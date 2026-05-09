@@ -794,7 +794,7 @@ export default function UserProfile() {
                   )}
                   <div className="col-span-2 bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 font-bengali">সদস্যের ধরন</p>
-                    <p className="font-semibold text-slate-900 capitalize text-sm font-bengali">{user?.role === 'reader' ? 'পাঠক সদস্য' : user?.role === 'donor' ? 'সম্মানিত দাতা' : user?.role === 'admin' ? 'অ্যাডমিন' : user?.role}</p>
+                    <p className="font-semibold text-slate-900 capitalize text-sm font-bengali">{user?.role === 'reader' ? 'পাঠক সদস্য' : user?.role === 'donor' ? 'সম্মানিত দাতা' : user?.role === 'subadmin' ? 'সাব-অ্যাডমিন' : user?.role === 'issue_admin' ? 'ইস্যু অ্যাডমিন' : user?.role === 'admin' ? 'অ্যাডমিন' : user?.role}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-4">

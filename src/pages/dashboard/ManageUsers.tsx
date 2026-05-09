@@ -100,19 +100,29 @@ export default function ManageUsers() {
   useEffect(() => {
     const unsubBooks = onSnapshot(collection(db, "books"), (snapshot) => {
       setBooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'books');
     });
     const unsubUsers = onSnapshot(query(collection(db, "users"), orderBy("memberId", "asc")), (snapshot) => {
       setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as LibUser[]);
       setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'users');
     });
     const unsubIssues = onSnapshot(collection(db, "issues"), (snapshot) => {
       setAllIssues(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'issues');
     });
     const unsubRequests = onSnapshot(collection(db, "member-requests"), (snapshot) => {
       setAllRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'member-requests');
     });
     const unsubPreBs = onSnapshot(collection(db, "pre-bookings"), (snapshot) => {
       setPreBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'pre-bookings');
     });
 
     return () => {
@@ -445,44 +455,44 @@ export default function ManageUsers() {
     }
   };
 
-  const handleAddUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const normalizedUsername = formData.username.toLowerCase().trim();
-      const memberId = formData.memberId.trim();
+const handleAddUser = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setLoading(true);
+  try {
+    const normalizedUsername = formData.username.toLowerCase().trim();
+    const memberId = formData.memberId.trim();
 
-      // check duplicate username locally from state
-      if (users.some(u => u.username.toLowerCase() === normalizedUsername)) {
-        toast.error("এই ইউজারনেমটি ইতিপূর্বে ব্যবহার করা হয়েছে। দয়া করে ভিন্ন ইউজারনেম ব্যবহার করুন।");
+    // check duplicate username locally from state
+    if (users.some(u => u.username.toLowerCase() === normalizedUsername)) {
+      toast.error("এই ইউজারনেমটি ইতিপূর্বে ব্যবহার করা হয়েছে। দয়া করে ভিন্ন ইউজারনেম ব্যবহার করুন।");
+      setLoading(false);
+      return;
+    }
+
+    // check duplicate memberId locally from state
+    if (memberId && users.some(u => u.memberId === memberId)) {
+        toast.error(`সদস্য আইডি "${memberId}" ইতিপূর্বে অন্য একজন সদস্যকে প্রদান করা হয়েছে। দয়া করে ভিন্ন আইডি ব্যবহার করুন।`);
         setLoading(false);
         return;
-      }
+    }
 
-      // check duplicate memberId locally from state
-      if (memberId && users.some(u => u.memberId === memberId)) {
-          toast.error(`সদস্য আইডি "${memberId}" ইতিপূর্বে অন্য একজন সদস্যকে প্রদান করা হয়েছে। দয়া করে ভিন্ন আইডি ব্যবহার করুন।`);
-          setLoading(false);
-          return;
-      }
+    const uName = (formData.name || "").toLowerCase().trim();
+    const isSpecialUser = uName === "system admin" || uName === "seneia islam" || uName === "seneiya islam" || formData.username.toLowerCase() === "seneiaislam" || formData.username.toLowerCase() === "admin";
+    
+    let finalMemberId = memberId;
 
-      const uName = (formData.name || "").toLowerCase().trim();
-      const isSpecialUser = uName === "system admin" || uName === "seneia islam" || uName === "seneiya islam" || formData.username.toLowerCase() === "seneiaislam" || formData.username.toLowerCase() === "admin";
-      
-      let finalMemberId = memberId;
-
-      if (!isSpecialUser && !finalMemberId) {
-        let maxId = 0;
-        users.forEach((data) => {
-          const dName = (data.name || "").toLowerCase().trim();
-          const dEmail = (data.email || "").toLowerCase().trim();
-          if (dName === "system admin" || dName === "seneia islam" || dName === "seneiya islam" || dEmail === "seneiaislam@gmail.com") return;
-          
-          const mid = parseInt(data.memberId || "0", 10);
-          if (!isNaN(mid) && mid > maxId) maxId = mid;
-        });
-        finalMemberId = String(maxId + 1).padStart(3, '0');
-      }
+    if (!isSpecialUser && !finalMemberId) {
+      let maxId = 0;
+      users.forEach((data) => {
+        const dName = (data.name || "").toLowerCase().trim();
+        const dEmail = (data.email || "").toLowerCase().trim();
+        if (dName === "system admin" || dName === "seneia islam" || dName === "seneiya islam" || dEmail === "seneiaislam@gmail.com") return;
+        
+        const mid = parseInt(data.memberId || "0", 10);
+        if (!isNaN(mid) && mid > maxId) maxId = mid;
+      });
+      finalMemberId = String(maxId + 1).padStart(3, '0');
+    }
       
       let giftSubscriptionExpiry = null;
       if (formData.hasGiftSubscription && formData.giftSubscriptionDuration) {
@@ -527,6 +537,7 @@ export default function ManageUsers() {
       // Final Firestore write
       await setDoc(doc(db, "users", actualUserId), {
         ...formData,
+        username: normalizedUsername,
         giftSubscriptionExpiry,
         password: passwordToSet,
         id: actualUserId,
@@ -538,8 +549,19 @@ export default function ManageUsers() {
       });
 
       if (formData.phone) {
-        const smsMessage = `অভিনন্দন ${formData.name}! পানধোয়া উন্মুক্ত পাঠাগারে আপনাকে স্বাগতম। আপনার সদস্য নং: ${finalMemberId}, ইউজার আইডি: ${formData.username}, পাসওয়ার্ড: ${passwordToSet} | ওয়েবসাইট: www.pandhoalibrary.org`;
-        sendSMS(formData.phone, smsMessage);
+        const smsMessage = `অভিনন্দন ${formData.name}! পানধোয়া উন্মুক্ত পাঠাগারে আপনাকে স্বাগতম। আপনার সদস্য নং: ${finalMemberId}, ইউজার আইডি: ${normalizedUsername}, পাসওয়ার্ড: ${passwordToSet} | ওয়েবসাইট: www.pandhoalibrary.org`;
+        
+        // Send SMS in background
+        (async () => {
+          try {
+            const success = await sendSMS(formData.phone, smsMessage);
+            if (!success) {
+              toast.error("সদস্যের মোবাইলে স্বাগতম SMS পাঠানো সম্ভব হয়নি।", { icon: '⚠️' });
+            }
+          } catch (e) {
+            console.error("SMS Error:", e);
+          }
+        })();
       }
 
       toast.success("নতুন সদস্য সফলভাবে যুক্ত করা হয়েছে।");
@@ -988,8 +1010,8 @@ export default function ManageUsers() {
 
                 <div className="space-y-4">
                   <div className="flex flex-wrap gap-2">
-                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest font-bengali ${u.role === "admin" ? "bg-purple-600 text-white" : "bg-slate-100 text-slate-600"}`}>
-                      {u.role === 'reader' ? 'পাঠক সদস্য' : u.role === 'donor' ? 'সম্মানিত দাতা' : u.role === 'admin' ? 'অ্যাডমিন' : u.role}
+                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest font-bengali ${u.role === "admin" ? "bg-purple-600 text-white" : u.role === "subadmin" ? "bg-indigo-500 text-white" : u.role === "issue_admin" ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-600"}`}>
+                      {u.role === 'reader' ? 'পাঠক সদস্য' : u.role === 'donor' ? 'সম্মানিত দাতা' : u.role === 'subadmin' ? 'সাব-অ্যাডমিন' : u.role === 'issue_admin' ? 'ইস্যু অ্যাডমিন' : u.role === 'admin' ? 'অ্যাডমিন' : u.role}
                     </span>
                     <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest font-bengali ${u.status === "active" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>
                       {u.status === 'active' ? 'সক্রিয়' : u.status === 'pending' ? 'অপেক্ষমান' : u.status === 'inactive' ? 'নিষ্ক্রিয়' : u.status}
@@ -1104,15 +1126,29 @@ export default function ManageUsers() {
             </div>
             <form onSubmit={handleAddUser} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <input type="text" placeholder="পুরো নাম" required value={formData.name || ''} onChange={e=>setFormData({...formData, name:e.target.value})} className="w-full border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 font-bengali"/>
+                <input type="text" placeholder="নাম (বাংলা বা ইংরেজি)" required value={formData.name || ''} 
+                  onChange={e => {
+                    const val = e.target.value;
+                    setFormData(prev => {
+                      const newData = { ...prev, name: val };
+                      // Auto-generate username from English characters if it matches the current pattern
+                      const autoUser = val.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '');
+                      if (!prev.username || prev.username === prev.name.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')) {
+                        newData.username = autoUser;
+                      }
+                      return newData;
+                    });
+                  }} 
+                  className="w-full border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 font-bengali"
+                />
                 <input type="text" placeholder="সদস্য আইডি (ঐচ্ছিক)" value={formData.memberId || ''} onChange={e=>setFormData({...formData, memberId:e.target.value})} className="w-full border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 font-bengali"/>
               </div>
-              <input type="text" placeholder="ইউজারনেম" required value={formData.username || ''} onChange={e=>setFormData({...formData, username:e.target.value})} className="w-full border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 font-bengali"/>
+              <input type="text" placeholder="ইউজারনেম (ইংরেজি)" required value={formData.username || ''} onChange={e=>setFormData({...formData, username:e.target.value})} className="w-full border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 font-bengali"/>
               <input type="text" placeholder="মোবাইল নম্বর" required value={formData.phone || ''} onChange={e=>setFormData({...formData, phone:e.target.value})} className="w-full border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 font-bengali"/>
               <input type="password" placeholder="পাসওয়ার্ড (ডিফল্ট: 123456)" value={formData.password || ''} onChange={e=>setFormData({...formData, password:e.target.value})} className="w-full border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 font-bengali"/>
               <div className="grid grid-cols-2 gap-4">
                 <select value={formData.role || 'reader'} onChange={e=>setFormData({...formData, role:e.target.value})} className="border border-slate-200 p-3 rounded-xl bg-slate-50 font-bengali">
-                  <option value="reader">পাঠক (Reader)</option><option value="donor">দাতা (Donor)</option><option value="admin">অ্যাডমিন (Admin)</option>
+                  <option value="reader">পাঠক (Reader)</option><option value="donor">দাতা (Donor)</option><option value="subadmin">সাব-অ্যাডমিন (Subadmin)</option><option value="issue_admin">ইস্যু অ্যাডমিন (Issue Admin)</option><option value="admin">অ্যাডমিন (Admin)</option>
                 </select>
                 <select value={formData.status || 'active'} onChange={e=>setFormData({...formData, status:e.target.value})} className="border border-slate-200 p-3 rounded-xl bg-slate-50 font-bengali">
                   <option value="active">সক্রিয় (Active)</option><option value="inactive">নিষ্ক্রিয় (Inactive)</option><option value="pending">অপেক্ষমান (Pending)</option>
@@ -1200,7 +1236,7 @@ export default function ManageUsers() {
 
                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm mt-4">
                      <div><p className="text-slate-400 font-bold text-[10px] uppercase font-bengali">মোবাইল</p><p className="font-bold">{selectedUser.phone || 'N/A'}</p></div>
-                     <div><p className="text-slate-400 font-bold text-[10px] uppercase font-bengali">সদস্যের ধরন</p><p className="font-bold capitalize font-bengali">{selectedUser.role === 'reader' ? 'পাঠক সদস্য' : selectedUser.role === 'donor' ? 'সম্মানিত দাতা' : selectedUser.role === 'admin' ? 'অ্যাডমিন' : selectedUser.role}</p></div>
+                     <div><p className="text-slate-400 font-bold text-[10px] uppercase font-bengali">সদস্যের ধরন</p><p className="font-bold capitalize font-bengali">{selectedUser.role === 'reader' ? 'পাঠক সদস্য' : selectedUser.role === 'donor' ? 'সম্মানিত দাতা' : selectedUser.role === 'subadmin' ? 'সাব-অ্যাডমিন' : selectedUser.role === 'issue_admin' ? 'ইস্যু অ্যাডমিন' : selectedUser.role === 'admin' ? 'অ্যাডমিন' : selectedUser.role}</p></div>
                      <div><p className="text-slate-400 font-bold text-[10px] uppercase font-bengali">স্ট্যাটাস</p><p className="font-bold capitalize font-bengali">{selectedUser.status === 'active' ? 'সক্রিয়' : selectedUser.status === 'pending' ? 'অপেক্ষমান' : selectedUser.status === 'inactive' ? 'নিষ্ক্রিয়' : selectedUser.status}</p></div>
                      <div><p className="text-slate-400 font-bold text-[10px] uppercase font-bengali">যোগদান</p><p className="font-bold">{selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleDateString() : 'N/A'}</p></div>
                    </div>
@@ -1379,7 +1415,7 @@ export default function ManageUsers() {
               <input type="password" placeholder="নতুন পাসওয়ার্ড (ঐচ্ছিক)" value={editFormData.password || ''} onChange={e=>setEditFormData({...editFormData, password:e.target.value})} className="w-full border border-slate-200 p-3 rounded-xl font-bengali"/>
               <div className="grid grid-cols-2 gap-4">
                 <select value={editFormData.role || 'reader'} onChange={e=>setEditFormData({...editFormData, role:e.target.value})} className="border border-slate-200 p-3 rounded-xl bg-slate-50 font-bengali">
-                  <option value="reader">পাঠক</option><option value="donor">দাতা</option><option value="admin">অ্যাডমিন</option>
+                  <option value="reader">পাঠক</option><option value="donor">দাতা</option><option value="subadmin">সাব-অ্যাডমিন</option><option value="issue_admin">ইস্যু অ্যাডমিন</option><option value="admin">অ্যাডমিন</option>
                 </select>
                 <select value={editFormData.status || 'active'} onChange={e=>setEditFormData({...editFormData, status:e.target.value})} className="border border-slate-200 p-3 rounded-xl bg-slate-50 font-bengali">
                   <option value="active">সক্রিয়</option><option value="inactive">নিষ্ক্রিয়</option><option value="pending">অপেক্ষমান</option>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../../store/AuthContext";
 import { firebaseService } from "../../services/firebaseService";
 import { db, handleFirestoreError, OperationType } from "../../lib/firebase";
@@ -112,7 +112,7 @@ export default function DashboardHome() {
   };
 
   useEffect(() => {
-    if (user?.role === "admin") {
+    if (user?.role === "admin" || user?.role === "subadmin" || user?.role === "issue_admin") {
       const fetchStats = async () => {
         try {
           const [users, books, issues, finances] = await Promise.all([
@@ -158,188 +158,39 @@ export default function DashboardHome() {
     }
   }, [user]);
 
-  if (user?.role !== "admin") {
+  if (!user) return null;
+
+  if (user.role !== "admin" && user.role !== "issue_admin") {
     return (
-      <div className="space-y-6 animate-in fade-in duration-700 max-w-5xl mx-auto">
-        {/* Welcome & Action Banner */}
-        <div className="bg-white rounded-3xl p-8 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50 rounded-full blur-[80px] -mr-32 -mt-32 pointer-events-none"></div>
-          <div className="relative z-10">
-            <p className="text-slate-500 font-semibold font-bengali mb-1">স্বাগতম,</p>
-            <h2 className="text-3xl font-black tracking-tight text-slate-900">{user?.name} 👋</h2>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Link
-              to="/books"
-              className="relative z-10 bg-white hover:bg-slate-50 text-slate-900 border border-slate-200 px-6 py-4 rounded-2xl font-bold flex items-center justify-center gap-3 shadow-sm hover:shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] text-center font-bengali"
-            >
-              <Search className="w-5 h-5 text-slate-500 shrink-0" />
-              বইয়ের তালিকা এবং এভেইলেবল বই দেখুন
-            </Link>
-            <button
-              onClick={() => setShowRequestModal(true)}
-              className="relative z-10 bg-slate-900 hover:bg-black text-white px-6 py-4 rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg shadow-slate-900/20 transition-all hover:scale-[1.02] active:scale-[0.98] text-center font-bengali"
-            >
-              <Library className="w-5 h-5 text-indigo-400 shrink-0" /> 
-              বই গ্রহণের আবেদন
-            </button>
-          </div>
+      <div className="space-y-6">
+        <div className="bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-slate-800 dark:via-slate-900 dark:to-slate-900 rounded-3xl p-6 sm:p-8 shadow-sm relative border border-indigo-100/50 dark:border-slate-800">
+           <p className="text-slate-600 dark:text-slate-400 font-bold mb-1 font-bengali text-lg">স্বাগতম,</p>
+           <h2 className="text-3xl sm:text-4xl font-black mb-6 text-slate-900 dark:text-white font-bengali">
+             {user.name || user.username} 👋
+           </h2>
+
+           <div className="space-y-3">
+             <Link to="/dashboard/books" className="w-full flex items-center justify-center gap-3 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-white px-6 py-5 rounded-2xl font-bold transition-all shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-100 dark:border-slate-700 font-bengali text-base sm:text-lg">
+               <Search className="w-6 h-6 text-slate-500 dark:text-slate-400 shrink-0" />
+               বইয়ের তালিকা এবং এভেইলেবল বই দেখুন
+             </Link>
+             
+             <Link to="/dashboard/book-requests" className="w-full flex items-center justify-center gap-3 bg-[#0B1120] hover:bg-slate-900 text-white px-6 py-5 rounded-2xl font-bold transition-all shadow-lg font-bengali text-base sm:text-lg">
+               <Library className="w-6 h-6 text-slate-400 shrink-0" />
+               বই গ্রহণের আবেদন
+             </Link>
+           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
-          <Link
-            to="/dashboard/profile"
-            className="bg-white rounded-3xl p-6 border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 transition-all group flex flex-col items-center text-center"
-          >
-            <div className="w-16 h-16 bg-slate-50 text-slate-600 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform group-hover:bg-indigo-50 group-hover:text-indigo-600">
-              <UserCircle2 className="w-7 h-7" />
-            </div>
-            <h3 className="font-bold text-slate-900 mb-2 font-bengali">আমার প্রোফাইল</h3>
-            <p className="text-slate-500 text-xs font-medium font-bengali leading-relaxed">
-              আপনার ব্যক্তিগত তথ্য, বইয়ের কোড এবং পেমেন্ট হিস্ট্রি।
-            </p>
-          </Link>
-          <Link
-            to="/dashboard/my-books"
-            className="bg-white rounded-3xl p-6 border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 transition-all group flex flex-col items-center text-center"
-          >
-            <div className="w-16 h-16 bg-slate-50 text-slate-600 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform group-hover:bg-emerald-50 group-hover:text-emerald-600">
-              <Library className="w-7 h-7" />
-            </div>
-            <h3 className="font-bold text-slate-900 mb-2 font-bengali">আমার বইসমূহ</h3>
-            <p className="text-slate-500 text-xs font-medium font-bengali leading-relaxed">
-              আপনার বর্তমান বই এবং ফেরতের তারিখ চেক করুন।
-            </p>
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
-          {/* Running Books Stat */}
-          <div className="bg-indigo-50/50 rounded-3xl p-8 border border-indigo-100/50 flex flex-col justify-between shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-white text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
-                <BookPlus size={24} />
-              </div>
-            </div>
-            <div>
-              <h3 className="text-5xl font-black text-indigo-900 tracking-tight">{memberStats.activeIssues}</h3>
-              <p className="text-indigo-700 font-bold mt-2 font-bengali text-sm opacity-80 uppercase tracking-widest">বর্তমানে আছে (Running Books)</p>
-            </div>
-          </div>
-
-          {/* Returned Books Stat */}
-          <div className="bg-emerald-50/50 rounded-3xl p-8 border border-emerald-100/50 flex flex-col justify-between shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-white text-emerald-600 rounded-2xl flex items-center justify-center shadow-sm">
-                <CheckCircle2 size={24} />
-              </div>
-            </div>
-            <div>
-              <h3 className="text-5xl font-black text-emerald-900 tracking-tight">{memberStats.totalReturned}</h3>
-              <p className="text-emerald-700 font-bold mt-2 font-bengali text-sm opacity-80 uppercase tracking-widest">বই ফেরত দিয়েছেন (Total Returned)</p>
-            </div>
-          </div>
-        </div>
-        
-        <AnimatePresence>
-          {showRequestModal && (
-            <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-              <motion.div initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}} exit={{scale:0.9,opacity:0}} className="bg-white rounded-[2.5rem] w-full max-w-md p-10 shadow-2xl border border-slate-100 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
-                <div className="flex items-center gap-4 mb-8">
-                  <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center"><Library className="w-6 h-6" /></div>
-                  <h3 className="text-2xl font-black text-slate-900 tracking-tight font-bengali">বই গ্রহণের আবেদন</h3>
-                </div>
-                <form onSubmit={handleRequestSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1 font-bengali">রিকোয়েস্টের ধরন</label>
-                    <select value={requestFormData.type} onChange={e => setRequestFormData({...requestFormData, type: e.target.value})} className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 font-bengali font-medium">
-                      <option value="Issue">নতুন বই রিকোয়েস্ট (Request Book)</option>
-                      <option value="Return">বই ফেরত (Return Book)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1 font-bengali">বইয়ের নাম বা কোড</label>
-                    {requestFormData.type === 'Issue' ? (
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <Users className="h-4 w-4 text-slate-400" />
-                        </div>
-                        <input 
-                          type="text" 
-                          value={bookSearchText} 
-                          onChange={e => {
-                            setBookSearchText(e.target.value);
-                            setRequestFormData({...requestFormData, bookName: e.target.value});
-                          }} 
-                          className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 font-bengali" 
-                          placeholder="বই খুঁজুন (Search among available books)..." 
-                        />
-                        {bookSearchText && !availableBooks.some(b => (b.title + (b.bookCode ? ` (${b.bookCode})` : '')) === bookSearchText) && (
-                          <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                            {availableBooks.filter(b => (b.title || '').toLowerCase().includes((bookSearchText || '').toLowerCase()) || (b.bookCode || '').toLowerCase().includes((bookSearchText || '').toLowerCase())).length === 0 ? (
-                              <div className="p-4 text-center">
-                                 <p className="text-slate-500 text-sm font-bengali mb-2">কোন বই খুঁজে পাওয়া যায়নি</p>
-                                 <button 
-                                    type="button" 
-                                    onClick={() => {
-                                        // Update form data and clear search so dropdown hides but input shows required text. 
-                                        // Wait, clearing search text means input will go blank because input uses value={bookSearchText}!
-                                        // So we shouldn't clear it. We can just blur the input, but React doesn't easily do it without ref.
-                                        // Instead, we will add a small state to hide dropdown, or just let them click outside!
-                                        // Let's just focus the next input (Note field) via a small hack
-                                        document.getElementById('note-field')?.focus();
-                                    }} 
-                                    className="bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg text-sm font-bold w-full"
-                                 >
-                                     এই নামেই রিকোয়েস্ট করুন
-                                 </button>
-                              </div>
-                            ) : (
-                              availableBooks.filter(b => (b.title || '').toLowerCase().includes((bookSearchText || '').toLowerCase()) || (b.bookCode || '').toLowerCase().includes((bookSearchText || '').toLowerCase())).slice(0, 10).map(b => (
-                                <button
-                                  key={b.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setBookSearchText(b.title + (b.bookCode ? ` (${b.bookCode})` : ''));
-                                    setRequestFormData({...requestFormData, bookName: b.title + (b.bookCode ? ` (${b.bookCode})` : ''), bookId: b.id});
-                                  }}
-                                  className="w-full text-left px-4 py-2 hover:bg-indigo-50 transition-colors font-bengali border-b border-slate-100 last:border-0"
-                                >
-                                  <div className="font-bold text-slate-800">{b.title}</div>
-                                  {b.bookCode && <div className="text-xs text-slate-500 font-mono">Code: {b.bookCode}</div>}
-                                </button>
-                              ))
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <input 
-                        type="text" 
-                        required 
-                        value={requestFormData.bookName} 
-                        onChange={e => setRequestFormData({...requestFormData, bookName: e.target.value})} 
-                        className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 font-bengali" 
-                        placeholder="বইয়ের নাম লিখুন" 
-                      />
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1 font-bengali">নোট (ঐচ্ছিক)</label>
-                    <textarea id="note-field" value={requestFormData.note} onChange={e => setRequestFormData({...requestFormData, note: e.target.value})} className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 font-bengali" placeholder="কিছু বলার থাকলে লিখুন" rows={3}></textarea>
-                  </div>
-                  <div className="flex justify-end gap-3 pt-6">
-                    <button type="button" onClick={() => setShowRequestModal(false)} className="font-bengali px-5 py-3 text-slate-500 hover:bg-slate-50 rounded-xl font-bold">বাতিল</button>
-                    <button type="submit" disabled={isSubmittingForm} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-sm shadow-indigo-200 font-bengali disabled:opacity-75">
-                      {isSubmittingForm ? 'পাঠানো হচ্ছে...' : 'রিকোয়েস্ট পাঠান'}
-                    </button>
-                  </div>
-                </form>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
+        <Link to="/dashboard/profile" className="block bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-100 dark:border-slate-800 text-center flex flex-col items-center hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+           <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
+              <UserCircle2 className="w-10 h-10 text-slate-400" />
+           </div>
+           <h3 className="text-xl font-black text-slate-900 dark:text-white font-bengali mb-2">আমার প্রোফাইল</h3>
+           <p className="text-slate-500 text-sm font-bengali leading-relaxed max-w-sm">
+             আপনার ব্যক্তিগত তথ্য, বইয়ের কোড এবং পেমেন্ট হিস্ট্রি।
+           </p>
+        </Link>
       </div>
     );
   }
@@ -366,27 +217,33 @@ export default function DashboardHome() {
         </div>
 
         <div className="relative z-10 flex flex-col sm:flex-row w-full md:w-auto gap-4">
-          <Link
-            to="/dashboard/users"
-            className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-6 py-4 rounded-2xl font-bold transition-all shadow-lg active:scale-95 font-bengali"
-          >
-            <Users className="w-5 h-5" />
-            সদস্যগণ
-          </Link>
-          <Link
-            to="/dashboard/issues?action=issue"
-            className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-8 py-4 rounded-2xl font-bold transition-all shadow-lg shadow-indigo-500/25 active:scale-95 whitespace-nowrap font-bengali"
-          >
-            <BookPlus className="w-5 h-5" />
-            বই প্রদান
-          </Link>
-          <Link
-            to="/dashboard/issues"
-            className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 px-8 py-4 rounded-2xl font-bold transition-all active:scale-95 whitespace-nowrap backdrop-blur-sm font-bengali"
-          >
-            <CheckCircle2 className="w-5 h-5" />
-            বই ফেরত
-          </Link>
+          {(user?.role === 'admin' || user?.role === 'issue_admin') && (
+            <>
+              {user?.role === 'admin' && (
+                <Link
+                  to="/dashboard/users"
+                  className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-6 py-4 rounded-2xl font-bold transition-all shadow-lg active:scale-95 font-bengali"
+                >
+                  <Users className="w-5 h-5" />
+                  সদস্যগণ
+                </Link>
+              )}
+              <Link
+                to="/dashboard/issues?action=issue"
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-8 py-4 rounded-2xl font-bold transition-all shadow-lg shadow-indigo-500/25 active:scale-95 whitespace-nowrap font-bengali"
+              >
+                <BookPlus className="w-5 h-5" />
+                বই প্রদান
+              </Link>
+              <Link
+                to="/dashboard/issues"
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 px-8 py-4 rounded-2xl font-bold transition-all active:scale-95 whitespace-nowrap backdrop-blur-sm font-bengali"
+              >
+                <CheckCircle2 className="w-5 h-5" />
+                বই ফেরত
+              </Link>
+            </>
+          )}
         </div>
       </div>
 

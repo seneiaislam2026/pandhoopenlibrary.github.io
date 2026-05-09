@@ -33,7 +33,7 @@ export const handler = async (event: any) => {
     const { contents, systemInstruction, tools } = JSON.parse(event.body || '{}');
     
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-1.5-flash",
       contents: contents,
       config: {
         systemInstruction: systemInstruction,

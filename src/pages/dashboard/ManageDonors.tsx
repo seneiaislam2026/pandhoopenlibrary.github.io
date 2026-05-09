@@ -30,6 +30,8 @@ interface DonorPayment {
 }
 
 export default function ManageDonors() {
+  const { user } = useAuth();
+  const isAdminRole = user?.role === 'admin';
   const location = useLocation();
 
   const [donors, setDonors] = useState<DonorMember[]>([]);
@@ -392,10 +394,14 @@ export default function ManageDonors() {
   useEffect(() => {
     const unsubDonors = onSnapshot(query(collection(db, 'donor-members'), orderBy('createdAt', 'asc')), (snapshot) => {
       setDonors(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DonorMember[]);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'donor-members');
     });
     const unsubPayments = onSnapshot(collection(db, 'donor-payments'), (snapshot) => {
       setPayments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DonorPayment[]);
       setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'donor-payments');
     });
     return () => {
       unsubDonors();
@@ -948,13 +954,15 @@ export default function ManageDonors() {
                   <DollarSign className="w-4 h-4 text-indigo-200" /> 
                   পেমেন্ট আপডেট
                 </button>
-                <button
-                  onClick={() => { setShowAddDonor(true); setEditingDonor(null); setDonorForm({ name: '', phone: '', address: '', serial: '', monthlyDonation: '200' }); }}
-                  className="bg-white/10 hover:bg-white/20 text-white px-5 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 font-bengali border border-white/10"
-                >
-                  <Plus className="w-4 h-4 text-emerald-400" />
-                  নতুন সদস্য যোগ করুন
-                </button>
+                {isAdminRole && (
+                  <button
+                    onClick={() => { setShowAddDonor(true); setEditingDonor(null); setDonorForm({ name: '', phone: '', address: '', serial: '', monthlyDonation: '200' }); }}
+                    className="bg-white/10 hover:bg-white/20 text-white px-5 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 font-bengali border border-white/10"
+                  >
+                    <Plus className="w-4 h-4 text-emerald-400" />
+                    নতুন সদস্য যোগ করুন
+                  </button>
+                )}
               </div>
           </div>
 
@@ -1302,16 +1310,20 @@ export default function ManageDonors() {
                         )}
                       </td>
                       <td className="p-5 pr-6 align-middle text-right">
-                        <div className="flex items-center justify-end gap-2">
+                       <div className="flex items-center justify-end gap-2">
                            <button onClick={() => openOverview(d)} className="px-3.5 py-2 text-indigo-700 bg-indigo-50 border border-indigo-100 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 rounded-xl font-bengali text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm group/btn">
                              <Eye className="w-4 h-4 group-hover/btn:animate-pulse" /> <span>বিস্তারিত</span>
                            </button>
-                           <button onClick={() => startEditDonor(d)} className="p-2 text-slate-500 bg-slate-50 hover:bg-slate-800 hover:text-white rounded-xl transition-colors ring-1 ring-slate-200/60" title="এডিট">
-                             <Edit2 className="w-4 h-4" />
-                           </button>
-                           <button onClick={() => handleDeleteDonor(d.id)} className="p-2 text-rose-500 bg-rose-50 hover:bg-rose-600 hover:text-white rounded-xl transition-colors ring-1 ring-rose-200/50" title="ডিলিট">
-                             <Trash2 className="w-4 h-4" />
-                           </button>
+                           {isAdminRole && (
+                             <>
+                               <button onClick={() => startEditDonor(d)} className="p-2 text-slate-500 bg-slate-50 hover:bg-slate-800 hover:text-white rounded-xl transition-colors ring-1 ring-slate-200/60" title="এডিট">
+                                 <Edit2 className="w-4 h-4" />
+                               </button>
+                               <button onClick={() => handleDeleteDonor(d.id)} className="p-2 text-rose-500 bg-rose-50 hover:bg-rose-600 hover:text-white rounded-xl transition-colors ring-1 ring-rose-200/50" title="ডিলিট">
+                                 <Trash2 className="w-4 h-4" />
+                               </button>
+                             </>
+                           )}
                         </div>
                       </td>
                     </tr>
@@ -1334,20 +1346,24 @@ export default function ManageDonors() {
                       <p className="text-sm text-slate-500 font-mono">{overviewDonor.phone}</p>
                     </div>
                     <div className="flex gap-2">
-                       <button 
-                        onClick={() => { setShowOverviewModal(false); startEditDonor(overviewDonor); }} 
-                        className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg border border-slate-200 transition-all shadow-sm bg-white"
-                        title="এডিট করুন"
-                       >
-                         <Edit2 className="w-4 h-4" />
-                       </button>
-                       <button 
-                        onClick={() => { setShowOverviewModal(false); handleDeleteDonor(overviewDonor.id); }} 
-                        className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg border border-rose-100 transition-all shadow-sm bg-white"
-                        title="ডিলিট করুন"
-                       >
-                         <Trash2 className="w-4 h-4" />
-                       </button>
+                       {isAdminRole && (
+                         <>
+                           <button 
+                            onClick={() => { setShowOverviewModal(false); startEditDonor(overviewDonor); }} 
+                            className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg border border-slate-200 transition-all shadow-sm bg-white"
+                            title="এডিট করুন"
+                           >
+                             <Edit2 className="w-4 h-4" />
+                           </button>
+                           <button 
+                            onClick={() => { setShowOverviewModal(false); handleDeleteDonor(overviewDonor.id); }} 
+                            className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg border border-rose-100 transition-all shadow-sm bg-white"
+                            title="ডিলিট করুন"
+                           >
+                             <Trash2 className="w-4 h-4" />
+                           </button>
+                         </>
+                       )}
                     </div>
                   </div>
                   <button onClick={() => setShowOverviewModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl flex-shrink-0"><X className="w-5 h-5"/></button>
@@ -1379,7 +1395,9 @@ export default function ManageDonors() {
                                    </button>
                                 </td>
                                 <td className="p-4 text-right">
-                                   <button onClick={() => handleDeletePayment(payment.id)} className="text-slate-400 hover:text-rose-600 transition-colors p-1"><Trash2 className="w-4 h-4"/></button>
+                                   {isAdminRole && (
+                                     <button onClick={() => handleDeletePayment(payment.id)} className="text-slate-400 hover:text-rose-600 transition-colors p-1"><Trash2 className="w-4 h-4"/></button>
+                                   )}
                                 </td>
                              </tr>
                            ))}

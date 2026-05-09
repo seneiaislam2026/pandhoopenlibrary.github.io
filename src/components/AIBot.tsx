@@ -19,7 +19,7 @@ import { db } from '../lib/firebase';
 import { collection, getDocs, doc, updateDoc, serverTimestamp, query, where, orderBy, limit } from 'firebase/firestore';
 import { useAuth } from '../store/AuthContext';
 import { cn } from '../lib/utils';
-import { FunctionDeclaration, Type } from '@google/genai';
+import { GoogleGenAI, FunctionDeclaration, Type } from '@google/genai';
 import toast from 'react-hot-toast';
 
 type Message = {
@@ -255,6 +255,9 @@ const AIBot = () => {
     setIsLoading(true);
 
     try {
+      // Use local API for both dev and prod
+      const apiUrl = '/api/gemini';
+
       const systemPrompt = isAdmin 
         ? `You are a highly intelligent Admin-Level Library Management Assistant for "পানধোয়া উন্মুক্ত পাঠাগার".
            Your name is "বইবন্ধু" (Boibondhu).
@@ -314,16 +317,12 @@ const AIBot = () => {
       let maxTurns = 5;
       let finalAiResponse = '';
       
-      // Use local API for both dev and prod in this Express-based environment
-      const apiUrl = '/api/gemini';
-      
       while (maxTurns > 0) {
-        let response;
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
           
-          response = await fetch(apiUrl, {
+          const rawResponse = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
@@ -334,63 +333,52 @@ const AIBot = () => {
             signal: controller.signal
           });
           clearTimeout(timeoutId);
-        } catch (fetchErr) {
-          throw new Error('Network error or API timeout. Please check your connection.');
-        }
 
-        // Block HTML output explicitly to prevent 'Unexpected token <' parsing error
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('text/html')) {
-          throw new Error('Server returned HTML instead of JSON. The API endpoint might be missing or misconfigured.');
-        }
-
-        if (!response.ok) {
-          let errorMsg = 'Failed to fetch AI response';
-          try {
-             const errorData = await response.json();
-             errorMsg = errorData.error || errorMsg;
-          } catch (e) {
-             errorMsg = `Server error: ${response.status} ${response.statusText}`;
+          if (!rawResponse.ok) {
+            const errorData = await rawResponse.json().catch(() => ({}));
+            throw new Error(errorData.error || `Server error: ${rawResponse.status}`);
           }
-          throw new Error(errorMsg);
-        }
 
-        const responseData = await response.json();
-        
-        const { text, functionCalls } = responseData;
-        
-        if (functionCalls && functionCalls.length > 0) {
-          // Store the model's call in contents to maintain context
-          contents.push({
-            role: 'model',
-            parts: functionCalls.map((fc: any) => ({ functionCall: fc }))
-          });
+          const response = await rawResponse.json();
 
-          const toolResults = [];
-          for (const fc of functionCalls) {
-            const handler = toolHandlers[fc.name];
-            if (handler) {
-              const result = await handler(fc.args);
-              toolResults.push({
-                functionResponse: {
-                  name: fc.name,
-                  response: { result }
-                }
-              });
+          const functionCalls = response.functionCalls;
+          
+          if (functionCalls && functionCalls.length > 0) {
+            const toolResults = [];
+            
+            for (const call of functionCalls) {
+              const handler = toolHandlers[call.name as keyof typeof toolHandlers];
+              if (handler) {
+                const result = await handler(call.args);
+                toolResults.push({
+                  role: 'model', 
+                  parts: [{
+                    functionResponse: {
+                      name: call.name,
+                      response: { result }
+                    }
+                  }]
+                });
+              }
             }
+            
+            // Append the model's full response content to context to preserve thoughts and function calls
+            contents.push(response.content);
+            
+            contents.push(...toolResults as any);
+            maxTurns--;
+          } else {
+            finalAiResponse = response.text || "দুঃখিত, আমি এই মুহূর্তে উত্তর দিতে পারছি না।";
+            // Also append the final text response to maintain history correctly
+            if (response.content) {
+              contents.push(response.content);
+            }
+            break;
           }
-
-          // Add tool results to contents
-          contents.push({
-            role: 'user',
-            parts: toolResults
-          });
-
-          maxTurns--;
-          continue; // Call model again with tool results
-        } else {
-          finalAiResponse = text;
-          break; // Model gave a final text response
+        } catch (err: any) {
+          console.error("Gemini Error:", err);
+          finalAiResponse = "দুঃখিত, এআই সার্ভারে সমস্যা হচ্ছে। অনুগ্রহ করে পরে চেষ্টা করুন বা এডমিনের সাথে যোগাযোগ করুন।";
+          break;
         }
       }
 

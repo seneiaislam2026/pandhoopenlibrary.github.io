@@ -1,5 +1,6 @@
 import React, { Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AnimatePresence } from 'motion/react';
 import { AuthProvider, useAuth } from './store/AuthContext';
 import { Toaster } from 'react-hot-toast';
 
@@ -65,6 +66,8 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode,
 };
 
 function AppRoutes() {
+  const location = useLocation();
+
   return (
     <Suspense fallback={
       <div className="min-h-screen flex flex-col items-center justify-center bg-white font-bengali">
@@ -75,57 +78,59 @@ function AppRoutes() {
         <p className="mt-6 text-xl font-black text-slate-800 animate-pulse">লোড হচ্ছে...</p>
       </div>
     }>
-      <Routes>
-        {/* Public Pages grouped under MainLayout */}
-        <Route element={<MainLayout />}>
-          <Route path="/" element={<Home />} />
-          <Route path="/books" element={<Books />} />
-          <Route path="/buy-books" element={<BuyBooks />} />
-          <Route path="/donors" element={<Donors />} />
-          <Route path="/team" element={<Team />} />
-          <Route path="/constitution" element={<Constitution />} />
-          <Route path="/blog" element={<Blog />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/finances" element={<Finances />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/bkash-mock-payment" element={<BkashMockPayment />} />
-          <Route path="/events" element={<Events />} />
-        </Route>
+      <AnimatePresence mode="wait">
+        <Routes location={location} key={location.pathname}>
+          {/* Public Pages grouped under MainLayout */}
+          <Route element={<MainLayout />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/books" element={<Books />} />
+            <Route path="/buy-books" element={<BuyBooks />} />
+            <Route path="/donors" element={<Donors />} />
+            <Route path="/team" element={<Team />} />
+            <Route path="/constitution" element={<Constitution />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/finances" element={<Finances />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/bkash-mock-payment" element={<BkashMockPayment />} />
+            <Route path="/events" element={<Events />} />
+          </Route>
 
-        {/* Dashboard Routes grouped under DashboardLayout */}
-        <Route path="/dashboard" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
-          <Route index element={<DashboardHome />} />
-          
-          {/* Admin only */}
-          <Route path="users" element={<ProtectedRoute allowedRoles={['admin']}><ManageUsers /></ProtectedRoute>} />
-          <Route path="donors" element={<ProtectedRoute allowedRoles={['admin']}><ManageDonors /></ProtectedRoute>} />
-          <Route path="finances" element={<ProtectedRoute allowedRoles={['admin']}><Finances /></ProtectedRoute>} />
-          <Route path="books" element={<ProtectedRoute allowedRoles={['admin']}><ManageBooks /></ProtectedRoute>} />
-          <Route path="issues" element={<ProtectedRoute allowedRoles={['admin']}><ManageIssues /></ProtectedRoute>} />
-          <Route path="dues" element={<ProtectedRoute allowedRoles={['admin']}><ManageDues /></ProtectedRoute>} />
-          <Route path="manageteam" element={<ProtectedRoute allowedRoles={['admin']}><ManageTeam /></ProtectedRoute>} />
-          <Route path="constitution" element={<ProtectedRoute allowedRoles={['admin']}><ManageConstitution /></ProtectedRoute>} />
-          <Route path="manageblog" element={<ProtectedRoute allowedRoles={['admin']}><ManageBlog /></ProtectedRoute>} />
-          <Route path="delete-users" element={<ProtectedRoute allowedRoles={['admin']}><DeleteUsers /></ProtectedRoute>} />
-          <Route path="notices" element={<ProtectedRoute allowedRoles={['admin']}><ManageNotices /></ProtectedRoute>} />
-          <Route path="messages" element={<ProtectedRoute allowedRoles={['admin']}><ManageMessages /></ProtectedRoute>} />
-          <Route path="events" element={<ProtectedRoute allowedRoles={['admin']}><ManageEvents /></ProtectedRoute>} />
-          <Route path="reset-requests" element={<ProtectedRoute allowedRoles={['admin']}><ManageResetRequests /></ProtectedRoute>} />
-          <Route path="pre-bookings" element={<ProtectedRoute allowedRoles={['admin']}><ManagePreBookings /></ProtectedRoute>} />
-          <Route path="shop-books" element={<ProtectedRoute allowedRoles={['admin']}><ManageShopBooks /></ProtectedRoute>} />
-          <Route path="shop-orders" element={<ProtectedRoute allowedRoles={['admin']}><ManageShopOrders /></ProtectedRoute>} />
-          <Route path="stickers" element={<ProtectedRoute allowedRoles={['admin']}><ManageStickers /></ProtectedRoute>} />
-          <Route path="settings" element={<ProtectedRoute allowedRoles={['admin']}><AdminSettings /></ProtectedRoute>} />
-          
-          {/* Reader & Admin */}
-          <Route path="profile" element={<UserProfile />} />
-          <Route path="my-books" element={<UserBooks />} />
-          <Route path="notice-board" element={<UserNotices />} />
-          <Route path="inbox" element={<UserMessages />} />
-          <Route path="book-requests" element={<BookRequests />} />
-        </Route>
-      </Routes>
+          {/* Dashboard Routes grouped under DashboardLayout */}
+          <Route path="/dashboard" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
+            <Route index element={<DashboardHome />} />
+            
+            {/* Admin only */}
+            <Route path="users" element={<ProtectedRoute allowedRoles={['admin']}><ManageUsers /></ProtectedRoute>} />
+            <Route path="donors" element={<ProtectedRoute allowedRoles={['admin', 'subadmin']}><ManageDonors /></ProtectedRoute>} />
+            <Route path="finances" element={<ProtectedRoute allowedRoles={['admin']}><Finances /></ProtectedRoute>} />
+            <Route path="books" element={<ProtectedRoute><ManageBooks /></ProtectedRoute>} />
+            <Route path="issues" element={<ProtectedRoute allowedRoles={['admin', 'issue_admin']}><ManageIssues /></ProtectedRoute>} />
+            <Route path="dues" element={<ProtectedRoute allowedRoles={['admin']}><ManageDues /></ProtectedRoute>} />
+            <Route path="manageteam" element={<ProtectedRoute allowedRoles={['admin']}><ManageTeam /></ProtectedRoute>} />
+            <Route path="constitution" element={<ProtectedRoute allowedRoles={['admin']}><ManageConstitution /></ProtectedRoute>} />
+            <Route path="manageblog" element={<ProtectedRoute allowedRoles={['admin']}><ManageBlog /></ProtectedRoute>} />
+            <Route path="delete-users" element={<ProtectedRoute allowedRoles={['admin']}><DeleteUsers /></ProtectedRoute>} />
+            <Route path="notices" element={<ProtectedRoute allowedRoles={['admin']}><ManageNotices /></ProtectedRoute>} />
+            <Route path="messages" element={<ProtectedRoute allowedRoles={['admin']}><ManageMessages /></ProtectedRoute>} />
+            <Route path="events" element={<ProtectedRoute allowedRoles={['admin']}><ManageEvents /></ProtectedRoute>} />
+            <Route path="reset-requests" element={<ProtectedRoute allowedRoles={['admin']}><ManageResetRequests /></ProtectedRoute>} />
+            <Route path="pre-bookings" element={<ProtectedRoute allowedRoles={['admin', 'issue_admin']}><ManagePreBookings /></ProtectedRoute>} />
+            <Route path="shop-books" element={<ProtectedRoute allowedRoles={['admin']}><ManageShopBooks /></ProtectedRoute>} />
+            <Route path="shop-orders" element={<ProtectedRoute allowedRoles={['admin']}><ManageShopOrders /></ProtectedRoute>} />
+            <Route path="stickers" element={<ProtectedRoute allowedRoles={['admin']}><ManageStickers /></ProtectedRoute>} />
+            <Route path="settings" element={<ProtectedRoute allowedRoles={['admin']}><AdminSettings /></ProtectedRoute>} />
+            
+            {/* Reader & Admin */}
+            <Route path="profile" element={<UserProfile />} />
+            <Route path="my-books" element={<UserBooks />} />
+            <Route path="notice-board" element={<UserNotices />} />
+            <Route path="inbox" element={<UserMessages />} />
+            <Route path="book-requests" element={<BookRequests />} />
+          </Route>
+        </Routes>
+      </AnimatePresence>
     </Suspense>
   );
 }

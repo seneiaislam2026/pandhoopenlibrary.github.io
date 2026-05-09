@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { setDoc, doc, getDocs, collection, query, where, serverTimestamp } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { useAuth } from '../../store/AuthContext';
 
 declare global {
   interface Window {
@@ -32,6 +33,14 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
+  const { user, loading: authLoading } = useAuth();
+  
+  useEffect(() => {
+    if (user && !authLoading) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, authLoading, navigate]);
+
   useEffect(() => {
     if (prefill?.name) setName(prefill.name);
     if (prefill?.email) setUsername(prefill.email.split("@")[0]);
@@ -45,18 +54,9 @@ export default function Register() {
     try {
       const email = prefill?.email || `${username.toLowerCase()}@library.com`;
       
-      // Generate sequential memberId
-      const usersSnap = await getDocs(collection(db, "users")).catch(err => handleFirestoreError(err, OperationType.LIST, "users"));
-      let maxId = 0;
-      if (usersSnap) {
-        usersSnap.forEach((d) => {
-          const mid = parseInt(d.data().memberId, 10);
-          if (!isNaN(mid) && mid > maxId) {
-            maxId = mid;
-          }
-        });
-      }
-      const memberId = String(maxId + 1).padStart(3, '0');
+      // No longer listing all users to generate ID (security risk + permission denied for regular users)
+      // memberId will be assigned by admin upon activation
+      const memberId = ""; 
       
       let userId = prefill?.googleUid;
       if (!userId) {
@@ -105,15 +105,15 @@ export default function Register() {
           <div className="mx-auto w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-6">
             <CheckCircle2 className="w-8 h-8" />
           </div>
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-900 mb-2">Registration Complete!</h2>
+          <h2 className="text-2xl font-semibold tracking-tight text-slate-900 mb-2">রেজিস্ট্রেশন সম্পন্ন হয়েছে!</h2>
           <p className="text-slate-600 mb-8 leading-relaxed">
-            Your account is currently <strong className="text-slate-900">pending admin approval</strong> 😊. Please ensure you have paid the membership fee as instructed.
+            আপনার একাউন্টটি বর্তমানে পাঠাগার কর্তৃপক্ষের অনুমোদনের অপেক্ষায় আছে 😊। পাঠাগার কর্তৃপক্ষ এপ্রুভ না করলে মেম্বার হওয়া যাবে না। দয়া করে নিয়ম অনুযায়ী মেম্বারশিপ ফি পরিশোধ নিশ্চিত করুন।
           </p>
           <Link
             to="/login"
             className="inline-flex justify-center items-center py-3 px-6 border border-slate-200 shadow-sm text-sm font-semibold rounded-xl text-slate-900 bg-white hover:bg-slate-50 transition-all w-full"
           >
-            Go to Login
+            লগইন পেজে যান
           </Link>
         </motion.div>
       </div>

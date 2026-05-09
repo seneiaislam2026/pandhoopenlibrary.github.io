@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BookOpen, Search, Clock, CheckCircle2, Star, Sparkles, Filter, X, Info, Tag, User as UserIcon, Book as BookIcon } from 'lucide-react';
 import { useAuth } from '../../store/AuthContext';
-import { getDocs, collection, addDoc, serverTimestamp, query, where } from 'firebase/firestore';
+import { getDocs, collection, addDoc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import toast from 'react-hot-toast';
 import Select from 'react-select';
@@ -13,12 +13,14 @@ interface Book {
   title: string;
   author: string;
   category: string;
-  status: 'Available' | 'Issued';
+  status: string;
   cover?: string;
   bookCode?: string;
   shelfNo?: string;
   description?: string;
   review?: string;
+  currentReaderName?: string;
+  expectedReturnDate?: string;
 }
 
 export default function Books() {
@@ -31,7 +33,38 @@ export default function Books() {
   const [prebooking, setPrebooking] = useState<string | null>(null);
   const [requestedBooks, setRequestedBooks] = useState<string[]>([]);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  const [activeIssues, setActiveIssues] = useState<Record<string, string>>({});
+  const [modalReturnDate, setModalReturnDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (selectedBook && (selectedBook.status !== 'Available' && selectedBook.status !== 'AVAILABLE')) {
+      const fetchReturnDate = async () => {
+        try {
+          const q = query(collection(db, 'issues'), where('bookId', '==', selectedBook.id), where('status', '==', 'ISSUED'));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            const data = snap.docs[0].data();
+            setModalReturnDate(data.expectedReturnDate || data.returnDate || null);
+          } else {
+             // Try Issued with Title Case
+             const q2 = query(collection(db, 'issues'), where('bookId', '==', selectedBook.id), where('status', '==', 'Issued'));
+             const snap2 = await getDocs(q2);
+             if (!snap2.empty) {
+                const data2 = snap2.docs[0].data();
+                setModalReturnDate(data2.expectedReturnDate || data2.returnDate || null);
+             } else {
+                setModalReturnDate(selectedBook.expectedReturnDate || null);
+             }
+          }
+        } catch (e) {
+          console.error("Error fetching issue for modal", e);
+          setModalReturnDate(selectedBook.expectedReturnDate || null);
+        }
+      };
+      fetchReturnDate();
+    } else {
+      setModalReturnDate(null);
+    }
+  }, [selectedBook]);
 
   // Debounce search input to prevent lag
   useEffect(() => {
@@ -42,46 +75,19 @@ export default function Books() {
   }, [search]);
 
   useEffect(() => {
-    let isMounted = true;
-    const fetchBooks = async () => {
-      try {
-        const snapshot = await getDocs(collection(db, 'books'));
-        
-        if (!isMounted) return;
-        
-        const issuesMap: Record<string, string> = {};
-        try {
-          const issuesSnapshot = await getDocs(query(collection(db, 'issues'), where('status', 'in', ['ISSUED', 'Issued'])));
-          issuesSnapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.bookId && data.expectedReturnDate) {
-              issuesMap[data.bookId] = data.expectedReturnDate;
-            }
-          });
-        } catch (e) {
-          // Normal. Public users can't read 'issues' collection.
-        }
-        
-        setActiveIssues(issuesMap);
-        
-        const booksData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Book[];
-        setBooks(booksData);
-        setLoading(false);
-      } catch (error) {
-        if (!isMounted) return;
-        setLoading(false);
-        try {
-           handleFirestoreError(error, OperationType.LIST, 'books');
-        } catch(e) {
-           console.error("Books fetch error handled", e);
-        }
-      }
-    };
-    fetchBooks();
-    return () => { isMounted = false; };
+    const unsub = onSnapshot(collection(db, 'books'), (snapshot) => {
+      const booksData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Book[];
+      setBooks(booksData);
+      setLoading(false);
+    }, (error) => {
+      setLoading(false);
+      handleFirestoreError(error, OperationType.LIST, 'books');
+    });
+    
+    return () => unsub();
   }, []);
 
   const handlePreBook = async (bookId: string) => {
@@ -124,7 +130,12 @@ export default function Books() {
   }, [books, debouncedSearch, categoryFilter]);
 
   return (
-    <div className="bg-white min-h-screen">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="bg-white min-h-screen"
+    >
       <Helmet>
         <title>বই সংগ্রহশালা - পানধোয়া উন্মুক্ত পাঠাগার</title>
         <meta name="description" content="আমাদের লাইব্রেরির হাজারো বইয়ের সংগ্রহশালা থেকে আপনার পছন্দের বইটি বেছে নিন।" />
@@ -197,10 +208,27 @@ export default function Books() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-8">
+          <motion.div 
+            initial="hidden"
+            animate="show"
+            variants={{
+              hidden: { opacity: 0 },
+              show: {
+                opacity: 1,
+                transition: {
+                  staggerChildren: 0.05
+                }
+              }
+            }}
+            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-8"
+          >
             {filtered.slice(0, 100).map((book) => (
-              <div
+              <motion.div
                 key={book.id}
+                variants={{
+                  hidden: { opacity: 0, y: 20 },
+                  show: { opacity: 1, y: 0 }
+                }}
                 className="bg-white rounded-2xl sm:rounded-[2.5rem] border border-slate-100 p-3 sm:p-4 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col h-full cursor-pointer"
                 onClick={() => setSelectedBook(book)}
               >
@@ -237,24 +265,29 @@ export default function Books() {
 
                 <button
                   onClick={(e) => { e.stopPropagation(); handlePreBook(book.id); }}
-                  disabled={book.status !== 'Available' || prebooking === book.id || requestedBooks.includes(book.id)}
+                  disabled={(book.status !== 'Available' && book.status !== 'AVAILABLE') || prebooking === book.id || requestedBooks.includes(book.id)}
                   className="mt-3 sm:mt-6 w-full py-2.5 sm:py-4 rounded-lg sm:rounded-xl font-black font-bengali text-[10px] sm:text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/50 flex items-center justify-center gap-1.5 sm:gap-2 bg-slate-900 text-white hover:bg-indigo-600 shadow-md shadow-slate-200 disabled:bg-slate-50 disabled:text-slate-300 disabled:shadow-none active:scale-[0.98]"
                 >
                   {requestedBooks.includes(book.id) ? (
                     <CheckCircle2 size={14} className="sm:w-4 sm:h-4" />
-                  ) : book.status === 'Available' ? (
+                  ) : (book.status === 'Available' || book.status === 'AVAILABLE') ? (
                     <Clock size={14} className="sm:w-4 sm:h-4" />
                   ) : null}
                   <span className="hidden sm:inline">
-                    {requestedBooks.includes(book.id) ? 'অনুরোধ পাঠানো হয়েছে' : book.status === 'Available' ? 'প্রিবুক করুন' : 'বইটি এখন অন্য পাঠকের কাছে আছে'}
+                    {requestedBooks.includes(book.id) ? 'অনুরোধ পাঠানো হয়েছে' : (book.status === 'Available' || book.status === 'AVAILABLE') ? 'প্রিবুক করুন' : 'বইটি এখন অন্য পাঠকের কাছে আছে'}
                   </span>
-                  <span className="sm:hidden">
-                    {requestedBooks.includes(book.id) ? 'অনুরোধ' : book.status === 'Available' ? 'প্রিবুক' : 'সংগ্রহে নেই'}
+                  <span className="sm:hidden flex flex-col items-center leading-tight">
+                    <span>{requestedBooks.includes(book.id) ? 'অনুরোধ' : (book.status === 'Available' || book.status === 'AVAILABLE') ? 'প্রিবুক' : 'সংগ্রহে নেই'}</span>
+                    {(book.status !== 'Available' && book.status !== 'AVAILABLE' && book.expectedReturnDate) && (
+                      <span className="text-[9px] font-bold text-indigo-200 mt-1.5 whitespace-nowrap bg-indigo-900/40 px-2 py-0.5 rounded shadow-sm">
+                        আসার সম্ভাব্য তারিখ: {new Date(book.expectedReturnDate).toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' })}
+                      </span>
+                    )}
                   </span>
                 </button>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         )}
 
         {!loading && filtered.length === 0 && (
@@ -309,10 +342,10 @@ export default function Books() {
                       {selectedBook.category || 'সাধারণ'}
                     </span>
                     <span className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest font-bengali flex items-center gap-1.5 ${
-                      selectedBook.status === 'Available' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                      (selectedBook.status === 'Available' || selectedBook.status === 'AVAILABLE') ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
                     }`}>
-                      {selectedBook.status === 'Available' ? <CheckCircle2 size={16} /> : <Clock size={16} />}
-                      {selectedBook.status === 'Available' ? 'এভেইলেবল' : 'বুকড'}
+                      {(selectedBook.status === 'Available' || selectedBook.status === 'AVAILABLE') ? <CheckCircle2 size={16} /> : <Clock size={16} />}
+                      {(selectedBook.status === 'Available' || selectedBook.status === 'AVAILABLE') ? 'এভেইলেবল' : 'বুকড'}
                     </span>
                   </div>
                   <h2 className="text-3xl md:text-5xl font-black text-slate-900 font-bengali leading-tight mb-4">{selectedBook.title}</h2>
@@ -357,40 +390,39 @@ export default function Books() {
                   </div>
                 </div>
 
-                <div className="mt-12 flex flex-col gap-4">
-                  <button
-                    onClick={() => handlePreBook(selectedBook.id)}
-                    disabled={selectedBook.status !== 'Available' || prebooking === selectedBook.id || requestedBooks.includes(selectedBook.id)}
-                    className="w-full bg-slate-900 text-white py-6 rounded-[2rem] font-black font-bengali text-xl hover:bg-indigo-600 shadow-2xl transition-all flex items-center justify-center gap-4 disabled:bg-slate-100 disabled:text-slate-300 active:scale-[0.98]"
-                  >
-                    {requestedBooks.includes(selectedBook.id) ? (
-                      <><CheckCircle2 /> অনুরোধ পাঠানো হয়েছে</>
-                    ) : selectedBook.status === 'Available' ? (
-                      <><Clock /> প্রিবুক করুন</>
+                  <div className="mt-12 flex flex-col gap-4">
+                    {selectedBook.status === 'Available' ? (
+                      <button
+                        onClick={() => handlePreBook(selectedBook.id)}
+                        disabled={prebooking === selectedBook.id || requestedBooks.includes(selectedBook.id)}
+                        className="w-full bg-slate-900 text-white py-6 rounded-[2rem] font-black font-bengali text-xl hover:bg-indigo-600 shadow-2xl transition-all flex items-center justify-center gap-4 disabled:bg-slate-100 disabled:text-slate-300 active:scale-[0.98]"
+                      >
+                        {requestedBooks.includes(selectedBook.id) ? (
+                          <><CheckCircle2 /> অনুরোধ পাঠানো হয়েছে</>
+                        ) : (
+                          <><Clock /> প্রিবুক করুন</>
+                        )}
+                      </button>
                     ) : (
-                      <><Clock /> বইটি অন্য সদস্যের কাছে আছে</>
+                      <div className="text-center p-8 bg-rose-50/50 border-2 border-dashed border-rose-100 rounded-[2rem]">
+                        <p className="text-sm font-bengali text-slate-500 font-bold mb-2">এই বইটি বর্তমানে সংগ্রহে নেই</p>
+                        <p className="text-2xl font-black text-rose-600 font-bengali mb-1">
+                          বইটি অন্য সদস্যের কাছে আছে
+                        </p>
+                        {(modalReturnDate || selectedBook.expectedReturnDate) && (
+                          <p className="text-sm font-bengali text-slate-500 font-bold mt-2">
+                             বই পাঠাগারে আসার সম্ভাব্য তারিখ: {new Date(modalReturnDate || selectedBook.expectedReturnDate!).toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' })}
+                          </p>
+                        )}
+                      </div>
                     )}
-                  </button>
-                  
-                  {selectedBook.status !== 'Available' && activeIssues[selectedBook.id] && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-center p-6 bg-indigo-50/50 border-2 border-dashed border-indigo-100 rounded-[2rem]"
-                    >
-                      <p className="text-sm font-bengali text-slate-600 font-bold mb-1">পাঠাগারে আসার সম্ভাব্য তারিখ:</p>
-                      <p className="text-2xl font-black text-indigo-600 font-bengali">
-                        {new Date(activeIssues[selectedBook.id]).toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' })}
-                      </p>
-                    </motion.div>
-                  )}
-                </div>
+                  </div>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }
 

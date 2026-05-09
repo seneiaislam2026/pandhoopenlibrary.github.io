@@ -25,7 +25,7 @@ export default function Login() {
 
   React.useEffect(() => {
     if (user && !authLoading) {
-      navigate('/dashboard');
+      navigate('/dashboard', { replace: true });
     }
   }, [user, authLoading, navigate]);
 
@@ -92,11 +92,20 @@ export default function Login() {
               id: currentUid,
               updatedAt: serverTimestamp()
             }, { merge: true }).catch(console.error);
+          } else if (currentUid) {
+            const userDocSnap = await getDoc(doc(db, 'users', currentUid));
+            if (userDocSnap.exists() && userDocSnap.data().status === 'pending') {
+               await auth.signOut();
+               throw new Error('আপনার একাউন্টটি বর্তমানে পাঠাগার কর্তৃপক্ষের অনুমোদনের অপেক্ষায় আছে। অ্যাডমিন এপ্রুভ না করা পর্যন্ত লগইন করা যাবে না।');
+            }
           }
           
           navigate('/dashboard');
           return;
         } catch (authErr: any) {
+          if (authErr.message && authErr.message.includes('অনুমোদনের অপেক্ষায়')) {
+             throw authErr;
+          }
           console.warn("Firebase Auth login failed, checking migration/fallback:", authErr.code);
 
           // 2. Fallback manual checks if auth login fails
@@ -130,6 +139,11 @@ export default function Login() {
             }
           } catch (err: any) {
             console.error("Lookup error:", err);
+          }
+
+          // Check if manual user is pending before migrating
+          if (manualUser && manualUser.status === 'pending' && !isMasterAdmin) {
+              throw new Error('আপনার একাউন্টটি বর্তমানে পাঠাগার কর্তৃপক্ষের অনুমোদনের অপেক্ষায় আছে। অ্যাডমিন এপ্রুভ না করা পর্যন্ত লগইন করা যাবে না।');
           }
 
           // 3. Migration: If they exist in Firestore but NOT in Auth, create the Auth account now

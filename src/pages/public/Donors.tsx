@@ -97,7 +97,12 @@ export default function Donors() {
   };
 
   return (
-    <div className="bg-[#fafafa] dark:bg-slate-900 min-h-screen py-16 px-4 transition-colors">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="bg-[#fafafa] dark:bg-slate-900 min-h-screen py-16 px-4 transition-colors"
+    >
       <div className="max-w-4xl mx-auto space-y-12">
         
         {/* Header */}
@@ -336,6 +341,6 @@ export default function Donors() {
           </motion.div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }

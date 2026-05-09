@@ -21,7 +21,7 @@ async function startServer() {
       const { contents, systemInstruction, tools } = req.body;
       
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-flash-latest",
         contents: contents,
         config: {
           systemInstruction: systemInstruction,
@@ -29,12 +29,10 @@ async function startServer() {
         }
       });
 
-      const text = response.text;
-      const functionCalls = response.functionCalls;
-
       res.json({ 
-        text: text,
-        functionCalls: functionCalls
+        text: response.text,
+        functionCalls: response.functionCalls,
+        content: response.candidates?.[0]?.content
       });
     } catch (error: any) {
       console.error('Gemini API Error:', error);
@@ -68,27 +66,57 @@ async function startServer() {
       const senderId = process.env.SMS_SENDER_ID;
       
       if (!apiKey || !senderId) {
-        return res.status(500).json({ error: 'Missing SMS API configuration' });
+        console.error('❌ SMS Config Missing:', { hasKey: !!apiKey, hasSender: !!senderId });
+        return res.status(500).json({ success: false, error: 'Missing SMS API configuration' });
       }
       
-      // Must use unicode for Bengali
-      const url = `https://bulksmsbd.net/api/smsapi?api_key=${apiKey}&type=unicode&number=${cleanNumber}&senderid=${senderId}&message=${encodeURIComponent(message)}`;
+      // Try bulksmsbd.com (most stable) but keep .net as an option if needed
+      const baseURL = 'https://bulksmsbd.com/api/smsapi';
       
-      // Make the fetch from the server
-      const proxyResponse = await fetch(url);
+      console.log(`📡 Sending SMS to ${cleanNumber} via ${baseURL}...`);
+      
+      const params = new URLSearchParams();
+      params.append('api_key', apiKey);
+      params.append('type', 'unicode');
+      params.append('number', cleanNumber);
+      params.append('senderid', senderId);
+      params.append('message', message);
+
+      // Make the POST request
+      const proxyResponse = await fetch(baseURL, {
+        method: 'POST',
+        body: params,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
+      
       const data = await proxyResponse.text();
+      console.log('📬 SMS API raw response:', data);
       
-      // Parse JSON safely
       let json: any = {};
       try { json = JSON.parse(data); } catch(e) {}
       
-      if (json.response_code === 202) {
+      // 202 is the successful submission code for BulkSMSBD
+      const isSuccess = 
+        Number(json.response_code) === 202 || 
+        json.success === true || 
+        json.status === "success" || 
+        json.response_code === "202" ||
+        (json.message && json.message.toLowerCase().includes('success'));
+      
+      if (isSuccess) {
           console.log(`✅ SMS successfully submitted to ${cleanNumber}`);
       } else {
           console.error(`⚠️ SMS API returned an issue for ${cleanNumber}:`, data);
       }
       
-      res.json({ success: true, data: json, rawData: data });
+      res.json({ 
+        success: isSuccess, 
+        data: json, 
+        rawData: data,
+        message: isSuccess ? 'SMS sent successfully' : (json.message || 'SMS API error')
+      });
     } catch (error: any) {
       console.error('Server SMS API error:', error);
       res.status(500).json({ success: false, error: error.message });
