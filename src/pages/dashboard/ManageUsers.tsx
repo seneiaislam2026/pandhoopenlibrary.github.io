@@ -628,14 +628,17 @@ const handleAddUser = async (e: React.FormEvent) => {
     if (filterType === "inactive") return u.status === "inactive";
     if (filterType === "frequent-late") return lateReturnCount >= 5;
     if (filterType === "blocked") return u.borrowBlocked || hasOverdueBooks || lateReturnCount >= 5;
-    // For 'best' filter, we don't exclude anyone here, just do it in sort
+    
+    if (filterType === "best") {
+      const issues = allIssues.filter(i => String(i.userId) === String(u.id) && String(i.status).toLowerCase() === 'returned').length;
+      if (issues === 0) return false;
+    }
 
     return true;
   }).sort((a, b) => {
     if (filterType === 'best') {
-        const currentYear = new Date().getFullYear();
-        const aIssues = allIssues.filter((i) => String(i.userId) === String(a.id) && String(i.status).toLowerCase() === 'returned' && new Date(i.returnDate || i.issueDate).getFullYear() === currentYear).length;
-        const bIssues = allIssues.filter((i) => String(i.userId) === String(b.id) && String(i.status).toLowerCase() === 'returned' && new Date(i.returnDate || i.issueDate).getFullYear() === currentYear).length;
+        const aIssues = allIssues.filter((i) => String(i.userId) === String(a.id) && String(i.status).toLowerCase() === 'returned').length;
+        const bIssues = allIssues.filter((i) => String(i.userId) === String(b.id) && String(i.status).toLowerCase() === 'returned').length;
         if (bIssues !== aIssues) return bIssues - aIssues; // Highest first
     }
     const getNum = (id?: string) => {
