@@ -625,7 +625,18 @@ export default function ManageIssues() {
         const issueBook = books.find(b => b.id === issue.bookId);
         if (issueUser && issueUser.phone) {
           const smsMessage = `প্রিয় ${issueUser.name}, পানধোয়া উন্মুক্ত পাঠাগার থেকে নেওয়া আপনার "${issueBook?.title || 'বইটি'}" বইটির ফেরত দেওয়ার সময় বৃদ্ধি করে নতুন তারিখ ${bdDate} করা হয়েছে। ওয়েবসাইট: www.pandhoalibrary.org`;
-          sendSMS(issueUser.phone, smsMessage);
+          
+          // Send SMS in background
+          (async () => {
+            try {
+              const success = await sendSMS(issueUser.phone || '', smsMessage);
+              if (!success) {
+                toast.error("সদস্যের মোবাইলে SMS পাঠানো সম্ভব হয়নি।", { icon: '⚠️' });
+              }
+            } catch (e) {
+              console.error("SMS Error:", e);
+            }
+          })();
         }
       }
 

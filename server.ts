@@ -67,7 +67,10 @@ async function startServer() {
       
       if (!apiKey || !senderId) {
         console.error('❌ SMS Config Missing:', { hasKey: !!apiKey, hasSender: !!senderId });
-        return res.status(500).json({ success: false, error: 'Missing SMS API configuration' });
+        return res.status(500).json({ 
+          success: false, 
+          error: 'SMS API কনফিগার করা নেই। অনুগ্রহ করে Settings থেকে SMS_API_KEY এবং SMS_SENDER_ID সেট করুন।' 
+        });
       }
       
       // Try bulksmsbd.com (most stable) but keep .net as an option if needed
