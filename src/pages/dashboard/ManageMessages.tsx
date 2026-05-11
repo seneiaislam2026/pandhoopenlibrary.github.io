@@ -39,30 +39,57 @@ export default function ManageMessages() {
   const [filter, setFilter] = useState<'sent' | 'all'>('all');
 
   useEffect(() => {
-    const unsubMessages = onSnapshot(collection(db, "messages"), (snapshot) => {
-      const fetchedMsgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Message[];
-      setMessages(fetchedMsgs);
-      setLoading(false);
-      
-      if (activeUser?.id && activeUser?.role === 'admin') {
-         // Auto-mark direct messages to this admin as read
-         fetchedMsgs.forEach(m => {
-            if (!m.isRead && m.toUserId === activeUser.id) {
-               updateDoc(doc(db, "messages", m.id), { isRead: true }).catch(err => console.error(err));
-            }
-         });
+    const fetchData = async () => {
+      try {
+        const { getDocs, query, collection, doc, updateDoc } = await import('firebase/firestore');
+        const db = (await import('../../lib/firebase')).db;
+
+        const cacheKeyMsgs = 'admin_msgs_cache';
+        const cacheKeyUsers = 'admin_users_brief_cache';
+        const cacheTime = sessionStorage.getItem('admin_msgs_time');
+
+        if (cacheTime && (Date.now() - parseInt(cacheTime) < 2 * 60 * 1000)) {
+           const cachedMsgs = sessionStorage.getItem(cacheKeyMsgs);
+           const cachedUsers = sessionStorage.getItem(cacheKeyUsers);
+           if (cachedMsgs && cachedUsers) {
+              setMessages(JSON.parse(cachedMsgs));
+              setUsers(JSON.parse(cachedUsers));
+              setLoading(false);
+              return;
+           }
+        }
+
+        const [msgSnap, userSnap] = await Promise.all([
+           getDocs(collection(db, "messages")),
+           getDocs(collection(db, "users"))
+        ]);
+
+        const fetchedMsgs = msgSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Message[];
+        const fetchedUsers = userSnap.docs.map(doc => ({ id: doc.id, name: doc.data().name, username: doc.data().username, role: doc.data().role })) as LibUser[];
+        
+        setMessages(fetchedMsgs);
+        setUsers(fetchedUsers);
+        setLoading(false);
+
+        sessionStorage.setItem(cacheKeyMsgs, JSON.stringify(fetchedMsgs));
+        sessionStorage.setItem(cacheKeyUsers, JSON.stringify(fetchedUsers));
+        sessionStorage.setItem('admin_msgs_time', Date.now().toString());
+
+        if (activeUser?.id && activeUser?.role === 'admin') {
+           fetchedMsgs.forEach(m => {
+              if (!m.isRead && m.toUserId === activeUser.id) {
+                 updateDoc(doc(db, "messages", m.id), { isRead: true }).catch(err => console.error(err));
+              }
+           });
+        }
+      } catch (err) {
+        console.error("Error fetching messages:", err);
+        setLoading(false);
       }
-    });
-
-    const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
-      setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as LibUser[]);
-    });
-
-    return () => {
-      unsubMessages();
-      unsubUsers();
     };
-  }, []);
+
+    fetchData();
+  }, [activeUser]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -2,6 +2,7 @@ import React from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { Logo } from '../components/Logo';
 import {
+  ShoppingBag,
   BookOpen,
   UserCircle,
   Menu,
@@ -43,15 +44,33 @@ export default function MainLayout() {
 
   useEffect(() => {
     if (user) {
-      // Get unread messages count
-      const qMsgs = query(collection(db, 'messages'), where('toUserId', '==', user.id));
-      const unsubscribeMessages = onSnapshot(qMsgs, (snapshot) => {
-        const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const unread = msgs.filter((m: any) => !m.isRead && m.toUserId === user.id).length;
-        setMessagesCount(unread);
-      }, (error) => {
-        handleFirestoreError(error, OperationType.GET, 'messages');
-      });
+      const fetchMessages = async () => {
+        try {
+          const cacheKey = 'main_msgs_count';
+          const cacheTimeKey = 'main_msgs_count_time';
+          const cached = sessionStorage.getItem(cacheKey);
+          const lastTime = sessionStorage.getItem(cacheTimeKey);
+
+          if (cached && lastTime && (Date.now() - parseInt(lastTime) < 5 * 60 * 1000)) {
+            setMessagesCount(parseInt(cached));
+            return;
+          }
+
+          const { getDocs } = await import('firebase/firestore');
+          const qMsgs = query(collection(db, 'messages'), where('toUserId', '==', user.id));
+          const snapshot = await getDocs(qMsgs);
+          const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const unread = msgs.filter((m: any) => !m.isRead && m.toUserId === user.id).length;
+          setMessagesCount(unread);
+          sessionStorage.setItem(cacheKey, unread.toString());
+          sessionStorage.setItem(cacheTimeKey, Date.now().toString());
+        } catch (error) {
+          if (error instanceof Error && error.message.includes('Quota')) return;
+          console.error("Error fetching messages count:", error);
+        }
+      };
+
+      fetchMessages();
 
       const noticesQuery = query(collection(db, "notices"), orderBy("date", "desc"));
       let currentNotices: any[] = [];
@@ -66,18 +85,32 @@ export default function MainLayout() {
         }
       };
 
-      const unsubscribeNotices = onSnapshot(noticesQuery, (snapshot) => {
-        currentNotices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
-        updateUnreadNotices();
-      }, (error) => {
-        handleFirestoreError(error, OperationType.GET, 'notices');
-      });
+      const fetchNotices = async () => {
+        try {
+          const cached = sessionStorage.getItem('main_notices_cache');
+          const cacheTime = sessionStorage.getItem('main_notices_cache_time');
+          if (cached && cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
+            currentNotices = JSON.parse(cached);
+            updateUnreadNotices();
+            return;
+          }
+
+          const { getDocs } = await import('firebase/firestore');
+          const snapshot = await getDocs(noticesQuery);
+          currentNotices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+          sessionStorage.setItem('main_notices_cache', JSON.stringify(currentNotices));
+          sessionStorage.setItem('main_notices_cache_time', Date.now().toString());
+          updateUnreadNotices();
+        } catch (error) {
+          handleFirestoreError(error, OperationType.GET, 'notices');
+        }
+      };
+      
+      fetchNotices();
 
       window.addEventListener('notices_seen', updateUnreadNotices);
 
       return () => {
-        unsubscribeMessages();
-        unsubscribeNotices();
         window.removeEventListener('notices_seen', updateUnreadNotices);
       };
     }
@@ -368,14 +401,9 @@ export default function MainLayout() {
                     </span>
                   )}
                </Link>
-               <Link to="/dashboard/inbox" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/inbox' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <MessageSquare className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase tracking-tighter">মেসেজ</span>
-                  {messagesCount > 0 && (
-                    <span className="absolute top-0 right-2 w-4 h-4 bg-indigo-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border border-white">
-                      {messagesCount}
-                    </span>
-                  )}
+               <Link to="/buy-books" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/buy-books' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <ShoppingBag className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">বই কিনুন</span>
                </Link>
                <Link to="/dashboard/book-requests" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/book-requests' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
                   <BookOpen className="w-5 h-5" />

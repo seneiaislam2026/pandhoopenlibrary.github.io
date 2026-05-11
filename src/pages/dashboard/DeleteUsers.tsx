@@ -23,11 +23,37 @@ export default function DeleteUsers() {
   const { user: currentUser } = useAuth();
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, "users"), (snapshot) => {
-      setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as LibUser[]);
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    const fetchData = async () => {
+      try {
+        const { getDocs, collection } = await import('firebase/firestore');
+        const db = (await import('../../lib/firebase')).db;
+
+        const cacheKey = 'admin_users_cache';
+        const cacheTime = sessionStorage.getItem('admin_users_time');
+
+        if (cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
+           const cached = sessionStorage.getItem(cacheKey);
+           if (cached) {
+              setUsers(JSON.parse(cached));
+              setLoading(false);
+              return;
+           }
+        }
+
+        const snapshot = await getDocs(collection(db, "users"));
+        const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as LibUser[];
+        setUsers(usersData);
+        setLoading(false);
+
+        sessionStorage.setItem(cacheKey, JSON.stringify(usersData));
+        sessionStorage.setItem('admin_users_time', Date.now().toString());
+      } catch (err) {
+        console.error("Error fetching users:", err);
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, []);
 
   const handleDelete = async (id: string, name: string) => {

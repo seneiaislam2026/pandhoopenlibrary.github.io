@@ -23,18 +23,44 @@ export default function ManageNotices() {
   const { user } = useAuth();
 
   useEffect(() => {
-    const q = query(collection(db, "notices"), orderBy("date", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setNotices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Notice[]);
-      setLoading(false);
-      
-      if (user?.id) {
+    const fetchData = async () => {
+      try {
+        const { getDocs, query, collection, orderBy } = await import('firebase/firestore');
+        const db = (await import('../../lib/firebase')).db;
+
+        const cacheKey = 'admin_notices_cache';
+        const cacheTime = sessionStorage.getItem('admin_notices_time');
+
+        if (cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
+           const cached = sessionStorage.getItem(cacheKey);
+           if (cached) {
+              setNotices(JSON.parse(cached));
+              setLoading(false);
+              return;
+           }
+        }
+
+        const q = query(collection(db, "notices"), orderBy("date", "desc"));
+        const snapshot = await getDocs(q);
+        const noticeList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Notice[];
+        setNotices(noticeList);
+        setLoading(false);
+
+        sessionStorage.setItem(cacheKey, JSON.stringify(noticeList));
+        sessionStorage.setItem('admin_notices_time', Date.now().toString());
+
+        if (user?.id) {
           localStorage.setItem(`last_seen_notices_${user.id}`, new Date().toISOString());
           window.dispatchEvent(new Event('notices_seen'));
+        }
+      } catch (err) {
+        console.error("Error fetching notices:", err);
+        setLoading(false);
       }
-    });
-    return () => unsubscribe();
-  }, []);
+    };
+
+    fetchData();
+  }, [user]);
 
   const [secretary, setSecretary] = useState<{name: string, title: string}>({
     name: 'মোঃ ফয়েজ রাব্বি',
@@ -42,16 +68,34 @@ export default function ManageNotices() {
   });
 
   useEffect(() => {
-    const q = query(collection(db, "team"), orderBy("order", "asc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
-      // Look for secretary specifically
-      const sec = members.find(m => m.title.includes('সম্পাদক') || m.title.includes('Secretary'));
-      if (sec) {
-        setSecretary({ name: sec.name, title: sec.title });
+    const fetchTeam = async () => {
+      try {
+        const { getDocs, query, collection, orderBy } = await import('firebase/firestore');
+        const db = (await import('../../lib/firebase')).db;
+
+        const cacheKey = 'admin_team_brief';
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+           setSecretary(JSON.parse(cached));
+           return;
+        }
+
+        const q = query(collection(db, "team"), orderBy("order", "asc"));
+        const snapshot = await getDocs(q);
+        const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+        
+        const sec = members.find(m => m.title.includes('সম্পাদক') || m.title.includes('Secretary'));
+        if (sec) {
+          const secData = { name: sec.name, title: sec.title };
+          setSecretary(secData);
+          sessionStorage.setItem(cacheKey, JSON.stringify(secData));
+        }
+      } catch (err) {
+        console.error("Error fetching team for notices:", err);
       }
-    });
-    return () => unsubscribe();
+    };
+
+    fetchTeam();
   }, []);
 
   const handlePrint = (notice: Notice) => {
@@ -68,10 +112,11 @@ export default function ManageNotices() {
       <html>
         <head>
           <title>নোটিশ - ${notice.title}</title>
-          <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Outfit:wght@400;600;700;900&display=swap" rel="stylesheet">
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap');
-            body { 
+          
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+                  <style>
+            
+                        body { 
               font-family: 'Hind Siliguri', sans-serif; 
               color: #1a1a1a;
               margin: 0;

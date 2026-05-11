@@ -119,8 +119,9 @@ export default function BookRequests() {
         <head>
           <title>বইয়ের রিকোয়েস্ট রিপোর্ট</title>
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap');
-            body { 
+            
+            @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap');
+                        body { 
               font-family: 'Hind Siliguri', sans-serif; 
               color: #1a1a1a;
               margin: 0;

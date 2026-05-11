@@ -54,6 +54,8 @@ const AdminSettings = React.lazy(() => import('./pages/dashboard/AdminSettings')
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
+
   if (loading) return (
     <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50">
       <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
@@ -62,6 +64,16 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode,
   );
   if (!user) return <Navigate to="/login" replace />;
   if (allowedRoles && !allowedRoles.includes(user.role)) return <Navigate to="/dashboard" replace />;
+
+  if (user.role === 'subadmin' || user.role === 'visitor_admin') {
+    const defaultSubadminRoutes = ['/dashboard', '/dashboard/', '/dashboard/profile'];
+    if (!defaultSubadminRoutes.includes(location.pathname)) {
+       if (!user.subadminAccess?.includes(location.pathname)) {
+          return <Navigate to="/dashboard" replace />;
+       }
+    }
+  }
+
   return <>{children}</>;
 };
 
@@ -102,24 +114,24 @@ function AppRoutes() {
             <Route index element={<DashboardHome />} />
             
             {/* Admin only */}
-            <Route path="users" element={<ProtectedRoute allowedRoles={['admin']}><ManageUsers /></ProtectedRoute>} />
-            <Route path="donors" element={<ProtectedRoute allowedRoles={['admin', 'subadmin']}><ManageDonors /></ProtectedRoute>} />
-            <Route path="finances" element={<ProtectedRoute allowedRoles={['admin']}><Finances /></ProtectedRoute>} />
+            <Route path="users" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageUsers /></ProtectedRoute>} />
+            <Route path="donors" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageDonors /></ProtectedRoute>} />
+            <Route path="finances" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><Finances /></ProtectedRoute>} />
             <Route path="books" element={<ProtectedRoute><ManageBooks /></ProtectedRoute>} />
-            <Route path="issues" element={<ProtectedRoute allowedRoles={['admin', 'issue_admin']}><ManageIssues /></ProtectedRoute>} />
-            <Route path="dues" element={<ProtectedRoute allowedRoles={['admin']}><ManageDues /></ProtectedRoute>} />
+            <Route path="issues" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageIssues /></ProtectedRoute>} />
+            <Route path="dues" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageDues /></ProtectedRoute>} />
             <Route path="manageteam" element={<ProtectedRoute allowedRoles={['admin']}><ManageTeam /></ProtectedRoute>} />
             <Route path="constitution" element={<ProtectedRoute allowedRoles={['admin']}><ManageConstitution /></ProtectedRoute>} />
-            <Route path="manageblog" element={<ProtectedRoute allowedRoles={['admin']}><ManageBlog /></ProtectedRoute>} />
+            <Route path="manageblog" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageBlog /></ProtectedRoute>} />
             <Route path="delete-users" element={<ProtectedRoute allowedRoles={['admin']}><DeleteUsers /></ProtectedRoute>} />
-            <Route path="notices" element={<ProtectedRoute allowedRoles={['admin']}><ManageNotices /></ProtectedRoute>} />
-            <Route path="messages" element={<ProtectedRoute allowedRoles={['admin']}><ManageMessages /></ProtectedRoute>} />
-            <Route path="events" element={<ProtectedRoute allowedRoles={['admin']}><ManageEvents /></ProtectedRoute>} />
+            <Route path="notices" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageNotices /></ProtectedRoute>} />
+            <Route path="messages" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageMessages /></ProtectedRoute>} />
+            <Route path="events" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageEvents /></ProtectedRoute>} />
             <Route path="reset-requests" element={<ProtectedRoute allowedRoles={['admin']}><ManageResetRequests /></ProtectedRoute>} />
-            <Route path="pre-bookings" element={<ProtectedRoute allowedRoles={['admin', 'issue_admin']}><ManagePreBookings /></ProtectedRoute>} />
-            <Route path="shop-books" element={<ProtectedRoute allowedRoles={['admin']}><ManageShopBooks /></ProtectedRoute>} />
-            <Route path="shop-orders" element={<ProtectedRoute allowedRoles={['admin']}><ManageShopOrders /></ProtectedRoute>} />
-            <Route path="stickers" element={<ProtectedRoute allowedRoles={['admin']}><ManageStickers /></ProtectedRoute>} />
+            <Route path="pre-bookings" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManagePreBookings /></ProtectedRoute>} />
+            <Route path="shop-books" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageShopBooks /></ProtectedRoute>} />
+            <Route path="shop-orders" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageShopOrders /></ProtectedRoute>} />
+            <Route path="stickers" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageStickers /></ProtectedRoute>} />
             <Route path="settings" element={<ProtectedRoute allowedRoles={['admin']}><AdminSettings /></ProtectedRoute>} />
             
             {/* Reader & Admin */}
@@ -129,6 +141,8 @@ function AppRoutes() {
             <Route path="inbox" element={<UserMessages />} />
             <Route path="book-requests" element={<BookRequests />} />
           </Route>
+          {/* Catch-all route to home page */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AnimatePresence>
     </Suspense>

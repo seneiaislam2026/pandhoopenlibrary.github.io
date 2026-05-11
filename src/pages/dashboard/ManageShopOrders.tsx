@@ -110,8 +110,9 @@ export default function ManageShopOrders() {
         <head>
           <title>Invoice - ${order.id}</title>
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;700&display=swap');
-            * { box-sizing: border-box; }
+            
+            @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap');
+                        * { box-sizing: border-box; }
             body { font-family: 'Hind Siliguri', sans-serif; padding: 0; margin: 0; color: #1e293b; background: #fff; }
             .container { padding: 40px; max-width: 800px; margin: 0 auto; }
             .header { border-bottom: 4px solid #1e293b; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
@@ -250,8 +251,9 @@ export default function ManageShopOrders() {
         <head>
           <title>Confirmed Orders List</title>
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;700&display=swap');
-            body { font-family: 'Hind Siliguri', sans-serif; padding: 30px; font-size: 14px; }
+            
+            @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap');
+                        body { font-family: 'Hind Siliguri', sans-serif; padding: 30px; font-size: 14px; }
             h1 { text-align: center; color: #1e293b; margin-bottom: 30px; }
             table { width: 100%; border-collapse: collapse; margin-top: 20px; }
             th { background: #f1f5f9; padding: 12px 10px; text-align: left; border-bottom: 2px solid #cbd5e1; }

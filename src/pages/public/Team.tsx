@@ -22,40 +22,54 @@ export default function Team() {
   const [filterMode, setFilterMode] = useState<'all' | 'current' | 'former'>('current');
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'team'), (snapshot) => {
-      let teamData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as TeamMember[];
-      
-      teamData.sort((a, b) => {
-        const roleA = (a.role || '').toLowerCase();
-        const roleB = (b.role || '').toLowerCase();
+    const fetchTeam = async () => {
+      try {
+        const cached = sessionStorage.getItem('pub_team_cache');
+        const cacheTime = sessionStorage.getItem('pub_team_cache_time');
         
-        const isDirectorA = roleA.includes('পরিচালক') && !roleA.includes('সহ');
-        const isDirectorB = roleB.includes('পরিচালক') && !roleB.includes('সহ');
+        if (cached && cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
+          setTeam(JSON.parse(cached));
+          setLoading(false);
+          return;
+        }
+
+        const { getDocs } = await import('firebase/firestore');
+        const snapshot = await getDocs(collection(db, 'team'));
+        let teamData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as TeamMember[];
         
-        const isCoDirectorA = roleA.includes('সহ পরিচালক') || roleA.includes('সহ-পরিচালক');
-        const isCoDirectorB = roleB.includes('সহ পরিচালক') || roleB.includes('সহ-পরিচালক');
+        teamData.sort((a, b) => {
+          const roleA = (a.role || '').toLowerCase();
+          const roleB = (b.role || '').toLowerCase();
+          
+          const isDirectorA = roleA.includes('পরিচালক') && !roleA.includes('সহ');
+          const isDirectorB = roleB.includes('পরিচালক') && !roleB.includes('সহ');
+          
+          const isCoDirectorA = roleA.includes('সহ পরিচালক') || roleA.includes('সহ-পরিচালক');
+          const isCoDirectorB = roleB.includes('সহ পরিচালক') || roleB.includes('সহ-পরিচালক');
 
-        if (isDirectorA && !isDirectorB) return -1;
-        if (!isDirectorA && isDirectorB) return 1;
-        if (isCoDirectorA && !isCoDirectorB) return -1;
-        if (!isCoDirectorA && isCoDirectorB) return 1;
+          if (isDirectorA && !isDirectorB) return -1;
+          if (!isDirectorA && isDirectorB) return 1;
+          if (isCoDirectorA && !isCoDirectorB) return -1;
+          if (!isCoDirectorA && isCoDirectorB) return 1;
 
-        const timeA = a.createdAt || 0;
-        const timeB = b.createdAt || 0;
-        return timeA - timeB;
-      });
+          const timeA = a.createdAt || 0;
+          const timeB = b.createdAt || 0;
+          return timeA - timeB;
+        });
 
-      setTeam(teamData);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching team:", error);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+        setTeam(teamData);
+        sessionStorage.setItem('pub_team_cache', JSON.stringify(teamData));
+        sessionStorage.setItem('pub_team_cache_time', Date.now().toString());
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching team:", error);
+        setLoading(false);
+      }
+    };
+    fetchTeam();
   }, []);
 
   const filteredTeam = team.filter((m) => {

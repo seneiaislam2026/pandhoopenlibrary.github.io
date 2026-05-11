@@ -53,29 +53,54 @@ export default function ManageStickers() {
   const [selectedStickerIds, setSelectedStickerIds] = useState<string[]>([]);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'book-stickers'), (snapshot) => {
-      const fetchedStickers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Sticker[];
-      // Sort locally so we don't miss items that might not have a createdAt field
-      fetchedStickers.sort((a, b) => {
-        const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
-        const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
-        return dateB - dateA; // Descending
-      });
-      setStickers(fetchedStickers);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'book-stickers');
-      setLoading(false);
-    });
+    const fetchData = async () => {
+      try {
+        const { getDocs, collection } = await import('firebase/firestore');
+        const db = (await import('../../lib/firebase')).db;
 
-    const unsubBooks = onSnapshot(collection(db, 'books'), (snapshot) => {
-      setBooks(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+        const cacheKeyStickers = 'admin_stickers_cache';
+        const cacheKeyBooks = 'admin_books_cache';
+        const cacheTime = sessionStorage.getItem('admin_stickers_time');
 
-    return () => {
-      unsubscribe();
-      unsubBooks();
+        if (cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
+           const cachedStickers = sessionStorage.getItem(cacheKeyStickers);
+           const cachedBooks = sessionStorage.getItem(cacheKeyBooks);
+           if (cachedStickers && cachedBooks) {
+              setStickers(JSON.parse(cachedStickers));
+              setBooks(JSON.parse(cachedBooks));
+              setLoading(false);
+              return;
+           }
+        }
+
+        const [stickerSnap, booksSnap] = await Promise.all([
+          getDocs(collection(db, 'book-stickers')),
+          getDocs(collection(db, 'books'))
+        ]);
+
+        const fetchedStickers = stickerSnap.docs.map(docSub => ({ id: docSub.id, ...docSub.data() })) as Sticker[];
+        fetchedStickers.sort((a, b) => {
+          const dateA = a.createdAt?.seconds || 0;
+          const dateB = b.createdAt?.seconds || 0;
+          return dateB - dateA;
+        });
+        
+        const fetchedBooks = booksSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        setStickers(fetchedStickers);
+        setBooks(fetchedBooks);
+        setLoading(false);
+
+        sessionStorage.setItem(cacheKeyStickers, JSON.stringify(fetchedStickers));
+        sessionStorage.setItem(cacheKeyBooks, JSON.stringify(fetchedBooks));
+        sessionStorage.setItem('admin_stickers_time', Date.now().toString());
+      } catch (err) {
+        handleFirestoreError(err, OperationType.LIST, 'book-stickers');
+        setLoading(false);
+      }
     };
+
+    fetchData();
   }, []);
 
   const handleGenerate = async (e: React.FormEvent) => {

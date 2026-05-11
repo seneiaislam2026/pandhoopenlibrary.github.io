@@ -61,14 +61,30 @@ export default function BuyBooks() {
   });
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'shop-books'), (snapshot) => {
-      setBooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ShopBook[]);
-      setLoading(false);
-    }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'shop-books');
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    const fetchBooks = async () => {
+      try {
+        const cached = sessionStorage.getItem('shop_books_cache');
+        const cacheTime = sessionStorage.getItem('shop_books_cache_time');
+        
+        if (cached && cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
+          setBooks(JSON.parse(cached));
+          setLoading(false);
+          return;
+        }
+
+        const { getDocs } = await import('firebase/firestore');
+        const snapshot = await getDocs(collection(db, 'shop-books'));
+        const booksData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ShopBook[];
+        setBooks(booksData);
+        sessionStorage.setItem('shop_books_cache', JSON.stringify(booksData));
+        sessionStorage.setItem('shop_books_cache_time', Date.now().toString());
+        setLoading(false);
+      } catch (err: any) {
+        handleFirestoreError(err, OperationType.LIST, 'shop-books');
+        setLoading(false);
+      }
+    };
+    fetchBooks();
   }, []);
 
   const addToCart = (book: ShopBook) => {
@@ -228,48 +244,62 @@ export default function BuyBooks() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-10">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6 sm:gap-8">
             {filtered.map((book, index) => (
               <motion.div
                 key={book.id}
-                initial={{ opacity: 0, scale: 0.95 }}
-                whileInView={{ opacity: 1, scale: 1 }}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: index * 0.05 }}
-                className="bg-white rounded-[2.5rem] border border-slate-100 p-4 hover:shadow-2xl transition-all group flex flex-col h-full"
+                transition={{ 
+                  delay: Math.min(index * 0.05, 0.4),
+                  duration: 0.5,
+                  ease: [0.16, 1, 0.3, 1] 
+                }}
+                className="bg-white rounded-[2rem] border border-slate-100 p-4 hover:shadow-[0_20px_50px_rgba(0,0,0,0.06)] transition-all group flex flex-col h-full relative border-gradient-to-br from-slate-200 to-indigo-100/20"
               >
-                <div className="aspect-[2/3] rounded-[2rem] overflow-hidden mb-6 bg-slate-50 relative">
+                <div className="aspect-[3/4] rounded-[1.5rem] overflow-hidden mb-5 bg-[#f8fafc] relative shrink-0 shadow-inner">
                   {book.cover ? (
-                    <img src={book.cover} alt={book.title} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    <img src={book.cover} alt={book.title} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 ease-out" />
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-8 text-slate-200">
-                       <BookOpen size={64} className="opacity-10 mb-4" />
-                       <span className="text-xs font-black text-center font-bengali opacity-30">{book.title}</span>
+                    <div className="w-full h-full flex flex-col items-center justify-center p-6 text-slate-200">
+                       <BookOpen size={48} className="opacity-10 mb-2" />
+                       <span className="text-[10px] font-black text-center font-bengali opacity-30 px-2 line-clamp-2 uppercase tracking-widest">{book.title}</span>
                     </div>
                   )}
-                  {book.stock !== undefined && book.stock <= 0 && !book.isPreOrderAvailable && (
-                    <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] flex items-center justify-center">
-                       <span className="bg-rose-500 text-white px-4 py-2 rounded-xl text-xs font-black font-bengali shadow-xl">স্টক আউট</span>
-                    </div>
-                  )}
-                  <div className="absolute top-4 right-4">
-                     <span className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-black font-sans shadow-xl">৳ {book.price}</span>
+                  
+                  <div className="absolute top-4 left-4">
+                     <span className="bg-white/95 backdrop-blur-md text-indigo-700 px-4 py-1.5 rounded-full text-xs font-black font-sans shadow-lg shadow-indigo-200/20 border border-indigo-50">৳ {book.price}</span>
                   </div>
+
+                  {book.stock !== undefined && book.stock <= 0 && !book.isPreOrderAvailable && (
+                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] flex items-center justify-center p-6">
+                       <span className="bg-rose-500/90 text-white px-4 py-2 rounded-full text-[10px] uppercase font-black font-bengali shadow-xl backdrop-blur-md tracking-wider">স্টক আউট (Out of Stock)</span>
+                    </div>
+                  )}
+
+                  {/* Quick Add Overlay */}
+                  <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/5 transition-colors pointer-events-none" />
                 </div>
 
-                <div className="flex-1 px-4">
-                   <p className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] mb-2 font-bengali">{book.category || 'সাধারণ'}</p>
-                   <h3 className="text-lg font-black text-slate-900 font-bengali line-clamp-2 leading-tight group-hover:text-indigo-600 transition-colors mb-2">{book.title}</h3>
-                   <p className="text-sm text-slate-400 font-bengali font-bold">{book.author}</p>
+                <div className="flex-1 px-1">
+                   <div className="flex items-center gap-2 mb-2">
+                     <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] font-bengali">{book.category || 'নতুন বই'}</p>
+                   </div>
+                   <h3 className="text-lg font-black text-slate-900 font-bengali line-clamp-1 leading-tight mb-1 group-hover:text-indigo-600 transition-colors">{book.title}</h3>
+                   <p className="text-sm text-slate-500 font-bengali font-medium truncate">{book.author}</p>
                 </div>
 
-                <button 
-                  onClick={() => addToCart(book)}
-                  disabled={book.stock === 0 && !book.isPreOrderAvailable}
-                  className="mt-8 w-full py-5 bg-slate-900 text-white rounded-2xl font-black font-bengali text-sm hover:bg-emerald-600 transition-all shadow-xl active:scale-[0.98] disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-3"
-                >
-                  কার্টে যুক্ত করুন <Plus size={20} />
-                </button>
+                <div className="mt-6 pt-4 border-t border-slate-50">
+                  <button 
+                    onClick={() => addToCart(book)}
+                    disabled={book.stock === 0 && !book.isPreOrderAvailable}
+                    className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black font-bengali text-sm hover:bg-indigo-600 transition-all shadow-xl shadow-slate-200 hover:shadow-indigo-200/40 active:scale-95 disabled:opacity-30 disabled:grayscale disabled:pointer-events-none flex items-center justify-center gap-3"
+                  >
+                    শপিং কার্টে যোগ করুন <ShoppingCart size={18} />
+                  </button>
+                </div>
               </motion.div>
             ))}
           </div>

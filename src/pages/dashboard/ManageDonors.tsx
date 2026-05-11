@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../store/AuthContext';
-import { Check, Search, Calendar, Plus, Trash2, Edit2, FileDown, Eye, X, ArrowRight, Ticket, DollarSign } from 'lucide-react';
-import { onSnapshot, collection, doc, setDoc, deleteDoc, updateDoc, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { Check, Search, Calendar, Plus, Trash2, Edit2, FileDown, Eye, X, ArrowRight, Ticket, DollarSign, CheckCircle } from 'lucide-react';
+import { collection, doc, setDoc, deleteDoc, updateDoc, query, orderBy, serverTimestamp, getDocsFromCache, getDocsFromServer, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
@@ -49,6 +49,7 @@ export default function ManageDonors() {
   const [amount, setAmount] = useState(200);
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Bkash'>('Cash');
   const [paymentStatus, setPaymentStatus] = useState('Paid');
+  const [paymentMonthCount, setPaymentMonthCount] = useState(1);
   const [month, setMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -226,8 +227,9 @@ export default function ManageDonors() {
       <html>
         <head>
           <title>রিসিট - ${invoiceMonth}</title>
-          <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
-          <style>
+          
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+                  <style>
             * { box-sizing: border-box; }
             body { 
               font-family: 'Hind Siliguri', sans-serif; 
@@ -392,21 +394,50 @@ export default function ManageDonors() {
   }, [location.search, location.pathname]);
 
   useEffect(() => {
-    const unsubDonors = onSnapshot(query(collection(db, 'donor-members'), orderBy('createdAt', 'asc')), (snapshot) => {
-      setDonors(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DonorMember[]);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'donor-members');
-    });
-    const unsubPayments = onSnapshot(collection(db, 'donor-payments'), (snapshot) => {
-      setPayments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DonorPayment[]);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'donor-payments');
-    });
-    return () => {
-      unsubDonors();
-      unsubPayments();
+    const fetchData = async () => {
+      try {
+        const cacheKey = 'donor_members_cache';
+        const cachedDonors = sessionStorage.getItem(cacheKey);
+        if (cachedDonors) {
+          setDonors(JSON.parse(cachedDonors));
+        }
+
+        const donorsQuery = query(collection(db, 'donor-members'), orderBy('createdAt', 'asc'));
+        let donorSnap;
+        try {
+          donorSnap = await getDocsFromCache(donorsQuery);
+        } catch (e) {
+          donorSnap = await getDocsFromServer(donorsQuery);
+        }
+        const donorList = donorSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DonorMember[];
+        setDonors(donorList);
+        sessionStorage.setItem(cacheKey, JSON.stringify(donorList));
+
+        const paymentsCacheKey = 'donor_payments_cache';
+        const cachedPayments = sessionStorage.getItem(paymentsCacheKey);
+        if (cachedPayments) {
+           setPayments(JSON.parse(cachedPayments));
+        }
+
+        const paymentsQuery = collection(db, 'donor-payments');
+        let paySnap;
+        try {
+          paySnap = await getDocsFromCache(paymentsQuery);
+        } catch (e) {
+          paySnap = await getDocsFromServer(paymentsQuery);
+        }
+        const payList = paySnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DonorPayment[];
+        setPayments(payList);
+        sessionStorage.setItem(paymentsCacheKey, JSON.stringify(payList));
+        
+        setLoading(false);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, 'donors-data');
+        setLoading(false);
+      }
     };
+
+    fetchData();
   }, []);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -488,20 +519,35 @@ export default function ManageDonors() {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const newDocRef = doc(collection(db, 'donor-payments'));
-      await setDoc(newDocRef, {
-        donorId: selectedDonorId,
-        amount,
-        month,
-        status: paymentStatus,
-        paymentMethod,
-        id: newDocRef.id,
-        date: new Date().toISOString(),
-        createdAt: serverTimestamp()
-      });
+      const dbCollection = collection(db, 'donor-payments');
+      let currentYear = parseInt(month.split('-')[0], 10);
+      let currentMonthNum = parseInt(month.split('-')[1], 10);
+
+      for (let i = 0; i < paymentMonthCount; i++) {
+        const formattedMonth = `${currentYear}-${String(currentMonthNum).padStart(2, '0')}`;
+        const newDocRef = doc(dbCollection);
+        await setDoc(newDocRef, {
+          donorId: selectedDonorId,
+          amount,
+          month: formattedMonth,
+          status: paymentStatus,
+          paymentMethod,
+          id: newDocRef.id,
+          date: new Date().toISOString(),
+          createdAt: serverTimestamp()
+        });
+        
+        currentMonthNum++;
+        if (currentMonthNum > 12) {
+          currentMonthNum = 1;
+          currentYear++;
+        }
+      }
+      
       toast.success('পেমেন্ট সফলভাবে সংরক্ষণ করা হয়েছে।');
       setShowPaymentForm(false);
       setSelectedDonorId('');
+      setPaymentMonthCount(1);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'donor-payments');
     } finally {
@@ -583,8 +629,9 @@ export default function ManageDonors() {
     <head>
         <meta charset="UTF-8">
         <title>মাসিক অনুদান রিপোর্ট - ${monthName} ${yearConverted}</title>
+        
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
-        <style>
+                <style>
             body {
                 font-family: 'Hind Siliguri', sans-serif;
                 padding: 40px;
@@ -767,8 +814,9 @@ export default function ManageDonors() {
     <head>
         <meta charset="UTF-8">
         <title>দাতা সদস্য রিপোর্ট</title>
+        
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
-        <style>
+                <style>
             body {
                 font-family: 'Hind Siliguri', sans-serif;
                 padding: 40px;
@@ -945,6 +993,10 @@ export default function ManageDonors() {
       if (filterOption === 'unpaid') return hasUnpaid || donorPayments.length === 0;
       if (filterOption === 'paid') return !hasUnpaid && donorPayments.length > 0;
       return true;
+    }).sort((a, b) => {
+      const serialA = a.serial ? parseInt(String(a.serial), 10) : Number.MAX_SAFE_INTEGER;
+      const serialB = b.serial ? parseInt(String(b.serial), 10) : Number.MAX_SAFE_INTEGER;
+      return serialA - serialB;
     });
   }, [donors, paymentsByDonor, search, filterOption, month]);
 
@@ -1136,22 +1188,31 @@ export default function ManageDonors() {
 
       <AnimatePresence>
         {showPaymentForm && (
-          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white p-8 rounded-[2rem] shadow-2xl border border-slate-200 w-full max-w-2xl"
+               initial={{ opacity: 0, scale: 0.95, y: 20 }}
+               animate={{ opacity: 1, scale: 1, y: 0 }}
+               exit={{ opacity: 0, scale: 0.95, y: 20 }}
+               className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-slate-200 w-full max-w-2xl overflow-y-auto max-h-[90vh] font-bengali"
             >
-              <h3 className="font-black text-2xl mb-6 font-bengali text-slate-900 flex items-center gap-3">
-                <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
-                  <DollarSign className="w-6 h-6" />
-                </div>
-                অনুদানের পেমেন্ট আপডেট
-              </h3>
-              <form onSubmit={handleRecordPayment} className="space-y-5">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2 font-bengali">দাতা সদস্য নির্বাচন করুন <span className="text-rose-500 font-bold">*</span></label>
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-black text-2xl font-bengali text-slate-900 flex items-center gap-3">
+                  <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+                    <DollarSign className="w-6 h-6" />
+                  </div>
+                  পেমেন্ট আপডেট করুন
+                </h3>
+                <button 
+                  onClick={() => setShowPaymentForm(false)}
+                  className="p-2 hover:bg-slate-100 rounded-full transition-all"
+                >
+                  <X size={24} className="text-slate-400" />
+                </button>
+              </div>
+
+              <form onSubmit={handleRecordPayment} className="space-y-6">
+                <div className="space-y-2">
+                  <label className="block text-sm font-bold text-slate-700 font-bengali">দাতা সদস্য নির্বাচন করুন <span className="text-rose-500">*</span></label>
                   <Select
                     options={donors.map(d => ({ value: d.id, label: `${d.name} (${d.phone})`, donation: d.monthlyDonation }))}
                     onChange={(option: any) => {
@@ -1160,62 +1221,74 @@ export default function ManageDonors() {
                         setAmount(option.donation);
                       }
                     }}
-                    placeholder="সদস্যের নাম বা ফোন দিয়ে খুঁজুন..."
-                    className="font-bengali text-sm font-bold z-[9999]"
-                    classNamePrefix="react-select"
-                    styles={{
-                      ...reactSelectCustomStyles,
-                      control: (base: any, state: any) => ({
-                        ...reactSelectCustomStyles.control(base, state),
-                        border: state.isFocused ? '2px solid #6366f1' : '1px solid #e2e8f0',
-                        borderRadius: '0.75rem',
-                        minHeight: '48px',
-                        boxShadow: 'none',
-                        backgroundColor: '#f8fafc'
-                      })
-                    }}
+                    placeholder="সদস্যের নাম বা নম্বর লিখুন..."
+                    className="text-base font-bold"
+                    styles={reactSelectCustomStyles}
                   />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2 font-bengali">মাস (Month)</label>
+                    <label className="block text-sm font-bold text-slate-700 mb-2 font-bengali">শুরুর মাস (Start Month)</label>
                     <input type="month" value={month} onChange={e => setMonth(e.target.value)} required className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all font-mono" />
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2 font-bengali">টাকার পরিমাণ (৳)</label>
-                    <input type="number" value={amount} onChange={e => setAmount(Number(e.target.value))} required className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all font-mono" />
+                    <label className="block text-sm font-bold text-slate-700 mb-2 font-bengali">মাসের সংখ্যা (Months)</label>
+                    <input type="number" min="1" max="24" value={paymentMonthCount} onChange={e => setPaymentMonthCount(Number(e.target.value) || 1)} required className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all font-mono" />
                   </div>
                 </div>
+
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-3 font-bengali">পেমেন্ট মাধ্যম (Payment Method)</label>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button 
-                      type="button" 
-                      onClick={() => setPaymentMethod('Cash')}
-                      className={`flex items-center justify-center gap-3 p-4 rounded-xl border-2 transition-all font-bold font-bengali ${paymentMethod === 'Cash' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm' : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'}`}
-                    >
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${paymentMethod === 'Cash' ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300'}`}>
-                        {paymentMethod === 'Cash' && <Check className="w-3 h-3 text-white" />}
-                      </div>
-                      নগদ টাকা
-                    </button>
-                    <button 
-                      type="button" 
-                      onClick={() => setPaymentMethod('Bkash')}
-                      className={`flex items-center justify-center gap-3 p-4 rounded-xl border-2 transition-all font-bold font-bengali ${paymentMethod === 'Bkash' ? 'bg-pink-50 border-pink-500 text-pink-700 shadow-sm' : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'}`}
-                    >
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${paymentMethod === 'Bkash' ? 'border-pink-500 bg-pink-500' : 'border-slate-300'}`}>
-                        {paymentMethod === 'Bkash' && <Check className="w-3 h-3 text-white" />}
-                      </div>
-                      বিকাশ
-                    </button>
+                  <label className="block text-sm font-bold text-slate-700 mb-2 font-bengali">টাকার পরিমাণ (Total ৳)</label>
+                  <input type="number" value={amount} onChange={e => setAmount(Number(e.target.value))} required className="w-full px-6 py-4 border border-slate-200 rounded-xl text-xl font-black bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all font-mono" />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-3">
+                    <label className="block text-sm font-bold text-slate-700 font-bengali">পেমেন্ট মাধ্যম</label>
+                    <div className="flex gap-2">
+                      {['Cash', 'Bkash'].map(m => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setPaymentMethod(m as any)}
+                          className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all border ${
+                            paymentMethod === m 
+                              ? 'bg-slate-900 text-white border-slate-900 shadow-lg' 
+                              : 'bg-slate-50 text-slate-500 border-slate-100 hover:border-slate-200'
+                          }`}
+                        >
+                          {m === 'Cash' ? 'নগদ টাকা' : 'বিকাশ'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <label className="block text-sm font-bold text-slate-700 font-bengali">পেমেন্ট স্ট্যাটাস</label>
+                    <div className="flex gap-2">
+                      {['Paid', 'Unpaid'].map(s => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setPaymentStatus(s)}
+                          className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all border ${
+                            paymentStatus === s 
+                              ? (s === 'Paid' ? 'bg-emerald-600 border-emerald-600' : 'bg-rose-600 border-rose-600') + ' text-white shadow-lg'
+                              : 'bg-slate-50 text-slate-500 border-slate-100 hover:border-slate-200'
+                          }`}
+                        >
+                          {s === 'Paid' ? 'পরিশোধিত' : 'বকেয়া'}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
+
                 <div className="flex gap-4 pt-4">
                   <button type="button" disabled={isSubmitting} onClick={() => setShowPaymentForm(false)} className="flex-1 px-4 py-4 border-2 border-slate-200 text-slate-600 rounded-2xl text-base font-black hover:bg-slate-50 transition-all font-bengali disabled:opacity-50">বাতিল</button>
-                  <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-4 bg-indigo-600 text-white rounded-2xl text-base font-black hover:bg-indigo-700 shadow-lg shadow-indigo-900/20 transition-all active:scale-[0.98] font-bengali disabled:opacity-50 flex items-center justify-center gap-2">
+                  <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-4 bg-indigo-600 text-white rounded-2xl text-base font-black hover:bg-indigo-700 shadow-xl shadow-indigo-900/20 transition-all active:scale-[0.98] font-bengali disabled:opacity-50 flex items-center justify-center gap-2">
                     {isSubmitting && <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-                    পেমেন্ট আপডেট করুন
+                    পেমেন্ট যুক্ত করুন
                   </button>
                 </div>
               </form>
@@ -1248,7 +1321,7 @@ export default function ManageDonors() {
               { value: 'paid', label: 'পরিশোধিত' },
               { value: 'unpaid', label: 'বকেয়া রয়েছে' }
             ]}
-            className="w-full sm:w-56 font-bengali text-sm font-bold z-[9999]"
+            className="w-full sm:w-56 font-bengali text-sm font-bold z-10"
             classNamePrefix="react-select"
             styles={{
               ...reactSelectCustomStyles,
@@ -1256,8 +1329,12 @@ export default function ManageDonors() {
                  ...reactSelectCustomStyles.control(base, state),
                  minHeight: '48px',
                  borderRadius: '1rem',
-                 border: '1px solid #e2e8f0', // explicitly set to match input
+                 border: '1px solid #e2e8f0',
                  boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+              }),
+              menu: (base: any) => ({
+                ...base,
+                zIndex: 20
               })
             }}
           />
@@ -1276,82 +1353,149 @@ export default function ManageDonors() {
               কোনো তথ্য পাওয়া যায়নি।
           </div>
         ) : (
-          <div className="overflow-x-auto shadow-sm ring-1 ring-black ring-opacity-5 md:rounded-2xl bg-white">
-            <table className="w-full text-left border-collapse min-w-[800px]">
-              <thead className="bg-slate-50/80 border-b border-slate-200/80">
-                <tr>
-                  <th className="p-5 text-[11px] font-black tracking-widest text-slate-500 uppercase font-bengali pl-6 w-20">ক্রমিক</th>
-                  <th className="p-5 text-[11px] font-black tracking-widest text-slate-500 uppercase font-bengali">দাতা সদস্য</th>
-                  <th className="p-5 text-[11px] font-black tracking-widest text-slate-500 uppercase font-bengali">প্রদানকৃত অর্থ</th>
-                  <th className="p-5 text-[11px] font-black tracking-widest text-slate-500 uppercase font-bengali">বর্তমান বকেয়া</th>
-                  <th className="p-5 text-[11px] font-black tracking-widest text-slate-500 uppercase font-bengali text-right pr-6">অ্যাকশন</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filtered.map((d, index) => {
-                  const donorPayments = (paymentsByDonor.get(d.id) || []).filter(p => p.month === month);
-                  const totalPaid = donorPayments.reduce((s, p) => p.status === 'Paid' ? s + Number(p.amount) : s, 0);
-                  const hasUnpaid = donorPayments.some(p => p.status === 'Unpaid') || donorPayments.length === 0;
+          <>
+            {/* Mobile View (Cards) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:hidden">
+              {filtered.map((d, index) => {
+                const donorPayments = (paymentsByDonor.get(d.id) || []).filter(p => p.month === month);
+                const totalPaid = donorPayments.reduce((s, p) => p.status === 'Paid' ? s + Number(p.amount) : s, 0);
+                const hasUnpaid = donorPayments.some(p => p.status === 'Unpaid') || donorPayments.length === 0;
 
-                  return (
-                    <tr key={d.id} className="hover:bg-slate-50/80 transition-all group">
-                      <td className="p-5 pl-6 align-middle text-center sm:text-left">
-                        <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-slate-100 text-slate-600 font-black text-sm border border-slate-200/80 group-hover:bg-indigo-50 group-hover:text-indigo-700 transition-colors shadow-sm font-bengali">
-                          {d.serial || (index + 1).toString().replace(/[0-9]/g, function(w) { return String.fromCharCode(w.charCodeAt(0) + 2486) })}
-                        </span>
-                      </td>
-                      <td className="p-5 align-middle">
-                        <div className="flex flex-col">
-                          <p className="font-bold text-slate-900 font-bengali text-base mb-1">{d.name}</p>
-                          <div className="flex flex-wrap gap-2 items-center">
-                            <p className="inline-flex max-w-max items-center px-2 py-0.5 rounded-md bg-slate-100/50 border border-slate-200/50 text-[12px] font-bold text-slate-500 font-mono tracking-widest mt-0.5">{d.phone}</p>
-                            {d.monthlyDonation && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-100/50 text-[10px] font-bold text-indigo-600 font-bengali">
-                                মাসিক: ৳{d.monthlyDonation.toString().replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-5 align-middle">
-                        <span className="font-bengali font-black text-slate-700 bg-slate-100/80 px-3.5 py-1.5 rounded-lg border border-slate-200/60 shadow-sm">
-                          ৳{totalPaid.toString().replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}
-                        </span>
-                      </td>
-                      <td className="p-5 align-middle">
-                        {hasUnpaid ? (
-                           <span className="inline-flex text-xs bg-rose-50 border border-rose-100 text-rose-600 font-bold px-3 py-1.5 rounded-lg font-bengali shadow-sm">
-                             বকেয়া আছে
-                           </span>
-                        ) : (
-                           <span className="inline-flex text-xs bg-emerald-50 border border-emerald-100 text-emerald-600 font-bold px-3 py-1.5 rounded-lg font-bengali shadow-sm">
-                             পরিশোধিত
-                           </span>
-                        )}
-                      </td>
-                      <td className="p-5 pr-6 align-middle text-right">
-                       <div className="flex items-center justify-end gap-2">
-                           <button onClick={() => openOverview(d)} className="px-3.5 py-2 text-indigo-700 bg-indigo-50 border border-indigo-100 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 rounded-xl font-bengali text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm group/btn">
-                             <Eye className="w-4 h-4 group-hover/btn:animate-pulse" /> <span>বিস্তারিত</span>
+                return (
+                   <div key={d.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col gap-4">
+                      <div className="flex justify-between items-start">
+                         <div className="flex items-center gap-3">
+                            <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-slate-100 text-slate-600 font-black text-sm border border-slate-200/80 font-bengali">
+                              {d.serial || (index + 1).toString().replace(/[0-9]/g, function(w) { return String.fromCharCode(w.charCodeAt(0) + 2486) })}
+                            </span>
+                            <div>
+                              <h4 className="font-bold text-slate-900 font-bengali text-lg leading-loose mb-2">{d.name}</h4>
+                              <p className="text-xs font-bold font-mono text-slate-500 tracking-widest">{d.phone}</p>
+                            </div>
+                         </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                         <div>
+                           <p className="text-[10px] text-slate-500 font-bold uppercase mb-1 font-bengali">মাসিক অনুদান</p>
+                           <p className="font-bengali font-black text-indigo-600">৳{d.monthlyDonation ? d.monthlyDonation.toString().replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) : '০'}</p>
+                         </div>
+                         <div>
+                           <p className="text-[10px] text-slate-500 font-bold uppercase mb-1 font-bengali">এই মাসে প্রদান</p>
+                           <p className="font-bengali font-black text-slate-800">৳{totalPaid.toString().replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}</p>
+                         </div>
+                      </div>
+
+                      <div className="flex items-center justify-between mt-1">
+                         {hasUnpaid ? (
+                             <span className="inline-flex text-[11px] bg-rose-50 border border-rose-100 text-rose-600 font-bold px-2.5 py-1 rounded-md font-bengali shadow-sm">
+                               বকেয়া আছে
+                             </span>
+                          ) : (
+                             <span className="inline-flex text-[11px] bg-emerald-50 border border-emerald-100 text-emerald-600 font-bold px-2.5 py-1 rounded-md font-bengali shadow-sm">
+                               পরিশোধিত
+                             </span>
+                          )}
+                         
+                         <div className="flex items-center gap-2">
+                           <button onClick={() => openOverview(d)} className="p-2 text-indigo-600 bg-indigo-50 border border-indigo-100 hover:bg-indigo-600 hover:text-white rounded-lg transition-all" title="বিস্তারিত">
+                             <Eye className="w-4 h-4" />
                            </button>
                            {isAdminRole && (
                              <>
-                               <button onClick={() => startEditDonor(d)} className="p-2 text-slate-500 bg-slate-50 hover:bg-slate-800 hover:text-white rounded-xl transition-colors ring-1 ring-slate-200/60" title="এডিট">
+                               <button onClick={() => startEditDonor(d)} className="p-2 text-slate-500 bg-white border border-slate-200 hover:bg-slate-800 hover:text-white rounded-lg transition-all" title="এডিট">
                                  <Edit2 className="w-4 h-4" />
                                </button>
-                               <button onClick={() => handleDeleteDonor(d.id)} className="p-2 text-rose-500 bg-rose-50 hover:bg-rose-600 hover:text-white rounded-xl transition-colors ring-1 ring-rose-200/50" title="ডিলিট">
+                               <button onClick={() => handleDeleteDonor(d.id)} className="p-2 text-rose-500 bg-white border border-slate-200 hover:bg-rose-500 hover:text-white rounded-lg transition-all" title="ডিলিট">
                                  <Trash2 className="w-4 h-4" />
                                </button>
                              </>
                            )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                         </div>
+                      </div>
+                   </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop View (Table) */}
+            <div className="hidden lg:block overflow-x-auto shadow-sm ring-1 ring-black ring-opacity-5 md:rounded-2xl bg-white">
+              <table className="w-full text-left border-collapse min-w-[800px]">
+                <thead className="bg-slate-50/80 border-b border-slate-200/80">
+                  <tr>
+                    <th className="p-5 text-[11px] font-black tracking-widest text-slate-500 uppercase font-bengali pl-6 w-20">ক্রমিক</th>
+                    <th className="p-5 text-[11px] font-black tracking-widest text-slate-500 uppercase font-bengali">দাতা সদস্য</th>
+                    <th className="p-5 text-[11px] font-black tracking-widest text-slate-500 uppercase font-bengali">প্রদানকৃত অর্থ</th>
+                    <th className="p-5 text-[11px] font-black tracking-widest text-slate-500 uppercase font-bengali">বর্তমান বকেয়া</th>
+                    <th className="p-5 text-[11px] font-black tracking-widest text-slate-500 uppercase font-bengali text-right pr-6">অ্যাকশন</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filtered.map((d, index) => {
+                    const donorPayments = (paymentsByDonor.get(d.id) || []).filter(p => p.month === month);
+                    const totalPaid = donorPayments.reduce((s, p) => p.status === 'Paid' ? s + Number(p.amount) : s, 0);
+                    const hasUnpaid = donorPayments.some(p => p.status === 'Unpaid') || donorPayments.length === 0;
+
+                    return (
+                      <tr key={d.id} className="hover:bg-slate-50/80 transition-all group">
+                        <td className="p-5 pl-6 align-middle text-center sm:text-left">
+                          <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-slate-100 text-slate-600 font-black text-sm border border-slate-200/80 group-hover:bg-indigo-50 group-hover:text-indigo-700 transition-colors shadow-sm font-bengali">
+                            {d.serial || (index + 1).toString().replace(/[0-9]/g, function(w) { return String.fromCharCode(w.charCodeAt(0) + 2486) })}
+                          </span>
+                        </td>
+                        <td className="p-5 align-middle">
+                          <div className="flex flex-col">
+                            <p className="font-bold text-slate-900 font-bengali text-base leading-loose mb-2">{d.name}</p>
+                            <div className="flex flex-wrap gap-2 items-center">
+                              <p className="inline-flex max-w-max items-center px-2 py-0.5 rounded-md bg-slate-100/50 border border-slate-200/50 text-[12px] font-bold text-slate-500 font-mono tracking-widest mt-0.5">{d.phone}</p>
+                              {d.monthlyDonation && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-100/50 text-[10px] font-bold text-indigo-600 font-bengali">
+                                  মাসিক: ৳{d.monthlyDonation.toString().replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-5 align-middle">
+                          <span className="font-bengali font-black text-slate-700 bg-slate-100/80 px-3.5 py-1.5 rounded-lg border border-slate-200/60 shadow-sm">
+                            ৳{totalPaid.toString().replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}
+                          </span>
+                        </td>
+                        <td className="p-5 align-middle">
+                          {hasUnpaid ? (
+                             <span className="inline-flex text-xs bg-rose-50 border border-rose-100 text-rose-600 font-bold px-3 py-1.5 rounded-lg font-bengali shadow-sm">
+                               বকেয়া আছে
+                             </span>
+                          ) : (
+                             <span className="inline-flex text-xs bg-emerald-50 border border-emerald-100 text-emerald-600 font-bold px-3 py-1.5 rounded-lg font-bengali shadow-sm">
+                               পরিশোধিত
+                             </span>
+                          )}
+                        </td>
+                        <td className="p-5 pr-6 align-middle text-right">
+                         <div className="flex items-center justify-end gap-2">
+                             <button onClick={() => openOverview(d)} className="px-3.5 py-2 text-indigo-700 bg-indigo-50 border border-indigo-100 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 rounded-xl font-bengali text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm group/btn">
+                               <Eye className="w-4 h-4 group-hover/btn:animate-pulse" /> <span>বিস্তারিত</span>
+                             </button>
+                             {isAdminRole && (
+                               <>
+                                 <button onClick={() => startEditDonor(d)} className="p-2 text-slate-500 bg-slate-50 hover:bg-slate-800 hover:text-white rounded-xl transition-colors ring-1 ring-slate-200/60" title="এডিট">
+                                   <Edit2 className="w-4 h-4" />
+                                 </button>
+                                 <button onClick={() => handleDeleteDonor(d.id)} className="p-2 text-rose-500 bg-rose-50 hover:bg-rose-600 hover:text-white rounded-xl transition-colors ring-1 ring-rose-200/50" title="ডিলিট">
+                                   <Trash2 className="w-4 h-4" />
+                                 </button>
+                               </>
+                             )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
@@ -1362,7 +1506,7 @@ export default function ManageDonors() {
                <div className="flex items-start sm:items-center justify-between p-5 border-b border-slate-100 gap-4">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 flex-1">
                     <div className="flex-1">
-                      <h3 className="font-bold text-lg font-bengali text-slate-900 leading-tight mb-1">{overviewDonor.name} - এর দানসমূহ</h3>
+                      <h3 className="font-bold text-lg font-bengali text-slate-900 leading-relaxed mb-1">{overviewDonor.name} - এর দানসমূহ</h3>
                       <p className="text-sm text-slate-500 font-mono">{overviewDonor.phone}</p>
                     </div>
                     <div className="flex gap-2">

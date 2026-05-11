@@ -14,34 +14,46 @@ export default function UserBooks() {
   useEffect(() => {
     if (!user) return;
     
-    // Listen to issues for this user
-    const qIssues = query(collection(db, "issues"), where("userId", "==", user.id));
-    const unsubIssues = onSnapshot(qIssues, (snapshot) => {
-      setIssues(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      console.error("UserIssues snapshot error:", err);
-    });
+    const fetchUserData = async () => {
+      try {
+        const cachedIssues = sessionStorage.getItem('usr_books_issues_'+user.id);
+        const cachedPre = sessionStorage.getItem('usr_books_pre_'+user.id);
+        const cachedBooks = sessionStorage.getItem('pub_books_cache');
+        const cacheTime = sessionStorage.getItem('usr_books_time');
 
-    // Listen to pre-bookings for this user
-    const qPre = query(collection(db, "pre-bookings"), where("userId", "==", user.id));
-    const unsubPre = onSnapshot(qPre, (snapshot) => {
-      setPreBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      console.error("UserPreBookings snapshot error:", err);
-    });
+        if (cachedIssues && cachedPre && cachedBooks && cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
+          setIssues(JSON.parse(cachedIssues));
+          setPreBookings(JSON.parse(cachedPre));
+          setBooks(JSON.parse(cachedBooks));
+          return;
+        }
 
-    // Listen to all books (to find titles)
-    const unsubBooks = onSnapshot(collection(db, "books"), (snapshot) => {
-      setBooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      console.error("Books lookup snapshot error:", err);
-    });
+        const { getDocs } = await import('firebase/firestore');
+        const [issuesSnap, preSnap, booksSnap] = await Promise.all([
+          getDocs(query(collection(db, "issues"), where("userId", "==", user.id))),
+          getDocs(query(collection(db, "pre-bookings"), where("userId", "==", user.id))),
+          getDocs(collection(db, "books"))
+        ]);
 
-    return () => {
-      unsubIssues();
-      unsubPre();
-      unsubBooks();
+        const issuesData = issuesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const preData = preSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const booksData = booksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        setIssues(issuesData);
+        setPreBookings(preData);
+        setBooks(booksData);
+
+        sessionStorage.setItem('usr_books_issues_'+user.id, JSON.stringify(issuesData));
+        sessionStorage.setItem('usr_books_pre_'+user.id, JSON.stringify(preData));
+        sessionStorage.setItem('pub_books_cache', JSON.stringify(booksData));
+        sessionStorage.setItem('usr_books_time', Date.now().toString());
+
+      } catch (err) {
+        console.error("Error fetching user books:", err);
+      }
     };
+
+    fetchUserData();
   }, [user]);
 
   return (
@@ -98,6 +110,8 @@ export default function UserBooks() {
                                   createdAt: serverTimestamp(),
                                   status: 'pending'
                                 });
+                                setIssues(prev => prev.map(iss => iss.id === i.id ? { ...iss, returnRequested: true } : iss));
+                                sessionStorage.removeItem('usr_books_issues_'+user?.id);
                                 toast.success('বইটি রিটার্ন দেওয়ার অনুরোধ পাঠানো হয়েছে।');
                               } catch (err: any) {
                                 toast.error('রিকোয়েস্ট পাঠাতে সমস্যা হয়েছে: ' + err.message);

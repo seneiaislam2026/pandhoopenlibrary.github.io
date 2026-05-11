@@ -7,6 +7,25 @@ import { db, auth, handleFirestoreError, OperationType, firebaseConfig } from ".
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { motion, AnimatePresence } from "motion/react";
+
+const availableSubadminRoutes = [
+  { name: 'সদস্য ব্যবস্থাপনা (Users)', path: '/dashboard/users' },
+  { name: 'বইয়ের তালিকা (Inventory)', path: '/dashboard/books' },
+  { name: 'ইস্যু ও ফেরত (Issues)', path: '/dashboard/issues' },
+  { name: 'সদস্যদের বকেয়া (Dues)', path: '/dashboard/dues' },
+  { name: 'দাতা সদস্য (Donors)', path: '/dashboard/donors' },
+  { name: 'হিসাব-নিকাশ (Finances)', path: '/dashboard/finances' },
+  { name: 'নোটিশ', path: '/dashboard/notices' },
+  { name: 'মেসেজসমূহ', path: '/dashboard/messages' },
+  { name: 'বইয়ের অনুরোধ (Requests)', path: '/dashboard/book-requests' },
+  { name: 'প্রি-বুকিং', path: '/dashboard/pre-bookings' },
+  { name: 'শপ বই ব্যবস্থাপনা', path: '/dashboard/shop-books' },
+  { name: 'বই বিক্রয় অর্ডার', path: '/dashboard/shop-orders' },
+  { name: 'স্টিকার ও QR', path: '/dashboard/stickers' },
+  { name: 'বুক রিভিও', path: '/dashboard/manageblog' },
+  { name: 'ইভেন্ট পরিচালনা', path: '/dashboard/events' }
+];
+
 import {
   Check,
   X,
@@ -49,6 +68,7 @@ interface LibUser {
   hasGiftSubscription?: boolean;
   giftSubscriptionExpiry?: string | null;
   giftSubscriptionDuration?: number | null;
+  subadminAccess?: string[];
 }
 
 export default function ManageUsers() {
@@ -70,6 +90,7 @@ export default function ManageUsers() {
     memberId: "",
     hasGiftSubscription: false,
     giftSubscriptionDuration: 0,
+    subadminAccess: [] as string[]
   });
 
   const [editUser, setEditUser] = useState<LibUser | null>(null);
@@ -85,6 +106,7 @@ export default function ManageUsers() {
     memberId: "",
     hasGiftSubscription: false,
     giftSubscriptionDuration: 0,
+    subadminAccess: [] as string[],
   });
 
   const [selectedUser, setSelectedUser] = useState<LibUser | null>(null);
@@ -98,41 +120,75 @@ export default function ManageUsers() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubBooks = onSnapshot(collection(db, "books"), (snapshot) => {
-      setBooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'books');
-    });
-    const unsubUsers = onSnapshot(query(collection(db, "users"), orderBy("memberId", "asc")), (snapshot) => {
-      setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as LibUser[]);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'users');
-    });
-    const unsubIssues = onSnapshot(collection(db, "issues"), (snapshot) => {
-      setAllIssues(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'issues');
-    });
-    const unsubRequests = onSnapshot(collection(db, "member-requests"), (snapshot) => {
-      setAllRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'member-requests');
-    });
-    const unsubPreBs = onSnapshot(collection(db, "pre-bookings"), (snapshot) => {
-      setPreBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'pre-bookings');
-    });
+    const fetchData = async () => {
+      try {
+        const { getDocs, query, collection, orderBy } = await import('firebase/firestore');
+        const db = (await import('../../lib/firebase')).db;
 
-    return () => {
-      unsubBooks();
-      unsubUsers();
-      unsubIssues();
-      unsubRequests();
-      unsubPreBs();
+        const checkCache = (key: string) => {
+          const cached = sessionStorage.getItem(key);
+          const cachedTime = sessionStorage.getItem(`${key}_time`);
+          if (cached && cachedTime && (Date.now() - parseInt(cachedTime) < 5 * 60 * 1000)) {
+            return JSON.parse(cached);
+          }
+          return null;
+        };
+        const setCache = (key: string, data: any) => {
+          sessionStorage.setItem(key, JSON.stringify(data));
+          sessionStorage.setItem(`${key}_time`, Date.now().toString());
+        };
+
+        const [booksSnap, usersSnap, issuesSnap, reqSnap, preBSnap] = await Promise.all([
+          checkCache('admin_books_cache') ? null : getDocs(collection(db, "books")),
+          checkCache('admin_users_cache') ? null : getDocs(query(collection(db, "users"), orderBy("memberId", "asc"))),
+          checkCache('admin_issues_cache') ? null : getDocs(collection(db, "issues")),
+          checkCache('admin_memberreqs_cache') ? null : getDocs(collection(db, "member-requests")),
+          checkCache('admin_preb_cache') ? null : getDocs(collection(db, "pre-bookings"))
+        ]);
+
+        if (booksSnap) {
+          const docs = booksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setBooks(docs);
+          setCache('admin_books_cache', docs);
+        } else setBooks(checkCache('admin_books_cache'));
+
+        if (usersSnap) {
+          const docs = usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as LibUser[];
+          setUsers(docs);
+          setCache('admin_users_cache', docs);
+        } else setUsers(checkCache('admin_users_cache'));
+
+        if (issuesSnap) {
+          const docs = issuesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setAllIssues(docs);
+          setCache('admin_issues_cache', docs);
+        } else setAllIssues(checkCache('admin_issues_cache'));
+
+        if (reqSnap) {
+          const docs = reqSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setAllRequests(docs);
+          setCache('admin_memberreqs_cache', docs);
+        } else setAllRequests(checkCache('admin_memberreqs_cache'));
+        
+        if (preBSnap) {
+          const docs = preBSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setPreBookings(docs);
+          setCache('admin_preb_cache', docs);
+        } else setPreBookings(checkCache('admin_preb_cache'));
+
+        setLoading(false);
+      } catch (error) {
+        console.error(error);
+        setLoading(false);
+      }
     };
+    fetchData();
   }, []);
+
+  const updateUsersCache = (newUsers: LibUser[]) => {
+    sessionStorage.setItem('admin_users_cache', JSON.stringify(newUsers));
+    sessionStorage.setItem('admin_users_cache_time', Date.now().toString());
+  };
 
   useEffect(() => {
     if (selectedUser) {
@@ -163,8 +219,9 @@ export default function ManageUsers() {
     <head>
         <meta charset="UTF-8">
         <title>লাইব্রেরি কার্ড - ${usr.name}</title>
-        <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
-        <style>
+        
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+                <style>
             body {
                 font-family: 'Hind Siliguri', sans-serif;
                 background-color: #f1f5f9;
@@ -430,6 +487,11 @@ export default function ManageUsers() {
       }
       
       await updateDoc(doc(db, "users", id), updates);
+      setUsers(prev => {
+        const updatedUsers = prev.map(u => (u.id === id ? { ...u, ...updates } : u));
+        updateUsersCache(updatedUsers);
+        return updatedUsers;
+      });
     } catch (error: any) {
       toast.error("Failed to update status");
       handleFirestoreError(error, OperationType.UPDATE, `users/${id}`);
@@ -469,6 +531,23 @@ export default function ManageUsers() {
             await updateDoc(doc(db, "users", u.id), { memberId: newMemberId });
         }
       }
+
+      setUsers(prev => {
+        let updated = prev.filter(u => u.id !== id);
+        if (deletedMemberId !== null && !isNaN(deletedMemberId)) {
+          updated = updated.map(u => {
+            if (u.memberId) {
+               const currentId = parseInt(u.memberId, 10);
+               if (!isNaN(currentId) && currentId > deletedMemberId) {
+                 return { ...u, memberId: String(currentId - 1).padStart(3, '0') };
+               }
+            }
+            return u;
+          });
+        }
+        updateUsersCache(updated);
+        return updated;
+      });
 
       setDeletingId(null);
       toast.success("সদস্য ডিলিট করা হয়েছে এবং সিরিয়াল আপডেট করা হয়েছে।");
@@ -556,8 +635,7 @@ const handleAddUser = async (e: React.FormEvent) => {
         console.warn("Secondary Auth Process Error:", authError);
       }
 
-      // Final Firestore write
-      await setDoc(doc(db, "users", actualUserId), {
+      const newUserObj: LibUser = {
         ...formData,
         username: normalizedUsername,
         giftSubscriptionExpiry,
@@ -566,8 +644,20 @@ const handleAddUser = async (e: React.FormEvent) => {
         memberId: finalMemberId,
         email: emailToSet,
         createdAt: new Date().toISOString(),
+        status: formData.status
+      };
+
+      // Final Firestore write
+      await setDoc(doc(db, "users", actualUserId), {
+        ...newUserObj,
         serverCreatedAt: serverTimestamp(),
         verified: true 
+      });
+
+      setUsers(prev => {
+         const updated = [...prev, newUserObj];
+         updateUsersCache(updated);
+         return updated;
       });
 
       if (formData.phone) {
@@ -588,7 +678,7 @@ const handleAddUser = async (e: React.FormEvent) => {
 
       toast.success("নতুন সদস্য সফলভাবে যুক্ত করা হয়েছে।");
       setShowModal(false);
-      setFormData({ name: "", username: "", password: "123456", role: "reader", status: "active", isMonthlyDonor: false, phone: "", memberId: "", hasGiftSubscription: false, giftSubscriptionDuration: 0 });
+      setFormData({ name: "", username: "", password: "123456", role: "reader", status: "active", isMonthlyDonor: false, phone: "", memberId: "", hasGiftSubscription: false, giftSubscriptionDuration: 0, subadminAccess: [] });
     } catch (error) {
       console.error("Registration full error:", error);
       toast.error("সদস্য যুক্ত করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।");
@@ -614,6 +704,11 @@ const handleAddUser = async (e: React.FormEvent) => {
       }
 
       await updateDoc(doc(db, "users", editUser.id), data);
+      setUsers(prev => {
+        const updated = prev.map(u => (u.id === editUser.id ? { ...u, ...data } : u));
+        updateUsersCache(updated);
+        return updated;
+      });
       setEditUser(null);
       toast.success("সদস্যের তথ্য সফলভাবে আপডেট করা হয়েছে।");
     } catch (error) {
@@ -704,8 +799,9 @@ const handleAddUser = async (e: React.FormEvent) => {
       <head>
         <meta charset="UTF-8">
         <title>সদস্য তালিকা - পানধোয়া উন্মুক্ত পাঠাগার</title>
-        <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
-        <style>
+        
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+                <style>
           :root {
             --primary: #4338ca;
             --border: #e2e8f0;
@@ -916,13 +1012,15 @@ const handleAddUser = async (e: React.FormEvent) => {
               >
                 🖨️ ডাটা প্রিন্ট
               </button>
-              <button
-                onClick={() => setShowModal(true)}
-                className="bg-indigo-500 hover:bg-indigo-600 text-white px-5 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-xl shadow-indigo-500/20 transition-all active:scale-95 group font-bengali"
-              >
-                <UserPlus className="w-5 h-5" /> 
-                সদস্য যোগ করুন
-              </button>
+              {currentUser?.role !== 'visitor_admin' && (
+                <button
+                  onClick={() => setShowModal(true)}
+                  className="bg-indigo-500 hover:bg-indigo-600 text-white px-5 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-xl shadow-indigo-500/20 transition-all active:scale-95 group font-bengali"
+                >
+                  <UserPlus className="w-5 h-5" /> 
+                  সদস্য যোগ করুন
+                </button>
+              )}
             </div>
           </div>
 
@@ -1035,8 +1133,8 @@ const handleAddUser = async (e: React.FormEvent) => {
 
                 <div className="space-y-4">
                   <div className="flex flex-wrap gap-2">
-                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest font-bengali ${u.role === "admin" ? "bg-purple-600 text-white" : u.role === "subadmin" ? "bg-indigo-500 text-white" : u.role === "issue_admin" ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-600"}`}>
-                      {u.role === 'reader' ? 'পাঠক সদস্য' : u.role === 'donor' ? 'সম্মানিত দাতা' : u.role === 'subadmin' ? 'সাব-অ্যাডমিন' : u.role === 'issue_admin' ? 'ইস্যু অ্যাডমিন' : u.role === 'admin' ? 'অ্যাডমিন' : u.role}
+                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest font-bengali ${u.role === "admin" ? "bg-purple-600 text-white" : u.role === "subadmin" ? "bg-indigo-500 text-white" : u.role === "visitor_admin" ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-600"}`}>
+                      {u.role === 'reader' ? 'পাঠক সদস্য' : u.role === 'donor' ? 'সম্মানিত দাতা' : u.role === 'subadmin' ? 'সাব-অ্যাডমিন' : u.role === 'visitor_admin' ? 'ভিজিটর অ্যাডমিন' : u.role === 'admin' ? 'অ্যাডমিন' : u.role}
                     </span>
                     <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest font-bengali ${u.status === "active" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}`}>
                       {u.status === 'active' ? 'সক্রিয়' : u.status === 'pending' ? 'অপেক্ষমান' : u.status === 'inactive' ? 'নিষ্ক্রিয়' : u.status}
@@ -1089,43 +1187,47 @@ const handleAddUser = async (e: React.FormEvent) => {
                    বিস্তারিত
                 </button>
                 <div className="flex gap-1">
-                  <button
-                    onClick={async () => {
-                      const newStatus = !u.borrowBlocked;
-                      if (!confirm(newStatus ? 'আপনি কি নিশ্চিত যে এই সদস্যকে ব্লক করবেন?' : 'আপনি কি নিশ্চিত যে এই সদস্যকে আনব্লক করবেন?')) return;
-                      await updateDoc(doc(db, "users", u.id), { 
-                        borrowBlocked: newStatus,
-                        ...(newStatus ? {} : { blockedReason: "" })
-                      });
-                      toast.success(newStatus ? 'সদস্য ব্লক করা হয়েছে!' : 'সদস্য আনব্লক করা হয়েছে!');
-                    }}
-                    className={`aspect-square p-3 rounded-2xl border transition-all shadow-sm active:scale-90 ${u.borrowBlocked ? "bg-amber-100 border-amber-200 text-amber-600" : "bg-white border-slate-200 text-slate-400 hover:text-amber-500 hover:border-amber-200"}`}
-                    title={u.borrowBlocked ? "সদস্য আনব্লক করুন" : "সদস্য ব্লক করুন"}
-                  >
-                    <Ban className="w-4 h-4" />
-                  </button>
-                  <a
-                    href={u.phone ? `sms:${u.phone}` : '#'}
-                    className={`aspect-square bg-white border border-slate-200 p-3 rounded-2xl transition-all shadow-sm active:scale-90 flex items-center justify-center ${u.phone ? 'text-slate-400 hover:text-emerald-600 hover:border-emerald-200' : 'text-slate-200 cursor-not-allowed'}`}
-                    title="SMS পাঠান"
-                    onClick={(e) => { if(!u.phone) e.preventDefault(); }}
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                  </a>
-                  <button
-                    onClick={() => { setEditUser(u); setEditFormData({ name: u.name, role: u.role, status: u.status, phone: u.phone || "", isMonthlyDonor: !!u.isMonthlyDonor, password: "", borrowBlocked: !!u.borrowBlocked, blockedReason: u.blockedReason || "", memberId: u.memberId || "", hasGiftSubscription: !!u.hasGiftSubscription, giftSubscriptionDuration: u.giftSubscriptionDuration || 0 }); }}
-                    className="aspect-square bg-white border border-slate-200 p-3 rounded-2xl text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm active:scale-90"
-                    title="প্রোফাইল সম্পাদন করুন"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button 
-                    onClick={() => handleDelete(u.id)} 
-                    className="aspect-square bg-white border border-slate-200 p-3 rounded-2xl text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-all shadow-sm active:scale-90"
-                    title="মুছে ফেলুন"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {currentUser?.role !== 'visitor_admin' && (
+                    <>
+                      <button
+                        onClick={async () => {
+                          const newStatus = !u.borrowBlocked;
+                          if (!confirm(newStatus ? 'আপনি কি নিশ্চিত যে এই সদস্যকে ব্লক করবেন?' : 'আপনি কি নিশ্চিত যে এই সদস্যকে আনব্লক করবেন?')) return;
+                          await updateDoc(doc(db, "users", u.id), { 
+                            borrowBlocked: newStatus,
+                            ...(newStatus ? {} : { blockedReason: "" })
+                          });
+                          toast.success(newStatus ? 'সদস্য ব্লক করা হয়েছে!' : 'সদস্য আনব্লক করা হয়েছে!');
+                        }}
+                        className={`aspect-square p-3 rounded-2xl border transition-all shadow-sm active:scale-90 ${u.borrowBlocked ? "bg-amber-100 border-amber-200 text-amber-600" : "bg-white border-slate-200 text-slate-400 hover:text-amber-500 hover:border-amber-200"}`}
+                        title={u.borrowBlocked ? "সদস্য আনব্লক করুন" : "সদস্য ব্লক করুন"}
+                      >
+                        <Ban className="w-4 h-4" />
+                      </button>
+                      <a
+                        href={u.phone ? `sms:${u.phone}` : '#'}
+                        className={`aspect-square bg-white border border-slate-200 p-3 rounded-2xl transition-all shadow-sm active:scale-90 flex items-center justify-center ${u.phone ? 'text-slate-400 hover:text-emerald-600 hover:border-emerald-200' : 'text-slate-200 cursor-not-allowed'}`}
+                        title="SMS পাঠান"
+                        onClick={(e) => { if(!u.phone) e.preventDefault(); }}
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                      </a>
+                      <button
+                        onClick={() => { setEditUser(u); setEditFormData({ name: u.name, role: u.role, status: u.status, phone: u.phone || "", isMonthlyDonor: !!u.isMonthlyDonor, password: "", borrowBlocked: !!u.borrowBlocked, blockedReason: u.blockedReason || "", memberId: u.memberId || "", hasGiftSubscription: !!u.hasGiftSubscription, giftSubscriptionDuration: u.giftSubscriptionDuration || 0, subadminAccess: u.subadminAccess || [] }); }}
+                        className="aspect-square bg-white border border-slate-200 p-3 rounded-2xl text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm active:scale-90"
+                        title="প্রোফাইল সম্পাদন করুন"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(u.id)} 
+                        className="aspect-square bg-white border border-slate-200 p-3 rounded-2xl text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-all shadow-sm active:scale-90"
+                        title="মুছে ফেলুন"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -1143,7 +1245,7 @@ const handleAddUser = async (e: React.FormEvent) => {
       {/* Modals */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <motion.div initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}} className="bg-white rounded-[2.5rem] w-full max-w-md p-10 shadow-2xl border border-slate-100 relative overflow-hidden">
+          <motion.div initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}} className="bg-white rounded-[2.5rem] w-full max-w-md p-8 sm:p-10 shadow-2xl border border-slate-100 relative max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
             <div className="flex items-center gap-4 mb-8">
               <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center"><UserPlus className="w-7 h-7" /></div>
@@ -1173,7 +1275,7 @@ const handleAddUser = async (e: React.FormEvent) => {
               <input type="password" placeholder="পাসওয়ার্ড (ডিফল্ট: 123456)" value={formData.password || ''} onChange={e=>setFormData({...formData, password:e.target.value})} className="w-full border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 font-bengali"/>
               <div className="grid grid-cols-2 gap-4">
                 <select value={formData.role || 'reader'} onChange={e=>setFormData({...formData, role:e.target.value})} className="border border-slate-200 p-3 rounded-xl bg-slate-50 font-bengali">
-                  <option value="reader">পাঠক (Reader)</option><option value="donor">দাতা (Donor)</option><option value="subadmin">সাব-অ্যাডমিন (Subadmin)</option><option value="issue_admin">ইস্যু অ্যাডমিন (Issue Admin)</option><option value="admin">অ্যাডমিন (Admin)</option>
+                  <option value="reader">পাঠক (Reader)</option><option value="donor">দাতা (Donor)</option><option value="subadmin">সাব-অ্যাডমিন (Subadmin)</option><option value="visitor_admin">ভিজিটর অ্যাডমিন (Visitor Admin)</option><option value="admin">অ্যাডমিন (Admin)</option>
                 </select>
                 <select value={formData.status || 'active'} onChange={e=>setFormData({...formData, status:e.target.value})} className="border border-slate-200 p-3 rounded-xl bg-slate-50 font-bengali">
                   <option value="active">সক্রিয় (Active)</option><option value="inactive">নিষ্ক্রিয় (Inactive)</option><option value="pending">অপেক্ষমান (Pending)</option>
@@ -1208,6 +1310,32 @@ const handleAddUser = async (e: React.FormEvent) => {
                   </div>
                 )}
               </div>
+              {(formData.role === 'subadmin' || formData.role === 'visitor_admin') && (
+                <div className="mt-4 p-4 border border-indigo-100 bg-indigo-50/50 rounded-2xl">
+                  <h4 className="text-sm font-bold text-indigo-900 mb-3 font-bengali">{formData.role === 'subadmin' ? 'সাব-অ্যাডমিন এক্সেস' : 'ভিজিটর অ্যাডমিন এক্সেস'}</h4>
+                  <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
+                    {availableSubadminRoutes.map((route, idx) => (
+                      <label key={idx} className="flex items-center gap-2 p-2 rounded relative bg-white border border-slate-100 shadow-sm cursor-pointer hover:bg-slate-50 relative z-10">
+                        <input
+                           type="checkbox"
+                           checked={formData.subadminAccess?.includes(route.path)}
+                           onChange={(e) => {
+                              const checked = e.target.checked;
+                              setFormData(prev => ({
+                                  ...prev,
+                                  subadminAccess: checked 
+                                    ? [...(prev.subadminAccess || []), route.path]
+                                    : (prev.subadminAccess || []).filter(p => p !== route.path)
+                              }));
+                           }}
+                           className="w-4 h-4 text-indigo-600 rounded cursor-pointer"
+                        />
+                        <span className="text-xs font-bold text-slate-700 font-bengali select-none">{route.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="flex justify-end gap-3 pt-6">
                 <button type="button" disabled={loading} className="font-bengali px-4 py-2 text-slate-500 hover:bg-slate-50 rounded-xl disabled:opacity-50" onClick={()=>setShowModal(false)}>বাতিল</button>
                 <button type="submit" disabled={loading} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold font-bengali disabled:opacity-50 flex items-center gap-2">
@@ -1261,7 +1389,7 @@ const handleAddUser = async (e: React.FormEvent) => {
 
                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm mt-4">
                      <div><p className="text-slate-400 font-bold text-[10px] uppercase font-bengali">মোবাইল</p><p className="font-bold">{selectedUser.phone || 'N/A'}</p></div>
-                     <div><p className="text-slate-400 font-bold text-[10px] uppercase font-bengali">সদস্যের ধরন</p><p className="font-bold capitalize font-bengali">{selectedUser.role === 'reader' ? 'পাঠক সদস্য' : selectedUser.role === 'donor' ? 'সম্মানিত দাতা' : selectedUser.role === 'subadmin' ? 'সাব-অ্যাডমিন' : selectedUser.role === 'issue_admin' ? 'ইস্যু অ্যাডমিন' : selectedUser.role === 'admin' ? 'অ্যাডমিন' : selectedUser.role}</p></div>
+                     <div><p className="text-slate-400 font-bold text-[10px] uppercase font-bengali">সদস্যের ধরন</p><p className="font-bold capitalize font-bengali">{selectedUser.role === 'reader' ? 'পাঠক সদস্য' : selectedUser.role === 'donor' ? 'সম্মানিত দাতা' : selectedUser.role === 'subadmin' ? 'সাব-অ্যাডমিন' : selectedUser.role === 'visitor_admin' ? 'ভিজিটর অ্যাডমিন' : selectedUser.role === 'admin' ? 'অ্যাডমিন' : selectedUser.role}</p></div>
                      <div><p className="text-slate-400 font-bold text-[10px] uppercase font-bengali">স্ট্যাটাস</p><p className="font-bold capitalize font-bengali">{selectedUser.status === 'active' ? 'সক্রিয়' : selectedUser.status === 'pending' ? 'অপেক্ষমান' : selectedUser.status === 'inactive' ? 'নিষ্ক্রিয়' : selectedUser.status}</p></div>
                      <div><p className="text-slate-400 font-bold text-[10px] uppercase font-bengali">যোগদান</p><p className="font-bold">{selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleDateString() : 'N/A'}</p></div>
                    </div>
@@ -1425,7 +1553,7 @@ const handleAddUser = async (e: React.FormEvent) => {
 
       {editUser && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <motion.div initial={{y:20,opacity:0}} animate={{y:0,opacity:1}} className="bg-white rounded-[2.5rem] w-full max-w-md p-10 shadow-2xl border border-slate-100 relative overflow-hidden">
+          <motion.div initial={{y:20,opacity:0}} animate={{y:0,opacity:1}} className="bg-white rounded-[2.5rem] w-full max-w-md p-8 sm:p-10 shadow-2xl border border-slate-100 relative max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="absolute top-0 left-0 w-full h-2 bg-emerald-500"></div>
             <div className="flex items-center gap-4 mb-8">
               <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center"><Pencil className="w-7 h-7" /></div>
@@ -1440,7 +1568,7 @@ const handleAddUser = async (e: React.FormEvent) => {
               <input type="password" placeholder="নতুন পাসওয়ার্ড (ঐচ্ছিক)" value={editFormData.password || ''} onChange={e=>setEditFormData({...editFormData, password:e.target.value})} className="w-full border border-slate-200 p-3 rounded-xl font-bengali"/>
               <div className="grid grid-cols-2 gap-4">
                 <select value={editFormData.role || 'reader'} onChange={e=>setEditFormData({...editFormData, role:e.target.value})} className="border border-slate-200 p-3 rounded-xl bg-slate-50 font-bengali">
-                  <option value="reader">পাঠক</option><option value="donor">দাতা</option><option value="subadmin">সাব-অ্যাডমিন</option><option value="issue_admin">ইস্যু অ্যাডমিন</option><option value="admin">অ্যাডমিন</option>
+                  <option value="reader">পাঠক</option><option value="donor">দাতা</option><option value="subadmin">সাব-অ্যাডমিন</option><option value="visitor_admin">ভিজিটর অ্যাডমিন</option><option value="admin">অ্যাডমিন</option>
                 </select>
                 <select value={editFormData.status || 'active'} onChange={e=>setEditFormData({...editFormData, status:e.target.value})} className="border border-slate-200 p-3 rounded-xl bg-slate-50 font-bengali">
                   <option value="active">সক্রিয়</option><option value="inactive">নিষ্ক্রিয়</option><option value="pending">অপেক্ষমান</option>
@@ -1487,6 +1615,32 @@ const handleAddUser = async (e: React.FormEvent) => {
                   className="w-full border border-slate-200 p-3 rounded-xl font-bengali text-sm"
                   rows={2}
                 />
+              )}
+              {(editFormData.role === 'subadmin' || editFormData.role === 'visitor_admin') && (
+                <div className="mt-4 p-4 border border-indigo-100 bg-indigo-50/50 rounded-2xl">
+                  <h4 className="text-sm font-bold text-indigo-900 mb-3 font-bengali">{editFormData.role === 'subadmin' ? 'সাব-অ্যাডমিন এক্সেস' : 'ভিজিটর অ্যাডমিন এক্সেস'}</h4>
+                  <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
+                    {availableSubadminRoutes.map((route, idx) => (
+                      <label key={idx} className="flex items-center gap-2 p-2 rounded relative bg-white border border-slate-100 shadow-sm cursor-pointer hover:bg-slate-50">
+                        <input
+                           type="checkbox"
+                           checked={editFormData.subadminAccess?.includes(route.path)}
+                           onChange={(e) => {
+                              const checked = e.target.checked;
+                              setEditFormData(prev => ({
+                                  ...prev,
+                                  subadminAccess: checked 
+                                    ? [...(prev.subadminAccess || []), route.path]
+                                    : (prev.subadminAccess || []).filter(p => p !== route.path)
+                              }));
+                           }}
+                           className="w-4 h-4 text-indigo-600 rounded cursor-pointer"
+                        />
+                        <span className="text-xs font-bold text-slate-700 font-bengali select-none">{route.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               )}
               <div className="flex justify-end gap-3 pt-6">
                 <button type="button" disabled={loading} onClick={()=>setEditUser(null)} className="font-bengali px-4 py-2 text-slate-500 hover:bg-slate-50 rounded-xl disabled:opacity-50">বাতিল</button>

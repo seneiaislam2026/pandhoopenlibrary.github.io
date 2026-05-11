@@ -215,24 +215,43 @@ const AIBot = () => {
 
   const fetchStats = async () => {
     try {
-      const booksSnap = await getDocs(collection(db, 'books'));
+      const { getCountFromServer, query, where } = await import('firebase/firestore');
+      
+      const cachedStats = sessionStorage.getItem('ai_bot_stats_' + (isAdmin ? 'admin' : 'user'));
+      const cacheTime = sessionStorage.getItem('ai_bot_stats_time_' + (isAdmin ? 'admin' : 'user'));
+      
+      if (cachedStats && cacheTime && (Date.now() - parseInt(cacheTime) < 15 * 60 * 1000)) {
+         setDbStats(JSON.parse(cachedStats));
+         return;
+      }
+
+      const booksSnap = await getCountFromServer(collection(db, 'books'));
       
       let totalMembers = 0;
       let activeIssues = 0;
 
       if (isAdmin) {
-        const membersSnap = await getDocs(collection(db, 'users'));
-        const issuesSnap = await getDocs(collection(db, 'issues'));
-        totalMembers = membersSnap.size;
-        activeIssues = issuesSnap.docs.filter(d => d.data().status === 'ISSUED' || d.data().status === 'Issued').length;
+        const membersSnap = await getCountFromServer(collection(db, 'users'));
+        
+        const issuesSnap1 = await getCountFromServer(query(collection(db, 'issues'), where('status', '==', 'ISSUED')));
+        const issuesSnap2 = await getCountFromServer(query(collection(db, 'issues'), where('status', '==', 'Issued')));
+        
+        totalMembers = membersSnap.data().count;
+        activeIssues = issuesSnap1.data().count + issuesSnap2.data().count;
       }
       
-      setDbStats({
-        totalBooks: booksSnap.size,
+      const stats = {
+        totalBooks: booksSnap.data().count,
         totalMembers,
         activeIssues
-      });
+      };
+
+      setDbStats(stats);
+      sessionStorage.setItem('ai_bot_stats_' + (isAdmin ? 'admin' : 'user'), JSON.stringify(stats));
+      sessionStorage.setItem('ai_bot_stats_time_' + (isAdmin ? 'admin' : 'user'), Date.now().toString());
+
     } catch (error) {
+      if (error instanceof Error && error.message.includes('Quota')) return;
       console.error("Error fetching stats for AI:", error);
     }
   };

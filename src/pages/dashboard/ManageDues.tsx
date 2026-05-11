@@ -54,24 +54,52 @@ export default function ManageDues() {
   });
 
   useEffect(() => {
-    const unsubscribeUsers = onSnapshot(collection(db, "users"), (snapshot) => {
-      const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as LibUser[];
-      setUsers(
-        usersData.filter(
+    const fetchData = async () => {
+      try {
+        const { getDocs, collection } = await import('firebase/firestore');
+        const db = (await import('../../lib/firebase')).db;
+
+        const cacheKeyUsers = 'admin_users_active_cache';
+        const cacheKeyPayments = 'admin_payments_cache';
+        const cacheTime = sessionStorage.getItem('admin_dues_time');
+
+        if (cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
+           const cachedUsers = sessionStorage.getItem(cacheKeyUsers);
+           const cachedPayments = sessionStorage.getItem(cacheKeyPayments);
+           if (cachedUsers && cachedPayments) {
+              setUsers(JSON.parse(cachedUsers));
+              setPayments(JSON.parse(cachedPayments));
+              setLoading(false);
+              return;
+           }
+        }
+
+        const [usersSnap, paymentsSnap] = await Promise.all([
+          getDocs(collection(db, "users")),
+          getDocs(collection(db, "payments"))
+        ]);
+
+        const usersData = usersSnap.docs
+          .map(doc => ({ id: doc.id, ...doc.data() })) as LibUser[];
+        const filteredUsers = usersData.filter(
           (u: any) => u.role !== "admin" && u.status === "active",
-        ),
-      );
-      setLoading(false);
-    });
+        );
+        const paymentsData = paymentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Payment[];
 
-    const unsubscribePayments = onSnapshot(collection(db, "payments"), (snapshot) => {
-      setPayments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Payment[]);
-    });
+        setUsers(filteredUsers);
+        setPayments(paymentsData);
+        setLoading(false);
 
-    return () => {
-      unsubscribeUsers();
-      unsubscribePayments();
+        sessionStorage.setItem(cacheKeyUsers, JSON.stringify(filteredUsers));
+        sessionStorage.setItem(cacheKeyPayments, JSON.stringify(paymentsData));
+        sessionStorage.setItem('admin_dues_time', Date.now().toString());
+      } catch (err) {
+        console.error("Error fetching dues data:", err);
+        setLoading(false);
+      }
     };
+
+    fetchData();
   }, []);
 
   const handleAddPayment = async (e: React.FormEvent) => {
@@ -166,13 +194,15 @@ export default function ManageDues() {
             পাঠক এবং দাতা সদস্যদের মাসিক ফি এর ট্র্যাক রাখুন।
           </p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold tracking-tight hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-600/20 transition-all font-bengali active:scale-95"
-        >
-          <Plus className="w-4 h-4" />
-          পেমেন্ট যুক্ত করুন
-        </button>
+        {currentUser?.role !== 'visitor_admin' && (
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold tracking-tight hover:bg-indigo-700 hover:shadow-md hover:shadow-indigo-600/20 transition-all font-bengali active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            পেমেন্ট যুক্ত করুন
+          </button>
+        )}
       </div>
 
       {showForm && (
@@ -383,12 +413,14 @@ export default function ManageDues() {
                 className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-bengali text-slate-700 shadow-sm"
               />
             </div>
-            <button
-              onClick={handleReset}
-              className="text-xs bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white hover:shadow-md hover:shadow-rose-600/20 px-4 py-2.5 rounded-xl font-bold border border-rose-200 transition-all whitespace-nowrap active:scale-95 font-bengali"
-            >
-              রিসেট করুন
-            </button>
+            {currentUser?.role !== "visitor_admin" && (
+              <button
+                onClick={handleReset}
+                className="text-xs bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white hover:shadow-md hover:shadow-rose-600/20 px-4 py-2.5 rounded-xl font-bold border border-rose-200 transition-all whitespace-nowrap active:scale-95 font-bengali"
+              >
+                রিসেট করুন
+              </button>
+            )}
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -407,9 +439,11 @@ export default function ManageDues() {
                 <th className="p-5 text-xs font-black tracking-widest text-[#64748B] uppercase">
                   ট্রানজেকশন / স্ট্যাটাস
                 </th>
-                <th className="p-5 text-xs font-black tracking-widest text-[#64748B] uppercase text-right">
-                  অ্যাকশন
-                </th>
+                {currentUser?.role !== "visitor_admin" && (
+                  <th className="p-5 text-xs font-black tracking-widest text-[#64748B] uppercase text-right">
+                    অ্যাকশন
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -478,36 +512,38 @@ export default function ManageDues() {
                         </span>
                       </div>
                     </td>
-                    <td className="p-5 text-right align-middle">
-                      <div className="flex justify-end gap-2.5 relative z-0 group-hover:z-10">
-                        {(p.status && p.status !== "Approved" && p.status !== "Paid" && p.status !== "Unpaid") && (
+                    {currentUser?.role !== "visitor_admin" && (
+                      <td className="p-5 text-right align-middle">
+                        <div className="flex justify-end gap-2.5 relative z-0 group-hover:z-10">
+                          {(p.status && p.status !== "Approved" && p.status !== "Paid" && p.status !== "Unpaid") && (
+                            <button
+                              type="button"
+                              onClick={() => handleApprove(p.id)}
+                              className="bg-emerald-500 text-white text-[10px] px-3.5 py-2 font-black uppercase tracking-wider rounded-lg shadow-sm shadow-emerald-500/20 hover:bg-emerald-600 transition flex items-center gap-1.5 active:scale-95"
+                              title="Approve"
+                            >
+                              <Check className="w-3.5 h-3.5" /> Approve
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => handleApprove(p.id)}
-                            className="bg-emerald-500 text-white text-[10px] px-3.5 py-2 font-black uppercase tracking-wider rounded-lg shadow-sm shadow-emerald-500/20 hover:bg-emerald-600 transition flex items-center gap-1.5 active:scale-95"
-                            title="Approve"
+                            onClick={() => setEditingPayment(p)}
+                            className="bg-white text-indigo-600 border border-indigo-200 text-[10px] px-3 py-2 font-black uppercase tracking-wider rounded-lg shadow-sm hover:bg-indigo-50 hover:border-indigo-300 transition flex items-center justify-center active:scale-95"
+                            title="Edit"
                           >
-                            <Check className="w-3.5 h-3.5" /> Approve
+                            <Edit2 className="w-4 h-4" />
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setEditingPayment(p)}
-                          className="bg-white text-indigo-600 border border-indigo-200 text-[10px] px-3 py-2 font-black uppercase tracking-wider rounded-lg shadow-sm hover:bg-indigo-50 hover:border-indigo-300 transition flex items-center justify-center active:scale-95"
-                          title="Edit"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeletePayment(p.id)}
-                          className="text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-600 border border-rose-200 px-3 py-2 rounded-lg hover:bg-rose-600 hover:text-white hover:border-rose-600 transition flex items-center justify-center shadow-sm active:scale-95"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePayment(p.id)}
+                            className="text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-600 border border-rose-200 px-3 py-2 rounded-lg hover:bg-rose-600 hover:text-white hover:border-rose-600 transition flex items-center justify-center shadow-sm active:scale-95"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               {payments.length === 0 && (

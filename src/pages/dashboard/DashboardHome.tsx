@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../../store/AuthContext";
 import { firebaseService } from "../../services/firebaseService";
@@ -21,10 +21,12 @@ import {
   Send,
   X,
   Search,
-  Plus
+  Plus,
+  ImageIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import toast from 'react-hot-toast';
+import { getDoc } from "firebase/firestore";
 
 export default function DashboardHome() {
   const { user } = useAuth();
@@ -43,6 +45,8 @@ export default function DashboardHome() {
 
   const [availableBooks, setAvailableBooks] = useState<{id: string; title: string; bookCode: string}[]>([]);
   const [bookSearchText, setBookSearchText] = useState("");
+  const [eventBanners, setEventBanners] = useState<string[]>([]);
+  const [dismissedBanners, setDismissedBanners] = useState<string[]>([]);
 
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [requestFormData, setRequestFormData] = useState({
@@ -54,33 +58,91 @@ export default function DashboardHome() {
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
 
   useEffect(() => {
-    if (user && user.role !== 'admin') {
-      const unsubIssues = onSnapshot(query(collection(db, 'issues'), where('userId', '==', user.id)), (snapshot) => {
-        let active = 0;
-        let returned = 0;
-        snapshot.docs.forEach(doc => {
-          const data = doc.data();
-          if (data.status === 'Issued') active++;
-          if (data.status === 'Returned') returned++;
-        });
-        setMemberStats({ activeIssues: active, totalReturned: returned });
-      }, (error) => {
-        handleFirestoreError(error, OperationType.GET, 'issues');
-      });
+    if (user) {
+      const fetchBanners = async () => {
+        try {
+          const cacheKey = 'dash_banners_cache';
+          const cacheTimeKey = 'dash_banners_time';
+          const cached = sessionStorage.getItem(cacheKey);
+          const lastTime = sessionStorage.getItem(cacheTimeKey);
+          
+          if (cached && lastTime && (Date.now() - parseInt(lastTime) < 1 * 60 * 1000)) {
+            setEventBanners(JSON.parse(cached));
+            return;
+          }
 
-      const unsubBooks = onSnapshot(collection(db, 'books'), (snapshot) => {
-        const books = snapshot.docs
-          .map(doc => ({ id: doc.id, title: doc.data().title || '', bookCode: doc.data().bookCode || '', status: doc.data().status }))
-          .filter(b => !b.status || String(b.status).toLowerCase() === "available" || String(b.status).toLowerCase() === "");
-        setAvailableBooks(books);
-      }, (error) => {
-        handleFirestoreError(error, OperationType.GET, 'books');
-      });
-
-      return () => {
-        unsubIssues();
-        unsubBooks();
+          const docRef = doc(db, 'settings', 'general');
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            let banners: string[] = [];
+            if (Array.isArray(data.eventBanners)) {
+              banners = data.eventBanners;
+            } else if (data.eventBanner) {
+              banners = [data.eventBanner];
+            }
+            setEventBanners(banners);
+            sessionStorage.setItem(cacheKey, JSON.stringify(banners));
+            sessionStorage.setItem(cacheTimeKey, Date.now().toString());
+          }
+        } catch (err) {
+          if (err instanceof Error && err.message.includes('Quota')) return;
+          console.error("Error fetching banners:", err);
+        }
       };
+      fetchBanners();
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (user && user.role !== 'admin') {
+      const fetchMemberData = async () => {
+        try {
+          const cachedIssues = sessionStorage.getItem('dash_home_issues_'+user.id);
+          const cachedBooks = sessionStorage.getItem('dash_home_books');
+          const cacheTime = sessionStorage.getItem('dash_home_time');
+
+          if (cachedIssues && cachedBooks && cacheTime && (Date.now() - parseInt(cacheTime) < 1 * 60 * 1000)) {
+            setMemberStats(JSON.parse(cachedIssues));
+            setAvailableBooks(JSON.parse(cachedBooks));
+            return;
+          }
+
+          const { getDocs } = await import('firebase/firestore');
+          
+          const qIssues = query(collection(db, 'issues'), where('userId', '==', user.id));
+          const [issuesSnap, booksSnap] = await Promise.all([
+             getDocs(qIssues),
+             getDocs(collection(db, 'books'))
+          ]);
+
+          let active = 0;
+          let returned = 0;
+          issuesSnap.docs.forEach(doc => {
+            const data = doc.data();
+            if (data.status === 'Issued') active++;
+            if (data.status === 'Returned') returned++;
+          });
+          
+          const stats = { activeIssues: active, totalReturned: returned };
+          setMemberStats(stats);
+
+          const books = booksSnap.docs
+            .map(doc => ({ id: doc.id, title: doc.data().title || '', bookCode: doc.data().bookCode || '', status: doc.data().status }))
+            .filter(b => !b.status || String(b.status).toLowerCase() === "available" || String(b.status).toLowerCase() === "");
+          setAvailableBooks(books);
+
+          sessionStorage.setItem('dash_home_issues_'+user.id, JSON.stringify(stats));
+          sessionStorage.setItem('dash_home_books', JSON.stringify(books));
+          sessionStorage.setItem('dash_home_time', Date.now().toString());
+
+        } catch (error) {
+          if (error instanceof Error && (error.message.includes('Quota') || error.message.includes('Quota limit exceeded'))) return;
+          handleFirestoreError(error, OperationType.GET, 'dashboard_home');
+        }
+      };
+
+      fetchMemberData();
     }
   }, [user]);
 
@@ -111,15 +173,54 @@ export default function DashboardHome() {
     }
   };
 
+  const hasAccess = useCallback((path: string) => {
+    if (!user) return false;
+    if (user.role === 'admin') return true;
+    if (user.role === 'visitor_admin' || user.role === 'subadmin') {
+      return user.subadminAccess?.includes(path) || false;
+    }
+    return false;
+  }, [user]);
+
   useEffect(() => {
-    if (user?.role === "admin" || user?.role === "subadmin" || user?.role === "issue_admin") {
+    if (user?.role === "admin" || user?.role === "subadmin" || user?.role === "visitor_admin") {
       const fetchStats = async () => {
         try {
+          const cacheKey = 'admin_dash_stats';
+          const cacheTimeKey = 'admin_dash_stats_time';
+          const cached = sessionStorage.getItem(cacheKey);
+          const lastTime = sessionStorage.getItem(cacheTimeKey);
+
+          if (cached && lastTime && (Date.now() - parseInt(lastTime) < 1 * 60 * 1000)) {
+            setStats(JSON.parse(cached));
+            return;
+          }
+
+          const statsPromises = [];
+          
+          let usersPromise = Promise.resolve([]);
+          let booksPromise = Promise.resolve([]);
+          let issuesPromise = Promise.resolve([]);
+          let financesPromise = Promise.resolve([]);
+
+          if (hasAccess('/dashboard/users')) {
+            usersPromise = firebaseService.getCollection("users");
+          }
+          if (hasAccess('/dashboard/books')) {
+            booksPromise = firebaseService.getCollection("books");
+          }
+          if (hasAccess('/dashboard/issues')) {
+            issuesPromise = firebaseService.getCollection("issues");
+          }
+          if (hasAccess('/dashboard/finances')) {
+            financesPromise = firebaseService.getCollection("finances");
+          }
+
           const [users, books, issues, finances] = await Promise.all([
-            firebaseService.getCollection("users"),
-            firebaseService.getCollection("books"),
-            firebaseService.getCollection("issues"),
-            firebaseService.getCollection("finances"),
+            usersPromise,
+            booksPromise,
+            issuesPromise,
+            financesPromise,
           ]);
 
           const income = Array.isArray(finances)
@@ -140,7 +241,7 @@ export default function DashboardHome() {
             return !isExclude;
           }) : [];
 
-          setStats({
+          const newStats = {
             users: filteredUsers.length,
             books: Array.isArray(books) ? books.length : 0,
             issues: Array.isArray(issues)
@@ -148,21 +249,42 @@ export default function DashboardHome() {
               : 0,
             income,
             expense,
-          });
+          };
+          setStats(newStats);
+          sessionStorage.setItem('admin_dash_stats', JSON.stringify(newStats));
+          sessionStorage.setItem('admin_dash_stats_time', Date.now().toString());
         } catch (error) {
+          if (error instanceof Error && error.message.includes('Quota')) return;
           console.error("Error fetching stats:", error);
         }
       };
 
       fetchStats();
     }
-  }, [user]);
+  }, [user, hasAccess]);
 
   if (!user) return null;
 
-  if (user.role !== "admin" && user.role !== "issue_admin") {
+  if (user.role !== "admin" && user.role !== "visitor_admin" && user.role !== "subadmin") {
     return (
       <div className="space-y-6">
+        {eventBanners.filter(b => !dismissedBanners.includes(b)).map((banner, idx) => (
+          <motion.div 
+            key={idx} 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full rounded-2xl overflow-hidden shadow-lg border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 relative"
+          >
+             <button 
+               onClick={() => setDismissedBanners(prev => [...prev, banner])} 
+               className="absolute top-3 right-3 bg-black/50 text-white p-1.5 rounded-full hover:bg-black/70 transition-colors backdrop-blur-sm z-10"
+             >
+               <X className="w-4 h-4" />
+             </button>
+             <img src={banner} alt={`Event Banner ${idx + 1}`} className="w-full h-auto max-h-[350px] object-cover" />
+          </motion.div>
+        ))}
+
         <div className="bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-slate-800 dark:via-slate-900 dark:to-slate-900 rounded-3xl p-6 sm:p-8 shadow-sm relative border border-indigo-100/50 dark:border-slate-800">
            <p className="text-slate-600 dark:text-slate-400 font-bold mb-1 font-bengali text-lg">স্বাগতম,</p>
            <h2 className="text-3xl sm:text-4xl font-black mb-6 text-slate-900 dark:text-white font-bengali">
@@ -198,7 +320,25 @@ export default function DashboardHome() {
   // Admin Dashboard
   return (
     <div className="space-y-8">
+      {eventBanners.filter(b => !dismissedBanners.includes(b)).map((banner, idx) => (
+        <motion.div 
+          key={idx} 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full rounded-2xl overflow-hidden shadow-lg border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 relative"
+        >
+           <button 
+             onClick={() => setDismissedBanners(prev => [...prev, banner])} 
+             className="absolute top-3 right-3 bg-black/50 text-white p-1.5 rounded-full hover:bg-black/70 transition-colors backdrop-blur-sm z-10"
+           >
+             <X className="w-4 h-4" />
+           </button>
+           <img src={banner} alt={`Event Banner ${idx + 1}`} className="w-full h-auto max-h-[350px] object-cover" />
+        </motion.div>
+      ))}
+
       {/* Primary Quick Action for Admin */}
+      {(hasAccess('/dashboard/users') || hasAccess('/dashboard/issues')) && (
       <div className="bg-slate-900 dark:bg-[#0B1120] rounded-[2rem] p-6 sm:p-10 shadow-2xl border border-slate-800 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-8 transition-colors group">
         <div className="absolute -right-20 -top-20 w-96 h-96 bg-indigo-500/20 rounded-full blur-[80px] pointer-events-none transition-all duration-700 group-hover:bg-indigo-500/30"></div>
         <div className="absolute -left-20 -bottom-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-[80px] pointer-events-none transition-all duration-700 group-hover:bg-emerald-500/20"></div>
@@ -209,17 +349,16 @@ export default function DashboardHome() {
             <div className="p-3.5 bg-white/5 rounded-2xl backdrop-blur-md border border-white/10 shadow-inner">
               <BookmarkMinus className="w-8 h-8 text-indigo-400" />
             </div>
-            বই ইস্যু ও ফেরত
+            হালনাগাদ ও পরিচালনা
           </h2>
           <p className="text-slate-400 max-w-md text-sm sm:text-base leading-relaxed mt-2 font-bengali">
-            আপনার দৈনন্দিন পাঠাগারের কার্যক্রম পরিচালনা করুন। সদস্যদের বই ইস্যু করুন অথবা দ্রুত রিটার্ন প্রসেস করুন।
+            আপনার দৈনন্দিন পাঠাগারের কার্যক্রম পরিচালনা করুন। সদস্যদের ব্যবস্থাপনা এবং বই ইস্যু/রিটার্ন করুন।
           </p>
         </div>
 
         <div className="relative z-10 flex flex-col sm:flex-row w-full md:w-auto gap-4">
-          {(user?.role === 'admin' || user?.role === 'issue_admin') && (
             <>
-              {user?.role === 'admin' && (
+              {hasAccess('/dashboard/users') && (
                 <Link
                   to="/dashboard/users"
                   className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-6 py-4 rounded-2xl font-bold transition-all shadow-lg active:scale-95 font-bengali"
@@ -228,27 +367,32 @@ export default function DashboardHome() {
                   সদস্যগণ
                 </Link>
               )}
-              <Link
-                to="/dashboard/issues?action=issue"
-                className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-8 py-4 rounded-2xl font-bold transition-all shadow-lg shadow-indigo-500/25 active:scale-95 whitespace-nowrap font-bengali"
-              >
-                <BookPlus className="w-5 h-5" />
-                বই প্রদান
-              </Link>
-              <Link
-                to="/dashboard/issues"
-                className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 px-8 py-4 rounded-2xl font-bold transition-all active:scale-95 whitespace-nowrap backdrop-blur-sm font-bengali"
-              >
-                <CheckCircle2 className="w-5 h-5" />
-                বই ফেরত
-              </Link>
+              {hasAccess('/dashboard/issues') && (
+                <>
+                  <Link
+                    to="/dashboard/issues?action=issue"
+                    className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-8 py-4 rounded-2xl font-bold transition-all shadow-lg shadow-indigo-500/25 active:scale-95 whitespace-nowrap font-bengali"
+                  >
+                    <BookPlus className="w-5 h-5" />
+                    বই প্রদান
+                  </Link>
+                  <Link
+                    to="/dashboard/issues"
+                    className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 px-8 py-4 rounded-2xl font-bold transition-all active:scale-95 whitespace-nowrap backdrop-blur-sm font-bengali"
+                  >
+                    <CheckCircle2 className="w-5 h-5" />
+                    বই ফেরত
+                  </Link>
+                </>
+              )}
             </>
-          )}
         </div>
       </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 hover:*:shadow-2xl hover:*:border-slate-200 dark:hover:*:border-slate-700 transition-all">
         {/* Total Users Card */}
+        {hasAccess('/dashboard/users') && (
         <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between">
           <div className="absolute -right-8 -top-8 w-40 h-40 bg-blue-500/10 rounded-full blur-[40px] pointer-events-none group-hover:bg-blue-500/20 transition-colors duration-500"></div>
           <div className="relative z-10 flex items-start justify-between mb-8">
@@ -268,8 +412,10 @@ export default function DashboardHome() {
             </p>
           </div>
         </div>
+        )}
 
         {/* Total Books Card */}
+        {hasAccess('/dashboard/books') && (
         <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between">
           <div className="absolute -right-8 -top-8 w-40 h-40 bg-indigo-500/10 rounded-full blur-[40px] pointer-events-none group-hover:bg-indigo-500/20 transition-colors duration-500"></div>
           <div className="relative z-10 flex items-start justify-between mb-8">
@@ -289,9 +435,10 @@ export default function DashboardHome() {
             </p>
           </div>
         </div>
+        )}
 
         {/* Active Issues Card */}
-        <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between">
+        <Link to={hasAccess('/dashboard/issues') ? "/dashboard/issues" : "/dashboard/my-books"} className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between">
           <div className="absolute -right-8 -top-8 w-40 h-40 bg-amber-500/10 rounded-full blur-[40px] pointer-events-none group-hover:bg-amber-500/20 transition-colors duration-500"></div>
           <div className="relative z-10 flex items-start justify-between mb-8">
             <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shadow-sm border border-amber-100/50 dark:border-amber-500/20 group-hover:scale-110 group-hover:shadow-md transition-all duration-300">
@@ -309,9 +456,10 @@ export default function DashboardHome() {
               {stats.issues}
             </p>
           </div>
-        </div>
+        </Link>
 
         {/* Balance Card */}
+        {hasAccess('/dashboard/finances') && (
         <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between">
           <div className="absolute -right-8 -top-8 w-40 h-40 bg-emerald-500/10 rounded-full blur-[40px] pointer-events-none group-hover:bg-emerald-500/20 transition-colors duration-500"></div>
           <div className="relative z-10 flex items-start justify-between mb-8">
@@ -331,6 +479,7 @@ export default function DashboardHome() {
             </p>
           </div>
         </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -343,6 +492,7 @@ export default function DashboardHome() {
 
           <div className="space-y-6">
             {/* Book Management */}
+            {hasAccess('/dashboard/books') && (
             <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-sm transition-colors">
               <h4 className="font-bengali font-bold text-slate-600 dark:text-slate-300 mb-4 text-sm flex items-center gap-2">
                 <Library className="w-4 h-4" /> বই ব্যবস্থাপনা
@@ -372,8 +522,10 @@ export default function DashboardHome() {
                 </Link>
               </div>
             </div>
+            )}
 
             {/* Special Button */}
+            {hasAccess('/dashboard/messages') && (
             <div className="pt-2">
               <Link
                 to="/dashboard/messages"
@@ -383,6 +535,7 @@ export default function DashboardHome() {
                 ম্যাসেঞ্জার খুলুন
               </Link>
             </div>
+            )}
           </div>
         </div>
         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col transition-colors">
@@ -390,7 +543,7 @@ export default function DashboardHome() {
             সাম্প্রতিক কার্যকলাপ
           </h3>
           <div className="flex-1 flex items-center justify-center text-center py-12 text-slate-500 dark:text-slate-400 font-bengali text-sm bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-dashed border-slate-200 dark:border-slate-600 transition-colors">
-            কার্যকলাপের টাইমলাইন এখানে প্রদর্শিত হবে
+            রিয়েলটাইম আপডেট বন্ধ আছে (কোটা সংরক্ষণের জন্য)। ড্যাশবোর্ড রিফ্রেশ করুন।
           </div>
         </div>
       </div>

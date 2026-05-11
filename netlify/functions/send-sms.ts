@@ -65,9 +65,13 @@ export const handler = async (event: any) => {
 
     const url = `https://bulksmsbd.net/api/smsapi?api_key=${apiKey}&type=unicode&number=${cleanNumber}&senderid=${senderId}&message=${encodeURIComponent(message)}`;
     
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
+      }
+    });
     const rawData = await response.text();
-    console.log('📬 SMS API raw response (Netlify):', rawData);
 
     let json: any = {};
     try { json = JSON.parse(rawData); } catch(e) {}

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../store/AuthContext';
-import { BookmarkMinus, CheckCircle2, Trash2, ShieldAlert, FileDown } from 'lucide-react';
+import { BookmarkMinus, CheckCircle2, Trash2, ShieldAlert, FileDown, BookOpen } from 'lucide-react';
 import { onSnapshot, collection, doc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import Select from 'react-select';
@@ -34,28 +34,59 @@ export default function ManageIssues() {
   const [filterStatus, setFilterStatus] = useState('all');
 
   useEffect(() => {
-    const unsubIssues = onSnapshot(collection(db, "issues"), (snapshot) => {
-      setIssues(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'issues');
-    });
-    const unsubBooks = onSnapshot(collection(db, "books"), (snapshot) => {
-      setBooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'books');
-    });
-    const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
-      setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'users');
-    });
+    const fetchData = async () => {
+      try {
+        const { getDocs, query, collection, orderBy } = await import('firebase/firestore');
+        const db = (await import('../../lib/firebase')).db;
 
-    return () => {
-      unsubIssues();
-      unsubBooks();
-      unsubUsers();
+        const checkCache = (key: string) => {
+          const cached = sessionStorage.getItem(key);
+          const cachedTime = sessionStorage.getItem(`${key}_time`);
+          if (cached && cachedTime && (Date.now() - parseInt(cachedTime) < 5 * 60 * 1000)) {
+            return JSON.parse(cached);
+          }
+          return null;
+        };
+        const setCache = (key: string, data: any) => {
+          sessionStorage.setItem(key, JSON.stringify(data));
+          sessionStorage.setItem(`${key}_time`, Date.now().toString());
+        };
+
+        const [issuesSnap, booksSnap, usersSnap] = await Promise.all([
+          checkCache('admin_issues_cache') ? null : getDocs(collection(db, "issues")),
+          checkCache('admin_books_cache') ? null : getDocs(collection(db, "books")),
+          checkCache('admin_users_cache') ? null : getDocs(collection(db, "users"))
+        ]);
+
+        if (issuesSnap) {
+          const docs = issuesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setIssues(docs);
+          setCache('admin_issues_cache', docs);
+        } else setIssues(checkCache('admin_issues_cache'));
+
+        if (booksSnap) {
+          const docs = booksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setBooks(docs);
+          setCache('admin_books_cache', docs);
+        } else setBooks(checkCache('admin_books_cache'));
+
+        if (usersSnap) {
+          const docs = usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setUsers(docs);
+          setCache('admin_users_cache', docs);
+        } else setUsers(checkCache('admin_users_cache'));
+
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, 'issues/books/users');
+      }
     };
+    fetchData();
   }, []);
+
+  const updateIssuesCache = (newIssues: any[]) => {
+    sessionStorage.setItem('admin_issues_cache', JSON.stringify(newIssues));
+    sessionStorage.setItem('admin_issues_cache_time', Date.now().toString());
+  };
 
   useEffect(() => {
     // Check for overdue issues and send SMS automatically
@@ -188,15 +219,27 @@ export default function ManageIssues() {
       console.log('Creating Issue Doc with ID:', issueId, 'Payload:', issueData);
       await setDoc(doc(db, "issues", issueId), issueData);
       console.log('Issue document created successfully');
+      setIssues(prev => {
+        const updated = [...prev, { id: issueId, ...issueData }];
+        updateIssuesCache(updated);
+        return updated;
+      });
 
       // 5. Update Book Status
       console.log('Updating Book Status for book:', selectedBook.id);
-      await updateDoc(doc(db, "books", String(selectedBook.id)), { 
+      const bookUpdates = { 
         status: "ISSUED",
         currentReaderName: selectedUser.name || 'Anonymous',
         currentReaderId: selectedUser.id,
         expectedReturnDate: formData.expectedReturnDate,
         updatedAt: serverTimestamp()
+      };
+      await updateDoc(doc(db, "books", String(selectedBook.id)), bookUpdates);
+      setBooks(prev => {
+        const updated = prev.map(b => b.id === selectedBook.id ? { ...b, ...bookUpdates } : b);
+        sessionStorage.setItem('admin_books_cache', JSON.stringify(updated));
+        sessionStorage.setItem('admin_books_cache_time', Date.now().toString());
+        return updated;
       });
       console.log('Book status updated successfully');
 
@@ -280,8 +323,9 @@ export default function ManageIssues() {
     <head>
         <meta charset="UTF-8">
         <title>ওভারডিউ বইয়ের রিপোর্ট</title>
-        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-        <style>
+        
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+                <style>
             body {
                 font-family: 'Hind Siliguri', sans-serif;
                 padding: 40px;
@@ -455,20 +499,33 @@ export default function ManageIssues() {
       if (!currentUser) throw new Error("Auth required");
 
       console.log('Updating Issue Doc:', id);
-      await updateDoc(doc(db, "issues", id), {
+      const issueUpdates = {
         status: 'Returned',
         returnDate: new Date().toISOString(),
         updatedAt: serverTimestamp()
+      };
+      await updateDoc(doc(db, "issues", id), issueUpdates);
+      setIssues(prev => {
+        const updated = prev.map(iss => iss.id === id ? { ...iss, ...issueUpdates } : iss);
+        updateIssuesCache(updated);
+        return updated;
       });
       console.log('Issue record updated to Returned');
 
       console.log('Updating Book status to Available for bookId:', issue.bookId);
-      await updateDoc(doc(db, "books", issue.bookId), { 
+      const returnBookUpdates = { 
         status: 'Available',
         currentReaderName: null,
         currentReaderId: null,
         expectedReturnDate: null,
         updatedAt: serverTimestamp()
+      };
+      await updateDoc(doc(db, "books", issue.bookId), returnBookUpdates);
+      setBooks(prev => {
+        const updated = prev.map(b => b.id === issue.bookId ? { ...b, ...returnBookUpdates } : b);
+        sessionStorage.setItem('admin_books_cache', JSON.stringify(updated));
+        sessionStorage.setItem('admin_books_cache_time', Date.now().toString());
+        return updated;
       });
       console.log('Book status updated successfully');
       toast.success('Book returned successfully!');
@@ -512,6 +569,11 @@ export default function ManageIssues() {
       if (!currentUser) throw new Error("Auth required");
 
       await deleteDoc(doc(db, "issues", id));
+      setIssues(prev => {
+        const updated = prev.filter(iss => iss.id !== id);
+        updateIssuesCache(updated);
+        return updated;
+      });
       console.log('Document deleted successfully from Firestore');
     } catch (err) {
       console.error('Error deleting issue:', err);
@@ -650,6 +712,21 @@ export default function ManageIssues() {
     setExtendConfig({ id, currentDateStr: currentExpectedStr });
   };
 
+  const filteredIssues = issues.filter(i => {
+    if (filterStatus === 'returned' && i.status !== 'Returned') return false;
+    if (filterStatus === 'issued' && i.status !== 'ISSUED' && i.status !== 'Issued') return false;
+    if (filterStatus === 'overdue') {
+       if (i.status !== 'ISSUED' && i.status !== 'Issued') return false;
+       if (new Date(i.expectedReturnDate) >= new Date()) return false;
+    }
+    if (filterStatus === 'extend' && !i.extendRequested) return false;
+
+    const book = books.find(b => b.id === i.bookId);
+    const user = users.find(u => u.id === i.userId);
+    const term = search.toLowerCase();
+    return (book?.bookCode?.toLowerCase()?.includes(term) || book?.title?.toLowerCase()?.includes(term) || user?.memberId?.toLowerCase()?.includes(term) || user?.name?.toLowerCase()?.includes(term));
+  });
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 font-bengali">
       <div className="flex flex-col gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
@@ -661,7 +738,7 @@ export default function ManageIssues() {
           <div className="flex flex-wrap gap-3 w-full md:w-auto">
              <input 
                 type="text" 
-                placeholder="বইয়ের কোড বা নাম দিয়ে খুঁজুন..." 
+                placeholder="বইয়ের নাম, কোড বা মেম্বার দিয়ে খুঁজুন..." 
                 className="border border-slate-200 px-4 py-2.5 rounded-xl text-sm w-full md:w-auto shadow-inner bg-slate-50 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium font-bengali"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
@@ -827,9 +904,9 @@ export default function ManageIssues() {
         </form>
       )}
 
-      <div className="bg-white border text-center md:text-left border-slate-200 rounded-2xl md:rounded-3xl shadow-sm overflow-hidden md:overflow-hidden overflow-x-auto">
-        <table className="w-full text-left min-w-[800px]">
-          <thead className="bg-[#f8fafc] border-b border-slate-200 font-bengali">
+      <div className="bg-white border border-slate-200 rounded-2xl md:rounded-3xl shadow-sm overflow-hidden md:overflow-hidden">
+        <table className="w-full text-left block md:table">
+          <thead className="hidden md:table-header-group bg-[#f8fafc] border-b border-slate-200 font-bengali">
             <tr>
               <th className="p-5 text-sm font-black text-[#64748B]">ইস্যু / স্ট্যাটাস</th>
               <th className="p-5 text-sm font-black text-[#64748B]">বইয়ের তথ্য</th>
@@ -837,27 +914,14 @@ export default function ManageIssues() {
               <th className="p-5 text-sm font-black text-[#64748B] text-right">অ্যাকশন</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
-            {issues.filter(i => {
-                if (filterStatus === 'returned' && i.status !== 'Returned') return false;
-                if (filterStatus === 'issued' && i.status !== 'ISSUED' && i.status !== 'Issued') return false;
-                if (filterStatus === 'overdue') {
-                   if (i.status !== 'ISSUED' && i.status !== 'Issued') return false;
-                   if (new Date(i.expectedReturnDate) >= new Date()) return false;
-                }
-                if (filterStatus === 'extend' && !i.extendRequested) return false;
-
-                const book = books.find(b => b.id === i.bookId);
-                const user = users.find(u => u.id === i.userId);
-                const term = search.toLowerCase();
-                return (book?.bookCode?.toLowerCase()?.includes(term) || book?.title?.toLowerCase()?.includes(term) || user?.memberId?.toLowerCase()?.includes(term) || user?.name?.toLowerCase()?.includes(term));
-            }).map(i => (
-              <tr key={i.id} className="hover:bg-slate-50 transition-colors group">
-                <td className="p-5">
+          <tbody className="block md:table-row-group divide-y divide-slate-100">
+            {filteredIssues.map(i => (
+              <tr key={i.id} className="block md:table-row hover:bg-slate-50 transition-colors group p-4 md:p-0">
+                <td className="block md:table-cell p-2 md:p-5 md:align-top">
                   <div className="font-bold text-slate-700 text-sm mb-1.5 tracking-tight uppercase">
                     #{i.id.slice(-6).replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}
                   </div>
-                  <div>
+                  <div className="mb-2 md:mb-0">
                       {(i.status === 'ISSUED' || i.status === 'Issued') ? (
                          <div className="flex flex-col gap-1.5 items-start">
                             <span className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold tracking-wide border font-bengali ${new Date(i.expectedReturnDate) < new Date() ? 'bg-rose-50 text-rose-600 border-rose-200 animate-pulse' : 'bg-emerald-50 text-emerald-600 border-emerald-200'}`}>
@@ -870,13 +934,24 @@ export default function ManageIssues() {
                       )}
                   </div>
                 </td>
-                <td className="p-5">
-                  <div className="font-bold text-slate-900 text-[15px] font-bengali">{books.find(b => b.id === i.bookId)?.title || 'অজানা বই'}</div>
-                  <div className="text-xs mt-2 inline-flex items-center bg-slate-50 px-2.5 py-1 rounded-md text-slate-600 font-medium border border-slate-200 font-bengali">
-                    কোড: {books.find(b => b.id === i.bookId)?.bookCode?.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}
+                <td className="block md:table-cell p-2 md:p-5 md:align-top">
+                  <div className="flex items-start gap-4">
+                    {books.find(b => b.id === i.bookId)?.imageUrl ? (
+                      <img src={books.find(b => b.id === i.bookId)?.imageUrl} alt={books.find(b => b.id === i.bookId)?.title} className="w-12 h-16 object-cover rounded-md shadow-sm border border-slate-200" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-12 h-16 bg-slate-100 rounded-md shadow-sm border border-slate-200 flex items-center justify-center">
+                        <BookOpen className="w-5 h-5 text-slate-300" />
+                      </div>
+                    )}
+                    <div>
+                      <div className="font-bold text-slate-900 text-[15px] font-bengali leading-tight mb-2">{books.find(b => b.id === i.bookId)?.title || 'অজানা বই'}</div>
+                      <div className="text-xs inline-flex items-center bg-slate-50 px-2.5 py-1 rounded-md text-slate-600 font-medium border border-slate-200 font-bengali">
+                        কোড: {books.find(b => b.id === i.bookId)?.bookCode?.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}
+                      </div>
+                    </div>
                   </div>
                 </td>
-                <td className="p-5">
+                <td className="block md:table-cell p-2 md:p-5 md:align-top">
                   <div className="font-bold text-slate-900 text-sm mb-1.5 font-bengali">{users.find(u => u.id === i.userId)?.name || 'অজানা সদস্য'}</div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-slate-600 font-medium bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200 font-bengali">
@@ -885,9 +960,9 @@ export default function ManageIssues() {
                   </div>
                 </td>
                 
-                <td className="p-5 text-right align-top">
-                  <div className="flex flex-col items-end gap-2 relative z-0 group-hover:z-10">
-                    <div className="flex items-center gap-2">
+                <td className="block md:table-cell p-2 md:p-5 md:align-top md:text-right mt-4 md:mt-0 pt-4 md:pt-5 border-t border-slate-100 md:border-0 relative">
+                  <div className="flex flex-wrap md:flex-col md:items-end justify-start md:justify-end gap-2 relative z-0 group-hover:z-10">
+                    <div className="flex flex-wrap items-center gap-2">
                         {(i.status === 'ISSUED' || i.status === 'Issued') && (
                             <>
                                 {i.returnRequested && (

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../store/AuthContext';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { DollarSign, ArrowUpRight, ArrowDownRight, Plus, Edit2, Trash2 } from 'lucide-react';
+import { DollarSign, ArrowUpRight, ArrowDownRight, Plus, Edit2, Trash2, Printer } from 'lucide-react';
 import { onSnapshot, collection, doc, setDoc, deleteDoc, updateDoc, writeBatch, query, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import toast from 'react-hot-toast';
@@ -23,6 +23,7 @@ export default function Finances() {
   const location = useLocation();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
 
   const [formData, setFormData] = useState({
     type: 'expense',
@@ -34,12 +35,116 @@ export default function Finances() {
   const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'finances'), (snapshot) => {
-      setFinances(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Finance[]);
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    const fetchData = async () => {
+      try {
+        const { getDocs, collection } = await import('firebase/firestore');
+        const db = (await import('../../lib/firebase')).db;
+
+        const cacheKey = 'admin_finances_cache';
+        const cacheTime = sessionStorage.getItem('admin_finances_time');
+
+        if (cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
+           const cached = sessionStorage.getItem(cacheKey);
+           if (cached) {
+              setFinances(JSON.parse(cached));
+              setLoading(false);
+              return;
+           }
+        }
+
+        const snapshot = await getDocs(collection(db, 'finances'));
+        const financeData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Finance[];
+        setFinances(financeData);
+        setLoading(false);
+
+        sessionStorage.setItem(cacheKey, JSON.stringify(financeData));
+        sessionStorage.setItem('admin_finances_time', Date.now().toString());
+      } catch (err) {
+        console.error("Error fetching finances:", err);
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, []);
+
+  const months = Array.from(new Set(finances.map(f => new Date(f.date).toISOString().slice(0, 7)))).sort().reverse();
+  const filteredFinances = selectedMonth === 'all' 
+    ? finances 
+    : finances.filter(f => new Date(f.date).toISOString().slice(0, 7) === selectedMonth);
+
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const pTotalIncome = filteredFinances.filter(f => f.type === 'income').reduce((acc, curr) => acc + Number(curr.amount), 0);
+    const pTotalExpense = filteredFinances.filter(f => f.type === 'expense').reduce((acc, curr) => acc + Number(curr.amount), 0);
+    const pBalance = pTotalIncome - pTotalExpense;
+
+    const monthStr = selectedMonth === 'all' 
+      ? 'সকল মাস' 
+      : new Date(selectedMonth + '-01').toLocaleDateString('bn-BD', { month: 'long', year: 'numeric' });
+
+    const htmlContent = `
+      <html>
+        <head>
+          <title>হিসাব-নিকাশ</title>
+          <style>
+            body { font-family: 'Arial', sans-serif; padding: 30px; color: #333; }
+            h2 { text-align: center; margin-bottom: 5px; font-size: 24px; color: #1e293b; }
+            .date-subtitle { text-align: center; margin-bottom: 30px; color: #64748b; font-size: 16px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; text-align: left; }
+            th, td { border: 1px solid #cbd5e1; padding: 12px; }
+            th { background-color: #f8fafc; color: #475569; font-weight: bold; }
+            .summary { display: flex; justify-content: space-between; margin-bottom: 20px; font-weight: bold; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #cbd5e1; }
+            .income-text { color: #10b981; }
+            .expense-text { color: #e11d48; }
+            .balance-text { color: #4f46e5; }
+            .text-right { text-align: right; }
+          </style>
+        </head>
+        <body>
+          <h2>হিসাব-নিকাশ রিপোর্ট</h2>
+          <div class="date-subtitle">মাস: ${monthStr}</div>
+          
+          <div class="summary">
+            <div class="income-text">মোট আয়: ৳${pTotalIncome}</div>
+            <div class="expense-text">মোট ব্যয়: ৳${pTotalExpense}</div>
+            <div class="balance-text">বর্তমান ব্যালেন্স: ৳${pBalance}</div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>তারিখ</th>
+                <th>বিবরণ</th>
+                <th class="text-right">আয়</th>
+                <th class="text-right">ব্যয়</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredFinances.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(f => `
+                <tr>
+                  <td>${new Date(f.date).toLocaleDateString('bn-BD')}</td>
+                  <td>${f.description}</td>
+                  <td class="text-right ${f.type === 'income' ? 'income-text' : ''}">${f.type === 'income' ? '৳' + f.amount : '-'}</td>
+                  <td class="text-right ${f.type === 'expense' ? 'expense-text' : ''}">${f.type === 'expense' ? '৳' + f.amount : '-'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <script>
+            setTimeout(function() {
+              window.print();
+            }, 500);
+            window.onafterprint = function() { window.close(); }
+          </script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -109,11 +214,11 @@ export default function Finances() {
     }
   };
 
-  const totalIncome = finances.filter(f => f.type === 'income').reduce((acc, curr) => acc + Number(curr.amount), 0);
-  const totalExpense = finances.filter(f => f.type === 'expense').reduce((acc, curr) => acc + Number(curr.amount), 0);
+  const totalIncome = filteredFinances.filter(f => f.type === 'income').reduce((acc, curr) => acc + Number(curr.amount), 0);
+  const totalExpense = filteredFinances.filter(f => f.type === 'expense').reduce((acc, curr) => acc + Number(curr.amount), 0);
   const balance = totalIncome - totalExpense;
 
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || (user?.role === 'subadmin' && user?.subadminAccess?.includes('/dashboard/finances'));
   const isDashboard = location.pathname.startsWith('/dashboard');
 
   const chartData = [
@@ -210,44 +315,70 @@ export default function Finances() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 lg:col-span-2 overflow-hidden flex flex-col">
-          <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-[#f8fafc]">
-            <h3 className="font-bold text-lg font-bengali text-slate-800">লেনদেনের রেকর্ড</h3>
-            {isAdmin && (
-              resetting ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-rose-500 font-bold font-bengali">আপনি কি নিশ্চিত?</span>
-                  <button onClick={() => handleResetAll(true)} className="text-xs bg-rose-600 text-white hover:bg-rose-700 px-4 py-2 rounded-xl font-bold transition whitespace-nowrap shadow-sm font-bengali">হ্যাঁ, মুছুন</button>
-                  <button onClick={() => setResetting(false)} className="text-xs bg-slate-200 text-slate-700 hover:bg-slate-300 px-4 py-2 rounded-xl font-bold transition whitespace-nowrap font-bengali">বাতিল</button>
-                </div>
-              ) : (
-                <button 
-                  onClick={() => handleResetAll(false)} 
-                  className="text-xs bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white px-4 py-2 rounded-xl font-bold border border-rose-100 transition whitespace-nowrap font-bengali active:scale-95"
-                >
-                  সব মুছুন
-                </button>
-              )
-            )}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 border-b border-slate-100 bg-[#f8fafc] gap-4">
+            <h3 className="font-bold text-lg font-bengali text-slate-800 flex items-center gap-2">
+              লেনদেনের রেকর্ড
+            </h3>
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="px-4 py-2 border border-slate-200 rounded-xl font-bold font-bengali text-sm text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-auto"
+              >
+                <option value="all">সব মাস</option>
+                {months.map(m => (
+                  <option key={m} value={m}>
+                    {new Date(m + '-01').toLocaleDateString('bn-BD', { month: 'long', year: 'numeric' })}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handlePrint}
+                className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 cursor-pointer border border-indigo-100 w-full justify-center sm:w-auto shadow-sm"
+              >
+                <Printer className="w-4 h-4" />
+                <span className="font-bengali">প্রিন্ট</span>
+              </button>
+
+              {isAdmin && (
+                resetting ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-rose-500 font-bold font-bengali">নিশ্চিত?</span>
+                    <button onClick={() => handleResetAll(true)} className="text-xs bg-rose-600 text-white hover:bg-rose-700 px-4 py-2 rounded-xl font-bold transition whitespace-nowrap shadow-sm font-bengali">মুছুন</button>
+                    <button onClick={() => setResetting(false)} className="text-xs bg-slate-200 text-slate-700 hover:bg-slate-300 px-4 py-2 rounded-xl font-bold transition whitespace-nowrap font-bengali">বাতিল</button>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => handleResetAll(false)} 
+                    className="text-xs bg-white text-rose-600 hover:bg-rose-50 px-4 py-2 rounded-xl font-bold border border-rose-100 transition whitespace-nowrap font-bengali w-full justify-center sm:w-auto shadow-sm"
+                  >
+                    সব মুছুন
+                  </button>
+                )
+              )}
+            </div>
           </div>
           <div className="overflow-x-auto flex-1">
-            <table className="w-full text-left">
-              <thead className="bg-[#f8fafc] border-b border-slate-200">
+            <table className="w-full text-left min-w-[500px]">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="p-4 text-xs font-black text-[#64748B] uppercase tracking-widest font-bengali">তারিখ</th>
-                  <th className="p-4 text-xs font-black text-[#64748B] uppercase tracking-widest font-bengali">বিবরণ</th>
-                  <th className="p-4 text-xs font-black text-[#64748B] uppercase tracking-widest text-right font-bengali">পরিমাণ</th>
-                  {isAdmin && <th className="p-4 text-xs font-black text-[#64748B] uppercase tracking-widest text-right font-bengali">অ্যাকশন</th>}
+                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-widest font-bengali w-[120px]">তারিখ</th>
+                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-widest font-bengali">বিবরণ</th>
+                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-widest text-right font-bengali">পরিমাণ</th>
+                  {isAdmin && <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-widest text-right font-bengali w-[100px]">অ্যাকশন</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100/80">
-                {finances.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(f => (
-                  <tr key={f.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="p-4 text-sm font-medium text-slate-500 font-mono">
+              <tbody className="divide-y divide-slate-100">
+                {filteredFinances.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(f => (
+                  <tr key={f.id} className="hover:bg-slate-50/80 transition-colors group">
+                    <td className="p-4 text-sm font-medium text-slate-500 font-mono whitespace-nowrap">
                       {new Date(f.date).toLocaleDateString()}
                     </td>
                     <td className="p-4 font-bold text-slate-800 font-bengali">{f.description}</td>
-                    <td className={`p-4 text-right font-black font-mono text-base ${f.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {f.type === 'income' ? '+' : '-'}৳{f.amount}
+                    <td className={`p-4 text-right font-black font-mono text-base whitespace-nowrap ${f.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      <div className="flex items-center justify-end gap-1">
+                        {f.type === 'income' ? '+' : '-'}৳{f.amount}
+                      </div>
                     </td>
                     {isAdmin && (
                       <td className="p-4 text-right flex justify-end">
@@ -257,9 +388,9 @@ export default function Finances() {
                                <button onClick={() => setDeletingId(null)} className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs rounded-lg font-bold font-bengali">বাতিল</button>
                             </div>
                          ) : (
-                            <div className="flex justify-end gap-1">
-                              <button onClick={() => handleEdit(f)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all active:scale-95"><Edit2 className="w-4 h-4" /></button>
-                              <button onClick={() => handleDelete(f.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all active:scale-95"><Trash2 className="w-4 h-4" /></button>
+                            <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => handleEdit(f)} className="p-2 border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 bg-white hover:bg-indigo-50 rounded-xl transition-all shadow-sm"><Edit2 className="w-4 h-4" /></button>
+                              <button onClick={() => handleDelete(f.id)} className="p-2 border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 bg-white hover:bg-rose-50 rounded-xl transition-all shadow-sm"><Trash2 className="w-4 h-4" /></button>
                             </div>
                          )}
                       </td>
@@ -268,7 +399,14 @@ export default function Finances() {
                 ))}
               </tbody>
             </table>
-            {finances.length === 0 && <div className="text-center p-12 text-slate-400 font-bold font-bengali">কোনো লেনদেনের রেকর্ড পাওয়া যায়নি।</div>}
+            {filteredFinances.length === 0 && (
+               <div className="flex flex-col items-center justify-center p-12 text-slate-400">
+                  <div className="w-16 h-16 bg-slate-100 rounded-full mb-4 flex items-center justify-center">
+                     <DollarSign className="w-8 h-8 text-slate-300" />
+                  </div>
+                  <p className="font-bold font-bengali text-slate-500">কোনো লেনদেনের রেকর্ড পাওয়া যায়নি</p>
+               </div>
+            )}
           </div>
         </div>
 

@@ -17,19 +17,33 @@ export default function Blog() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'posts'), (snapshot) => {
-      const postsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Post[];
-      setPosts(postsData);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching posts:", error);
-      setLoading(false);
-    });
+    const fetchPosts = async () => {
+      try {
+        const cached = sessionStorage.getItem('pub_blog_cache');
+        const cacheTime = sessionStorage.getItem('pub_blog_cache_time');
+        
+        if (cached && cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
+          setPosts(JSON.parse(cached));
+          setLoading(false);
+          return;
+        }
 
-    return () => unsubscribe();
+        const { getDocs, query, limit } = await import('firebase/firestore');
+        const snapshot = await getDocs(query(collection(db, 'posts'), limit(30)));
+        const postsData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Post[];
+        setPosts(postsData);
+        sessionStorage.setItem('pub_blog_cache', JSON.stringify(postsData));
+        sessionStorage.setItem('pub_blog_cache_time', Date.now().toString());
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching posts:", error);
+        setLoading(false);
+      }
+    };
+    fetchPosts();
   }, []);
 
   return (

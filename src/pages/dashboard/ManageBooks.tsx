@@ -149,6 +149,7 @@ export default function ManageBooks() {
   const [books, setBooks] = useState<Book[]>([]);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const { user, token } = useAuth();
   
   const [showModal, setShowModal] = useState(false);
@@ -168,18 +169,37 @@ export default function ManageBooks() {
   const [coverInputType, setCoverInputType] = useState<'upload' | 'link'>('upload');
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'books'), (snapshot) => {
-      const booksData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Book[];
-      setBooks(booksData);
-    }, (error) => {
-        handleFirestoreError(error, OperationType.GET, 'books', user?.id, user?.email);
-    });
+    const fetchBooks = async () => {
+      try {
+        const cached = sessionStorage.getItem('admin_books_cache');
+        const cacheTime = sessionStorage.getItem('admin_books_cache_time');
+        
+        if (cached && cacheTime && (Date.now() - parseInt(cacheTime) < 1 * 60 * 1000)) {
+          setBooks(JSON.parse(cached));
+          return;
+        }
 
-    return () => unsubscribe();
+        const snapshot = await getDocs(collection(db, 'books'));
+        const booksData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Book[];
+        setBooks(booksData);
+        sessionStorage.setItem('admin_books_cache', JSON.stringify(booksData));
+        sessionStorage.setItem('admin_books_cache_time', Date.now().toString());
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, 'books', user?.id, user?.email);
+      }
+    };
+    fetchBooks();
   }, [user]);
+
+  // Update session storage helper
+  const updateCache = (newBooks: Book[]) => {
+    sessionStorage.setItem('admin_books_cache', JSON.stringify(newBooks));
+    sessionStorage.setItem('admin_books_cache_time', Date.now().toString());
+    sessionStorage.removeItem('pub_books_cache'); // Also clear public cache
+  };
 
   const handleDownloadPDF = () => {
     const printWindow = window.open('', '_blank');
@@ -198,8 +218,9 @@ export default function ManageBooks() {
         <head>
           <title>বই তালিকা রিপোর্ট</title>
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap');
-            body { 
+            
+            @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap');
+                        body { 
               font-family: 'Hind Siliguri', sans-serif; 
               color: #1a1a1a;
               margin: 0;
@@ -342,6 +363,11 @@ export default function ManageBooks() {
               updatedAt: serverTimestamp()
             });
             setShowModal(false);
+            setBooks(prev => {
+              const updated = prev.map(b => b.id === editingId ? { ...b, ...formData } : b);
+              updateCache(updated);
+              return updated;
+            });
             setFormData({ title: '', author: '', category: '', cover: '', status: 'Available', bookCode: '', shelfNo: '', review: '', description: '' });
             setEditingId(null);
             toast.success('সফলভাবে বই আপডেট করা হয়েছে!');
@@ -353,6 +379,11 @@ export default function ManageBooks() {
               bookCode: finalBookCode,
               id: newDocRef.id,
               createdAt: serverTimestamp()
+            });
+            setBooks(prev => {
+              const updated = [...prev, { ...formData, bookCode: finalBookCode, id: newDocRef.id } as Book];
+              updateCache(updated);
+              return updated;
             });
             toast.success('সফলভাবে বই যুক্ত করা হয়েছে!');
             setFormData(prev => ({ title: '', author: '', category: prev.category, cover: '', status: 'Available', bookCode: generateBookCode(prev.category || ''), shelfNo: prev.shelfNo, review: '', description: '' }));
@@ -395,6 +426,12 @@ export default function ManageBooks() {
     }
     try {
         await deleteDoc(doc(db, 'books', id));
+        setBooks(prev => {
+          const updated = prev.filter(b => b.id !== id);
+          updateCache(updated);
+          return updated;
+        });
+        toast.success('সফলভাবে বয়ল ডিলিট করা হয়েছে!');
     } catch (error: any) {
         if (error.message?.includes('permission-denied') || error.message?.includes('Missing or insufficient permissions')) {
             toast.error('Delete failed: You do not have permission.');
@@ -417,7 +454,7 @@ export default function ManageBooks() {
     return searchMatch && categoryMatch;
   });
 
-  const isActuallyAdmin = user?.role === 'admin' || user?.role === 'subadmin' || user?.role === 'issue_admin' || user?.username === 'admin' || user?.email === 'seneiaislam@gmail.com' || user?.email === 'admin@library.com';
+  const isActuallyAdmin = user?.role === 'admin' || user?.role === 'subadmin' || user?.role === 'visitor_admin' || user?.username === 'admin' || user?.email === 'seneiaislam@gmail.com' || user?.email === 'admin@library.com';
   const isAdminRole = user?.role === 'admin';
 
   const [prebooking, setPrebooking] = useState<string | null>(null);
@@ -453,14 +490,32 @@ export default function ManageBooks() {
     }
   };
 
+  const handleBookClick = async (book: any) => {
+    if (String(book.status).toLowerCase() === 'issued') {
+        const loadingToast = toast.loading('অপেক্ষা করুন...');
+        try {
+            const q = query(collection(db, 'issues'), where('bookId', '==', book.id), where('status', 'in', ['Issued', 'ISSUED']));
+            const snap = await getDocs(q);
+            toast.dismiss(loadingToast);
+            if (!snap.empty) {
+                const issueData = snap.docs[0].data();
+                if (issueData.expectedReturnDate) {
+                    toast(`বইটি লাইব্রেরিতে আসার সম্ভাব্য তারিখ: ${new Date(issueData.expectedReturnDate).toLocaleDateString('bn-BD')}`, { icon: '📅' });
+                } else {
+                    toast('বইটির সম্ভাব্য ফেরত তারিখ জানা যায়নি।', { icon: 'ℹ️' });
+                }
+            } else {
+                toast('বিস্তারিত তথ্য পাওয়া যায়নি।', { icon: 'ℹ️' });
+            }
+        } catch (error) {
+            toast.dismiss(loadingToast);
+            toast.error('তথ্য লোড করতে সমস্যা হয়েছে।');
+        }
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
-      {!isActuallyAdmin && (
-        <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl flex items-center gap-3 text-rose-700 font-bold font-bengali">
-          <ShieldAlert className="w-5 h-5" />
-          সতর্কবার্তা: আপনাকে এডমিন হিসেবে শনাক্ত করা যায়নি। আপনি বই পরিবর্তন করতে পারবেন না।
-        </div>
-      )}
 
       {/* Header & Stats Bento */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -469,10 +524,14 @@ export default function ManageBooks() {
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500/10 rounded-full blur-[100px] -ml-32 -mb-32"></div>
           
           <div className="relative z-10 flex flex-col xl:flex-row xl:items-start justify-between gap-6">
-            <div>
-              <h2 className="text-4xl font-black tracking-tighter mb-2 font-bengali">বই <span className="text-indigo-400">ব্যবস্থাপনা</span></h2>
-              <p className="text-slate-400 font-bold font-bengali">লাইব্রেরির বইয়ের ক্যাটালগ পরিচালনা করুন।</p>
-            </div>
+            {isActuallyAdmin ? (
+              <div>
+                <h2 className="text-4xl font-black tracking-tighter mb-2 font-bengali">বই <span className="text-indigo-400">ব্যবস্থাপনা</span></h2>
+                <p className="text-slate-400 font-bold font-bengali">লাইব্রেরির বইয়ের ক্যাটালগ পরিচালনা করুন।</p>
+              </div>
+            ) : (
+              <div></div>
+            )}
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={handleDownloadPDF}
@@ -502,7 +561,10 @@ export default function ManageBooks() {
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">এভেইলেবল</p>
               <p className="text-2xl font-black text-emerald-400">{books.filter(b => String(b.status).toLowerCase() === 'available').length}</p>
             </div>
-            <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4">
+            <div 
+              onClick={() => setStatusFilter('issued')}
+              className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4 cursor-pointer hover:bg-white/10 transition-colors"
+            >
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">ইস্যু করা</p>
               <p className="text-2xl font-black text-indigo-400">{books.filter(b => String(b.status).toLowerCase() === 'issued').length}</p>
             </div>
@@ -556,100 +618,112 @@ export default function ManageBooks() {
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 shadow-sm rounded-2xl overflow-x-auto">
-        <table className="w-full text-left border-collapse min-w-max">
-          <thead>
-            <tr className="bg-slate-50/50">
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase font-bengali">কভার</th>
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase font-bengali">বই ও সেল্ফ কোড</th>
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase font-bengali">নাম ও লেখক</th>
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase font-bengali">ক্যাটাগরি</th>
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase font-bengali">অবস্থা</th>
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase text-right font-bengali">অ্যাকশন</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filtered.map(book => (
-              <tr key={book.id} className="hover:bg-slate-50 transition">
-                <td className="p-4">
-                  <div className="w-10 h-14 bg-slate-100 rounded flex items-center justify-center overflow-hidden border border-slate-200">
-                    {book.cover ? <img src={book.cover} alt="" referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <BookOpen className="w-4 h-4 text-slate-400" />}
-                  </div>
-                </td>
-                <td className="p-4">
-                  <div className="flex flex-col gap-1.5">
-                    <span className="font-black text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-md text-[10px] border border-indigo-100 tracking-wider">
-                      কোড: {book.bookCode || 'N/A'}
-                    </span>
-                    <span className="font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md text-[10px] border border-amber-100 tracking-wider">
-                      সেল্ফ: {book.shelfNo || 'N/A'}
-                    </span>
-                  </div>
-                </td>
-                <td className="p-4">
-                  <div className="font-bold text-slate-900 font-bengali text-base">{book.title}</div>
-                  <div className="text-sm text-slate-500 font-bengali">{book.author}</div>
-                </td>
-                <td className="p-4 text-sm font-bold text-slate-600 font-bengali">{book.category}</td>
-                <td className="p-4">
-                  <span className={`inline-flex px-2 py-1 rounded text-[10px] font-black uppercase font-bengali ${String(book.status).toLowerCase() === 'available' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-rose-100 text-rose-700 border border-rose-200'}`}>
-                    {String(book.status).toLowerCase() === 'available' ? 'এভেইলেবল' : String(book.status).toLowerCase() === 'issued' ? 'ইস্যু করা' : String(book.status).toLowerCase() === 'not_available' || String(book.status).toLowerCase() === 'not available' ? 'বর্তমানে নেই' : book.status}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-8">
+        {filtered.map(book => (
+          <div
+            key={book.id}
+            onClick={() => handleBookClick(book)}
+            className="bg-white rounded-2xl sm:rounded-[2.5rem] border border-slate-100 p-3 sm:p-4 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col h-full cursor-pointer relative"
+          >
+            <div className="relative aspect-[3/4] rounded-xl sm:rounded-3xl overflow-hidden mb-3 sm:mb-6 bg-slate-50">
+              {book.cover ? (
+                <img 
+                  src={book.cover} 
+                  alt={book.title} 
+                  loading="lazy" 
+                  decoding="async"
+                  referrerPolicy="no-referrer" 
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center p-4 text-slate-200">
+                  <BookOpen size={32} className="mb-2 opacity-10" />
+                  <span className="text-[10px] font-black text-center font-bengali opacity-30 leading-tight">{book.title}</span>
+                </div>
+              )}
+              <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
+                <span className={`px-2 py-1 rounded-md sm:rounded-lg text-[8px] sm:text-[10px] font-black font-bengali shadow-md ${
+                  String(book.status).toLowerCase() === 'available' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
+                }`}>
+                  {String(book.status).toLowerCase() === 'available' ? 'এভেইলেবল' : String(book.status).toLowerCase() === 'issued' ? 'ইস্যু করা' : String(book.status).toLowerCase() === 'not_available' || String(book.status).toLowerCase() === 'not available' ? 'বর্তমানে নেই' : book.status}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex-1 px-1 flex flex-col">
+              <p className="text-[8px] sm:text-[9px] font-black text-indigo-600 uppercase tracking-widest mb-1 font-bengali truncate">{book.category || 'সাধারণ'}</p>
+              <h3 className="text-xs sm:text-base font-black text-slate-900 font-bengali leading-snug group-hover:text-indigo-600 transition-colors flex-1 line-clamp-2">{book.title}</h3>
+              <p className="text-[9px] sm:text-xs text-slate-400 font-bengali font-bold mt-1 truncate">{book.author}</p>
+              {isActuallyAdmin && (
+                <div className="mt-2 flex flex-col gap-1">
+                  <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded w-fit border border-indigo-100 flex items-center gap-1">
+                    কোড: {book.bookCode || 'N/A'}
                   </span>
-                </td>
-                <td className="p-4">
-                  <div className="flex gap-2 justify-end">
-                    {(book.status === 'Issued' || book.status === 'ISSUED') && (
-                       <button
-                          onClick={async () => {
-                             try {
-                                 const q = query(collection(db, 'issues'), where('bookId', '==', book.id));
-                                 const snapshot = await getDocs(q);
-                                 if (snapshot && !snapshot.empty) {
-                                     const activeIssues = snapshot.docs.filter(d => d.data().status === 'Issued' || d.data().status === 'ISSUED');
-                                     if (activeIssues.length > 0) {
-                                         const issueDoc = activeIssues[0];
-                                         await updateDoc(doc(db, 'issues', issueDoc.id), {
-                                             status: 'Returned',
-                                             returnDate: new Date().toISOString()
-                                         });
-                                     }
-                                     await updateDoc(doc(db, 'books', book.id), { status: 'Available' });
-                                     toast.success('বই সফলভাবে রিটার্ন করা হয়েছে।');
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded w-fit border border-amber-100 flex items-center gap-1">
+                    সেল্ফ: {book.shelfNo || 'N/A'}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 sm:mt-6 grid grid-cols-2 gap-2 relative z-20" onClick={e=>e.stopPropagation()}>
+                {isActuallyAdmin && (book.status === 'Issued' || book.status === 'ISSUED') && (
+                   <button
+                      onClick={async (e) => {
+                         e.stopPropagation();
+                         try {
+                             const q = query(collection(db, 'issues'), where('bookId', '==', book.id));
+                             const snapshot = await getDocs(q);
+                             if (snapshot && !snapshot.empty) {
+                                 const activeIssues = snapshot.docs.filter(d => d.data().status === 'Issued' || d.data().status === 'ISSUED');
+                                 if (activeIssues.length > 0) {
+                                     const issueDoc = activeIssues[0];
+                                     await updateDoc(doc(db, 'issues', issueDoc.id), {
+                                         status: 'Returned',
+                                         returnDate: new Date().toISOString()
+                                     });
                                  }
-                             } catch (err) {
-                                 toast.error('ত্রুটি: ' + (err instanceof Error ? err.message : String(err)));
+                                 await updateDoc(doc(db, 'books', book.id), { status: 'Available' });
+                                 toast.success('বই সফলভাবে রিটার্ন করা হয়েছে।');
                              }
-                          }}
-                          className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold uppercase hover:bg-emerald-200 transition font-bengali"
-                       >
-                          রিটার্ন
-                       </button>
-                    )}
-                    {!isActuallyAdmin && (String(book.status).toLowerCase() === 'available') && (
-                        <button
-                          onClick={() => handlePreBook(book.id!)}
-                          disabled={prebooking === book.id || requestedBooks.includes(book.id!)}
-                          className="text-[10px] bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-200 transition font-bengali disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {requestedBooks.includes(book.id!) ? 'রিকুয়েষ্ট করা হয়েছে' : prebooking === book.id ? 'অপেক্ষা করুন...' : 'ইস্যুর অনুরোধ'}
-                        </button>
-                    )}
-                    {isAdminRole && (
-                      <>
-                        <button onClick={() => handleEdit(book)} className="p-2 text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition" title="এডিট">
-                          <Edit2 className="w-4 h-4"/>
-                        </button>
-                        <button onClick={() => handleDelete(book.id)} className="p-2 text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 rounded-lg transition" title="ডিলিট">
-                          <Trash2 className="w-4 h-4"/>
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                         } catch (err) {
+                             toast.error('ত্রুটি: ' + (err instanceof Error ? err.message : String(err)));
+                         }
+                      }}
+                      className="col-span-2 text-[10px] sm:text-xs bg-emerald-100 text-emerald-700 py-2 sm:py-2.5 rounded-lg sm:rounded-xl font-bold uppercase hover:bg-emerald-200 transition font-bengali flex justify-center items-center"
+                   >
+                      রিটার্ন জমা
+                   </button>
+                )}
+                
+                {isAdminRole && (
+                  <>
+                    <button onClick={(e) => {e.stopPropagation(); handleEdit(book);}} className="p-2 sm:p-2.5 text-indigo-600 hover:text-white bg-indigo-50 hover:bg-indigo-600 rounded-lg sm:rounded-xl transition border border-indigo-100 flex justify-center items-center" title="এডিট">
+                      <Edit2 className="w-4 h-4 sm:w-5 sm:h-5"/>
+                    </button>
+                    <button onClick={(e) => {e.stopPropagation(); handleDelete(book.id);}} className="p-2 sm:p-2.5 text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 rounded-lg sm:rounded-xl transition border border-rose-100 flex justify-center items-center" title="ডিলিট">
+                      <Trash2 className="w-4 h-4 sm:w-5 sm:h-5"/>
+                    </button>
+                  </>
+                )}
+            </div>
+
+            {!isActuallyAdmin && (String(book.status).toLowerCase() === 'available') && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handlePreBook(book.id!); }}
+                  disabled={prebooking === book.id || requestedBooks.includes(book.id!)}
+                  className="mt-3 sm:mt-6 w-full py-2.5 sm:py-4 rounded-lg sm:rounded-xl font-black font-bengali text-[10px] sm:text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/50 flex items-center justify-center gap-1.5 sm:gap-2 bg-slate-900 text-white hover:bg-indigo-600 shadow-md shadow-slate-200 disabled:bg-slate-50 disabled:text-slate-300 disabled:shadow-none active:scale-[0.98] z-20 relative"
+                >
+                  {requestedBooks.includes(book.id!) ? 'রিকুয়েষ্ট করা হয়েছে' : prebooking === book.id ? 'অপেক্ষা করুন...' : 'ইস্যুর অনুরোধ'}
+                </button>
+            )}
+            {!isActuallyAdmin && (String(book.status).toLowerCase() !== 'available') && (
+                <button disabled className="mt-3 sm:mt-6 w-full py-2.5 sm:py-4 rounded-lg sm:rounded-xl font-black font-bengali text-[10px] sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 bg-slate-50 text-slate-300 z-20 relative">
+                    বুকড 
+                </button>
+            )}
+          </div>
+        ))}
       </div>
 
       {showModal && (

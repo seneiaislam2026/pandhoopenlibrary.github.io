@@ -172,8 +172,9 @@ export default function ManageTeam() {
       <head>
         <meta charset="UTF-8">
         <title>পরিচালনা পর্ষদ - পানধোয়া উন্মুক্ত পাঠাগার</title>
-        <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
-        <style>
+        
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+                <style>
           :root {
             --primary: #4338ca;
             --border: #e2e8f0;

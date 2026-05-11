@@ -18,6 +18,7 @@ interface DonorMember {
   phone: string;
   address?: string;
   createdAt: string;
+  serial?: number | string;
 }
 
 export default function Donors() {
@@ -28,18 +29,42 @@ export default function Donors() {
   const [activeTab, setActiveTab] = useState<'honourable' | 'contributions'>('honourable');
 
   useEffect(() => {
-    const unsubDonations = onSnapshot(query(collection(db, "donations"), orderBy("date", "desc")), (snapshot) => {
-      setDonations(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Donation[]);
-    });
+    const fetchDonorsInfo = async () => {
+      try {
+        const cachedDonations = sessionStorage.getItem('pub_donations_cache');
+        const cachedMembers = sessionStorage.getItem('pub_donormembers_cache');
+        const cacheTime = sessionStorage.getItem('pub_donors_cache_time');
+        
+        if (cachedDonations && cachedMembers && cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
+          setDonations(JSON.parse(cachedDonations));
+          setDonorMembers(JSON.parse(cachedMembers));
+          return;
+        }
 
-    const unsubMembers = onSnapshot(query(collection(db, "donor-members"), orderBy("createdAt", "asc")), (snapshot) => {
-      setDonorMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DonorMember[]);
-    });
+        const { getDocs, query, orderBy, limit } = await import('firebase/firestore');
+        const [donationsSnap, membersSnap] = await Promise.all([
+          getDocs(query(collection(db, "donations"), orderBy("date", "desc"), limit(50))),
+          getDocs(query(collection(db, "donor-members"), orderBy("createdAt", "asc")))
+        ]);
 
-    return () => {
-      unsubDonations();
-      unsubMembers();
+        const donationsData = donationsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Donation[];
+        const membersDataRaw = membersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DonorMember[];
+        const membersData = membersDataRaw.sort((a, b) => {
+          const serialA = a.serial ? parseInt(String(a.serial), 10) : Number.MAX_SAFE_INTEGER;
+          const serialB = b.serial ? parseInt(String(b.serial), 10) : Number.MAX_SAFE_INTEGER;
+          return serialA - serialB;
+        });
+
+        setDonations(donationsData);
+        setDonorMembers(membersData);
+        sessionStorage.setItem('pub_donations_cache', JSON.stringify(donationsData));
+        sessionStorage.setItem('pub_donormembers_cache', JSON.stringify(membersData));
+        sessionStorage.setItem('pub_donors_cache_time', Date.now().toString());
+      } catch (error) {
+        console.error("Error fetching donors data:", error);
+      }
     };
+    fetchDonorsInfo();
   }, []);
 
   const [showJoinForm, setShowJoinForm] = useState(false);
@@ -310,7 +335,29 @@ export default function Donors() {
               <h3 className="text-2xl font-bold mb-6 flex items-center justify-center gap-2 text-slate-900 dark:text-white font-bengali">
                 সাম্প্রতিক অনুদানসমূহ
               </h3>
-              <div className="bg-white dark:bg-slate-800 rounded-[24px] p-2 shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors">
+              
+              {/* Mobile View */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:hidden">
+                {React.useMemo(() => [...donations].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()), [donations]).map(d => (
+                   <div key={d.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex justify-between items-center transition-colors">
+                      <div>
+                        <h4 className="font-bold text-slate-900 dark:text-slate-200 font-bengali text-lg leading-loose mb-1">{d.name || 'বেনামী'}</h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-1">{new Date(d.date).toLocaleDateString()}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-black text-emerald-600 dark:text-emerald-400 text-lg font-mono">৳{d.amount}</span>
+                      </div>
+                   </div>
+                ))}
+                {donations.length === 0 && (
+                  <div className="col-span-full p-8 text-center text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-bengali font-bold transition-colors">
+                    এখনো কোনো অনুদান পাওয়া যায়নি।
+                  </div>
+                )}
+              </div>
+
+              {/* Desktop View */}
+              <div className="hidden lg:block bg-white dark:bg-slate-800 rounded-[24px] p-2 shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse min-w-[500px]">
                     <thead>
@@ -323,7 +370,7 @@ export default function Donors() {
                     <tbody className="divide-y divide-slate-100/50 dark:divide-slate-700/50">
                       {React.useMemo(() => [...donations].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()), [donations]).map(d => (
                         <tr key={d.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-700/50 transition-colors">
-                          <td className="p-5 font-bold text-slate-900 dark:text-slate-200 font-bengali">{d.name || 'বেনামী'}</td>
+                          <td className="p-5 font-bold text-slate-900 dark:text-slate-200 font-bengali leading-relaxed">{d.name || 'বেনামী'}</td>
                           <td className="p-5 text-slate-500 dark:text-slate-400 text-sm font-mono font-medium">
                             {new Date(d.date).toLocaleDateString()}
                           </td>

@@ -101,10 +101,14 @@ async function startServer() {
       const url = `${baseURL}?api_key=${apiKey}&type=unicode&number=${cleanNumber}&senderid=${senderId}&message=${encodeURIComponent(message)}`;
 
       // Make the GET request
-      const proxyResponse = await fetch(url);
+      const proxyResponse = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json'
+        }
+      });
       
       const data = await proxyResponse.text();
-      console.log('📬 SMS API raw response:', data);
       
       let json: any = {};
       try { json = JSON.parse(data); } catch(e) {}

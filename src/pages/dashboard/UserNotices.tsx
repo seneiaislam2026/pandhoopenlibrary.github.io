@@ -20,21 +20,42 @@ export default function UserNotices() {
   const { user } = useAuth();
 
   useEffect(() => {
-    const q = query(collection(db, "notices"), orderBy("date", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setNotices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Notice[]);
-      setLoading(false);
-      
-      // Update last seen timestamp
+    const fetchNotices = async () => {
+      try {
+        const cached = sessionStorage.getItem('notices_cache');
+        const cacheTime = sessionStorage.getItem('notices_cache_time');
+        
+        if (cached && cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
+          setNotices(JSON.parse(cached));
+          setLoading(false);
+          updateLastSeen();
+          return;
+        }
+
+        const { getDocs } = await import('firebase/firestore');
+        const q = query(collection(db, "notices"), orderBy("date", "desc"));
+        const snapshot = await getDocs(q);
+        
+        const noticesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Notice[];
+        setNotices(noticesData);
+        sessionStorage.setItem('notices_cache', JSON.stringify(noticesData));
+        sessionStorage.setItem('notices_cache_time', Date.now().toString());
+        setLoading(false);
+        updateLastSeen();
+      } catch (err) {
+        console.error(err);
+        setLoading(false);
+      }
+    };
+    
+    const updateLastSeen = () => {
       if (user?.id) {
           localStorage.setItem(`last_seen_notices_${user.id}`, new Date().toISOString());
           window.dispatchEvent(new Event('notices_seen')); // To update the layout notification badge
       }
-    }, (err) => {
-      console.error(err);
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    };
+
+    fetchNotices();
   }, [user]);
 
   return (

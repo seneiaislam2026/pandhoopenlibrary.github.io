@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Logo } from '../components/Logo';
 import { 
+  ShoppingBag,
   LayoutDashboard, 
   CalendarHeart,
   Users, 
@@ -41,12 +42,66 @@ import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../lib/firebase';
 import { collection, query, where, orderBy, onSnapshot, updateDoc, doc } from 'firebase/firestore';
+import toast from 'react-hot-toast';
 
 export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [isDarkMode, setIsDarkMode] = useState(false);
   
+  const { user, logout, token } = useAuth();
+
+  useEffect(() => {
+    if (user?.role === 'visitor_admin') {
+      const handleGlobalClick = (e: MouseEvent) => {
+         let target = e.target as HTMLElement | null;
+         
+         // Whitelists for things visitor admin CAN do (like closing modals, searching, navigating tabs)
+         const safeClasses = ['text-slate-400', 'hover:bg-slate-100', 'lucide-x', 'lucide-search'];
+         
+         while (target && target !== document.body) {
+           if (target.tagName === 'BUTTON') {
+              const buttonText = target.innerText?.toLowerCase() || '';
+              const buttonTypes = target.getAttribute('type') || '';
+              
+              // If it's a pagination or safe navigation button, let it pass
+              if (target.classList.contains('lucide-chevron-left') || 
+                  target.classList.contains('lucide-chevron-right') ||
+                  buttonText.includes('পরবর্তী') || buttonText.includes('পূর্ববর্তী') || buttonText.includes('cancel') || buttonText.includes('close')) {
+                 return;
+              }
+
+              // Check if button is for submitting, editing, deleting, uploading
+              if (buttonTypes === 'submit' || target.querySelector('.lucide-trash-2') || target.querySelector('.lucide-edit') || target.querySelector('.lucide-save') || target.querySelector('.lucide-plus') || target.querySelector('.lucide-upload') || buttonText.includes('save') || buttonText.includes('add') || buttonText.includes('delete') || buttonText.includes('update')) {
+                 e.preventDefault();
+                 e.stopPropagation();
+                 toast.error('ভিজিটর অ্যাডমিন হিসেবে এডিট বা ডিলিট করার অনুমতি নেই।');
+                 return;
+              }
+           }
+           target = target.parentElement;
+         }
+      };
+
+      document.addEventListener('click', handleGlobalClick, true); // true = capture phase
+      
+      const handleGlobalSubmit = (e: SubmitEvent) => {
+         // Whitelist login or safe forms if any inside dashboard? Usually none.
+         if (e.target instanceof HTMLFormElement && e.target.id === 'search-form') return;
+         e.preventDefault();
+         e.stopPropagation();
+         toast.error('ভিজিটর অ্যাডমিন হিসেবে সেভ/এডিট করার অনুমতি নেই।');
+      };
+      
+      document.addEventListener('submit', handleGlobalSubmit, true);
+
+      return () => {
+         document.removeEventListener('click', handleGlobalClick, true);
+         document.removeEventListener('submit', handleGlobalSubmit, true);
+      };
+    }
+  }, [user]);
+
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
@@ -57,7 +112,6 @@ export default function DashboardLayout() {
   
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, token } = useAuth();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [messagesCount, setMessagesCount] = useState(0);
   const [bookRequestsCount, setBookRequestsCount] = useState(0);
@@ -67,76 +121,160 @@ export default function DashboardLayout() {
   const [showNotifications, setShowNotifications] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const [dynamicSubadminLinks, setDynamicSubadminLinks] = useState<any[]>([
+    { name: 'আমার প্রোফাইল', path: '/dashboard/profile', icon: UserCircle },
+    { name: 'ওভারভিউ', path: '/dashboard', icon: LayoutDashboard },
+  ]);
+
   useEffect(() => {
     if (user?.role === 'admin') {
-      const q = query(collection(db, 'notifications'), orderBy('createdAt', 'desc'));
-      const unsubscribeNotifications = onSnapshot(q, (snapshot) => {
-        setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      }, (err) => {
-        console.error("Notifications snapshot error:", err);
-      });
+      const fetchAdminData = async () => {
+        try {
+          const cachedNotes = sessionStorage.getItem('dash_admin_notif');
+          const cacheTime = sessionStorage.getItem('dash_admin_time');
+          
+          if (cachedNotes && cacheTime && (Date.now() - parseInt(cacheTime) < 2 * 60 * 1000)) {
+            setNotifications(JSON.parse(cachedNotes));
+            setBookRequestsCount(parseInt(sessionStorage.getItem('dash_admin_breq') || '0'));
+            setResetRequestsCount(parseInt(sessionStorage.getItem('dash_admin_rreq') || '0'));
+            setPreBookingsCount(parseInt(sessionStorage.getItem('dash_admin_pre') || '0'));
+            return;
+          }
 
-      const qBookReq = query(collection(db, 'book-requests'), where('status', '==', 'Pending'));
-      const unsubscribeBookReq = onSnapshot(qBookReq, (snapshot) => {
-        setBookRequestsCount(snapshot.docs.length);
-      }, (err) => console.error(err));
+          const { getDocs, limit } = await import('firebase/firestore');
+          
+          const qNotif = query(collection(db, 'notifications'), orderBy('createdAt', 'desc'), limit(50));
+          const qBookReq = query(collection(db, 'book-requests'), where('status', '==', 'Pending'));
+          const qResetReq = query(collection(db, 'reset-requests'));
+          const qPreBook = query(collection(db, 'pre-bookings'), where('status', '==', 'Pending'));
 
-      const qResetReq = query(collection(db, 'reset-requests'));
-      const unsubscribeResetReq = onSnapshot(qResetReq, (snapshot) => {
-        // filter clientside if 'status' doesn't exist on older records
-        const pendingCount = snapshot.docs.filter(doc => doc.data().status === 'Pending').length;
-        setResetRequestsCount(pendingCount);
-      }, (err) => console.error(err));
+          const [notifSnap, bReqSnap, rReqSnap, pBookSnap] = await Promise.all([
+            getDocs(qNotif),
+            getDocs(qBookReq),
+            getDocs(qResetReq),
+            getDocs(qPreBook)
+          ]);
 
-      const qPreBook = query(collection(db, 'pre-bookings'), where('status', '==', 'Pending'));
-      const unsubscribePreBook = onSnapshot(qPreBook, (snapshot) => {
-        setPreBookingsCount(snapshot.docs.length);
-      }, (err) => console.error(err));
+          const notifs = notifSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setNotifications(notifs);
+          
+          const bReqCount = bReqSnap.docs.length;
+          setBookRequestsCount(bReqCount);
+          
+          const rReqCount = rReqSnap.docs.filter(doc => doc.data().status === 'Pending').length;
+          setResetRequestsCount(rReqCount);
+          
+          const pBookCount = pBookSnap.docs.length;
+          setPreBookingsCount(pBookCount);
 
-      return () => {
-        unsubscribeNotifications();
-        unsubscribeBookReq();
-        unsubscribeResetReq();
-        unsubscribePreBook();
+          sessionStorage.setItem('dash_admin_notif', JSON.stringify(notifs));
+          sessionStorage.setItem('dash_admin_breq', bReqCount.toString());
+          sessionStorage.setItem('dash_admin_rreq', rReqCount.toString());
+          sessionStorage.setItem('dash_admin_pre', pBookCount.toString());
+          sessionStorage.setItem('dash_admin_time', Date.now().toString());
+        } catch (err) {
+          if (err instanceof Error && err.message.includes('Quota')) return;
+          console.error("Admin dashboard fetch error:", err);
+        }
       };
+
+      fetchAdminData();
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (user?.role === 'subadmin' || user?.role === 'visitor_admin') {
+      const accesses = user?.subadminAccess || [];
+      const baseLinks = [
+        { name: 'আমার প্রোফাইল', path: '/dashboard/profile', icon: UserCircle },
+        { name: 'ওভারভিউ', path: '/dashboard', icon: LayoutDashboard }
+      ];
+      
+      const allAdminLinks = [
+        { name: 'সদস্য ব্যবস্থাপনা (Users)', path: '/dashboard/users', icon: Users },
+        { name: 'বইয়ের তালিকা (Inventory)', path: '/dashboard/books', icon: Library },
+        { name: 'ইস্যু ও ফেরত (Issues)', path: '/dashboard/issues', icon: ClipboardList },
+        { name: 'সদস্যদের বকেয়া (Dues)', path: '/dashboard/dues', icon: DollarSign },
+        { name: 'দাতা সদস্য (Donors)', path: '/dashboard/donors', icon: DollarSign },
+        { name: 'হিসাব-নিকাশ (Finances)', path: '/dashboard/finances', icon: DollarSign },
+        { name: 'নোটিশ', path: '/dashboard/notices', icon: Bell },
+        { name: 'মেসেজসমূহ', path: '/dashboard/messages', icon: MessageSquare },
+        { name: 'বইয়ের অনুরোধ (Requests)', path: '/dashboard/book-requests', icon: BookOpen },
+        { name: 'প্রি-বুকিং', path: '/dashboard/pre-bookings', icon: Clock },
+        { name: 'শপ বই ব্যবস্থাপনা', path: '/dashboard/shop-books', icon: Library },
+        { name: 'বই বিক্রয় অর্ডার', path: '/dashboard/shop-orders', icon: Package },
+        { name: 'স্টিকার ও QR (Stickers)', path: '/dashboard/stickers', icon: QrCode },
+        { name: 'বুক রিভিও ম্যানেজমেন্ট', path: '/dashboard/manageblog', icon: FileText },
+        { name: 'ইভেন্ট পরিচালনা', path: '/dashboard/events', icon: CalendarHeart }
+      ];
+
+      const newLinks = [...baseLinks];
+      accesses.forEach((path: string) => {
+        const linkObj = allAdminLinks.find(l => l.path === path);
+        if (linkObj) newLinks.push(linkObj);
+      });
+      setDynamicSubadminLinks(newLinks);
     }
   }, [user]);
 
   useEffect(() => {
     if (user) {
-      const q = query(collection(db, 'messages'), where('toUserId', '==', user.id));
-      const unsubscribeMessages = onSnapshot(q, (snapshot) => {
-        const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const unread = msgs.filter((m: any) => !m.isRead && m.toUserId === user.id).length;
-        setMessagesCount(unread);
-      }, (err) => {
-        console.error("Messages count snapshot error:", err);
-      });
+      const fetchUserData = async () => {
+        try {
+          const cachedMessages = sessionStorage.getItem('dash_user_msgs');
+          const cachedNotices = sessionStorage.getItem('dash_user_notices');
+          const cacheTime = sessionStorage.getItem('dash_user_time');
+          
+          let currentNotices: any[] = [];
+          const updateUnreadCount = () => {
+            const lastSeen = localStorage.getItem(`last_seen_notices_${user.id}`);
+            if (lastSeen) {
+               const unreadCount = currentNotices.filter(n => new Date(n.date) > new Date(lastSeen)).length;
+               setUnreadNoticesCount(unreadCount);
+            } else {
+               setUnreadNoticesCount(currentNotices.length);
+            }
+          };
 
-      const noticesQuery = query(collection(db, "notices"), orderBy("date", "desc"));
-      let currentNotices: any[] = [];
-      
-      const updateUnreadCount = () => {
-        const lastSeen = localStorage.getItem(`last_seen_notices_${user.id}`);
-        if (lastSeen) {
-           const unreadCount = currentNotices.filter(n => new Date(n.date) > new Date(lastSeen)).length;
-           setUnreadNoticesCount(unreadCount);
-        } else {
-           setUnreadNoticesCount(currentNotices.length);
+          window.addEventListener('notices_seen', updateUnreadCount);
+
+          if (cachedMessages && cachedNotices && cacheTime && (Date.now() - parseInt(cacheTime) < 2 * 60 * 1000)) {
+             setMessagesCount(parseInt(cachedMessages));
+             currentNotices = JSON.parse(cachedNotices);
+             updateUnreadCount();
+             return;
+          }
+
+          const { getDocs } = await import('firebase/firestore');
+          const qMsg = query(collection(db, 'messages'), where('toUserId', '==', user.id));
+          const qNotices = query(collection(db, "notices"), orderBy("date", "desc"));
+          
+          const [msgSnap, noticeSnap] = await Promise.all([
+            getDocs(qMsg),
+            getDocs(qNotices)
+          ]);
+
+          const msgs = msgSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const unreadMsgs = msgs.filter((m: any) => !m.isRead && m.toUserId === user.id).length;
+          setMessagesCount(unreadMsgs);
+
+          currentNotices = noticeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+          updateUnreadCount();
+
+          sessionStorage.setItem('dash_user_msgs', unreadMsgs.toString());
+          sessionStorage.setItem('dash_user_notices', JSON.stringify(currentNotices));
+          sessionStorage.setItem('dash_user_time', Date.now().toString());
+
+        } catch (err) {
+          if (err instanceof Error && err.message.includes('Quota')) return;
+          console.error("Dashboard user fast fetch error:", err);
         }
       };
-
-      const unsubscribeNotices = onSnapshot(noticesQuery, (snapshot) => {
-        currentNotices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
-        updateUnreadCount();
-      }, (err) => console.error("Notices snapshot error:", err));
-
-      window.addEventListener('notices_seen', updateUnreadCount);
+      
+      fetchUserData();
 
       return () => {
-         unsubscribeMessages();
-         unsubscribeNotices();
-         window.removeEventListener('notices_seen', updateUnreadCount);
+        window.removeEventListener('notices_seen', () => {});
       };
     }
   }, [user]);
@@ -172,14 +310,8 @@ export default function DashboardLayout() {
     { name: 'বইয়ের অনুরোধ (Requests)', path: '/dashboard/book-requests', icon: BookOpen },
     { name: 'রিসেট রিকোয়েস্ট', path: '/dashboard/reset-requests', icon: ShieldAlert },
     { name: 'প্রি-বুকিং', path: '/dashboard/pre-bookings', icon: Clock },
+    { name: 'ইভেন্ট পরিচালনা', path: '/dashboard/events', icon: CalendarHeart },
     { name: 'ওয়েবসাইট সেটিংস', path: '/dashboard/settings', icon: Settings },
-  ];
-
-  const subadminLinks = [
-    { name: 'আমার প্রোফাইল', path: '/dashboard/profile', icon: UserCircle },
-    { name: 'ওভারভিউ', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'বইয়ের তালিকা', path: '/dashboard/books', icon: Library },
-    { name: 'দাতা সদস্য', path: '/dashboard/donors', icon: Heart },
   ];
 
   const issueAdminLinks = [
@@ -201,7 +333,7 @@ export default function DashboardLayout() {
     { name: 'বইয়ের অনুরোধ', path: '/dashboard/book-requests', icon: BookOpen },
   ];
 
-  const links = user?.role === 'admin' ? adminLinks : user?.role === 'subadmin' ? subadminLinks : user?.role === 'issue_admin' ? issueAdminLinks : readerLinks;
+  const links = user?.role === 'admin' ? adminLinks : (user?.role === 'subadmin' || user?.role === 'visitor_admin') ? dynamicSubadminLinks : readerLinks;
   const filteredLinks = links.filter(l => l.name.toLowerCase().includes(sidebarSearch.toLowerCase()));
 
   const handleLogout = () => {
@@ -578,14 +710,9 @@ export default function DashboardLayout() {
                     </span>
                   )}
                </Link>
-               <Link to="/dashboard/inbox" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/inbox' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <MessageSquare className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase tracking-tighter">মেসেজ</span>
-                  {messagesCount > 0 && (
-                    <span className="absolute top-0 right-2 w-4 h-4 bg-indigo-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border border-white">
-                      {messagesCount}
-                    </span>
-                  )}
+               <Link to="/buy-books" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/buy-books' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <ShoppingBag className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">বই কিনুন</span>
                </Link>
                <Link to="/dashboard/book-requests" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/book-requests' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
                   <BookOpen className="w-5 h-5" />

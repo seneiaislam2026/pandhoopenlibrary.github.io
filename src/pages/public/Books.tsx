@@ -53,19 +53,55 @@ export default function Books() {
   }, [search]);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'books'), (snapshot) => {
-      const booksData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Book[];
-      setBooks(booksData);
-      setLoading(false);
-    }, (error) => {
-      setLoading(false);
-      handleFirestoreError(error, OperationType.LIST, 'books');
-    });
-    
-    return () => unsub();
+    const fetchBooks = async () => {
+      try {
+        const cached = sessionStorage.getItem('pub_books_cache');
+        const cacheTime = sessionStorage.getItem('pub_books_cache_time');
+        
+        if (cached && cacheTime && (Date.now() - parseInt(cacheTime) < 1 * 60 * 1000)) {
+          setBooks(JSON.parse(cached));
+          setLoading(false);
+          return;
+        }
+
+        let booksData: Book[] = [];
+        try {
+          const snapshot = await getDocs(collection(db, 'books'));
+          booksData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as Book[];
+        } catch (fetchError: any) {
+          if (fetchError?.message?.includes('Quota') || fetchError?.message?.includes('Quota limit exceeded')) {
+            console.warn("Quota exceeded fetching books, trying cache...");
+            try {
+              const { getDocsFromCache } = await import('firebase/firestore');
+              const cachedSnapshot = await getDocsFromCache(collection(db, 'books'));
+              booksData = cachedSnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              })) as Book[];
+            } catch (cacheError) {
+              console.error("Cache fetch failed:", cacheError);
+            }
+          } else {
+            throw fetchError;
+          }
+        }
+        
+        if (booksData.length > 0) {
+          setBooks(booksData);
+          sessionStorage.setItem('pub_books_cache', JSON.stringify(booksData));
+          sessionStorage.setItem('pub_books_cache_time', Date.now().toString());
+        }
+        setLoading(false);
+      } catch (error: any) {
+        setLoading(false);
+        handleFirestoreError(error, OperationType.LIST, 'books');
+      }
+    };
+
+    fetchBooks();
   }, []);
 
   const handlePreBook = async (bookId: string) => {
@@ -200,7 +236,7 @@ export default function Books() {
             }}
             className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-8"
           >
-            {filtered.slice(0, 100).map((book) => (
+            {filtered.map((book) => (
               <motion.div
                 key={book.id}
                 variants={{

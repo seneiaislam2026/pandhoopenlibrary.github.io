@@ -2,8 +2,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../store/AuthContext';
 import Select from 'react-select';
-import { UserCircle2, Calendar, BookmarkCheck, CreditCard, Send, CheckCircle2, Camera, AlertCircle, ShieldAlert, Pencil, BookOpen, Bell, MessageSquare, ArrowRight, BadgeCheck, Download } from 'lucide-react';
-import { onSnapshot, collection, doc, updateDoc, query, where, serverTimestamp, setDoc, addDoc } from 'firebase/firestore';
+import { UserCircle2, Calendar, BookmarkCheck, CreditCard, Send, CheckCircle2, Camera, AlertCircle, ShieldAlert, Pencil, BookOpen, Bell, MessageSquare, ArrowRight, BadgeCheck, Download, X } from 'lucide-react';
+import { onSnapshot, collection, doc, updateDoc, query, where, serverTimestamp, setDoc, addDoc, limit, getDocs, getDoc, getDocsFromCache, getDocsFromServer, documentId } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import toast from 'react-hot-toast';
 
@@ -33,63 +33,139 @@ export default function UserProfile() {
 
   const [donorRecord, setDonorRecord] = useState<any>(null);
   const [donorPayments, setDonorPayments] = useState<any[]>([]);
+  const [eventBanners, setEventBanners] = useState<string[]>([]);
+  const [dismissedBanners, setDismissedBanners] = useState<string[]>([]);
+  const [myEvents, setMyEvents] = useState<any[]>([]);
 
   useEffect(() => {
     if (!user) return;
+    
+    const fetchProfileData = async () => {
+      try {
+        const cacheKey = 'up_fresh_' + user.id;
+        const lastFetch = sessionStorage.getItem(cacheKey);
+        const now = Date.now();
+        const needsRefresh = !lastFetch || (now - parseInt(lastFetch)) > 60000; // 1 min (60,000 ms)
 
-    let unsubDonorPayments = () => {};
-    const unsubDonor = onSnapshot(query(collection(db, "donor-members"), where("phone", "==", user.phone || '')), (s) => {
-        if (!s.empty) {
-           const donor = { id: s.docs[0].id, ...s.docs[0].data() };
-           setDonorRecord(donor);
-           unsubDonorPayments = onSnapshot(query(collection(db, 'donor-payments'), where('donorId', '==', donor.id)), (ps) => {
-               setDonorPayments(ps.docs.map(doc => ({ id: doc.id, ...doc.data()})));
-           });
-        } else {
-           setDonorRecord(null);
-           setDonorPayments([]);
+        const cachedBooks = sessionStorage.getItem('pub_books_cache');
+        const cachedNotices = sessionStorage.getItem('main_notices_cache');
+        const cachedProfile = sessionStorage.getItem('usr_profile_' + user.id);
+
+        if (cachedProfile && cachedBooks && cachedNotices && !needsRefresh) {
+           const parsed = JSON.parse(cachedProfile);
+           setDonorRecord(parsed.donorRecord);
+           setDonorPayments(parsed.donorPayments);
+           setPayments(parsed.payments);
+           setPrebookings(parsed.prebookings);
+           setIssues(parsed.issues);
+           setPurchases(parsed.purchases);
+           setMessages(parsed.messages);
+           setDues(parsed.dues || []);
+           if (parsed.eventBanners) setEventBanners(parsed.eventBanners);
+           else if (parsed.eventBanner) setEventBanners([parsed.eventBanner]);
+           setMyEvents(parsed.myEvents || []);
+           setBooks(JSON.parse(cachedBooks));
+           setNotices(JSON.parse(cachedNotices));
+           return;
         }
-    });
 
-    const unsubPayments = onSnapshot(query(collection(db, "payments"), where("userId", "==", user.id)), (s) => {
-        setPayments(s.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+        const safeGetDocs = async (q: any) => {
+          try {
+            return await getDocsFromCache(q);
+          } catch (e) {
+            return await getDocsFromServer(q);
+          }
+        };
 
-    const unsubPrebookings = onSnapshot(query(collection(db, "pre-bookings"), where("userId", "==", user.id)), (s) => {
-        setPrebookings(s.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+        const donorSnap = await safeGetDocs(query(collection(db, "donor-members"), where("phone", "==", user.phone || '')));
+        
+        let donor = null;
+        let dPayments: any[] = [];
+        
+        if (!donorSnap.empty) {
+            donor = { id: donorSnap.docs[0].id, ...(donorSnap.docs[0].data() as object) };
+            const dPaySnap = await safeGetDocs(query(collection(db, 'donor-payments'), where('donorId', '==', donor.id)));
+            dPayments = dPaySnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
+        }
 
-    const unsubBooks = onSnapshot(collection(db, "books"), (s) => {
-        setBooks(s.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+        const [paySnap, preSnap, issuesSnap, purchSnap, msgSnap, notSnap, duesSnap, settingsSnap, eventsSnap] = await Promise.all([
+          safeGetDocs(query(collection(db, "payments"), where("userId", "==", user.id))),
+          safeGetDocs(query(collection(db, "pre-bookings"), where("userId", "==", user.id))),
+          safeGetDocs(query(collection(db, "issues"), where("userId", "==", user.id))),
+          safeGetDocs(query(collection(db, "purchases"), where("userId", "==", user.id))),
+          safeGetDocs(query(collection(db, 'messages'), where('toUserId', '==', user.id))),
+          safeGetDocs(query(collection(db, 'notices'), limit(20))),
+          safeGetDocs(query(collection(db, 'dues'), where('userId', '==', user.id))),
+          getDoc(doc(db, "settings", "general")),
+          safeGetDocs(query(collection(db, 'events'), where('status', '!=', 'Closed')))
+        ]);
 
-    const unsubIssues = onSnapshot(query(collection(db, "issues"), where("userId", "==", user.id)), (s) => {
-        setIssues(s.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+        const paymentsData = paySnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
+        const preData = preSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
+        const issuesData = issuesSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
+        const purchData = purchSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
+        const msgData = msgSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
+        const notData = notSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
+        const duesData = duesSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
+        const settingsData = settingsSnap.exists() ? (settingsSnap.data() as any) : {};
+        
+        // Fetch specific books instead of all books
+        const neededBookIds = new Set<string>();
+        issuesData.forEach((i: any) => i.bookId && neededBookIds.add(i.bookId));
+        preData.forEach((p: any) => p.bookId && neededBookIds.add(p.bookId));
+        
+        let booksData: any[] = [];
+        if (neededBookIds.size > 0) {
+          const idsArray = Array.from(neededBookIds).slice(0, 30); // Firestore 'in' limit is usually 30
+          const bSnap = await getDocs(query(collection(db, 'books'), where(documentId(), 'in', idsArray)));
+          booksData = bSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
+        }
 
-    const unsubPurchases = onSnapshot(query(collection(db, "purchases"), where("userId", "==", user.id)), (s) => {
-        setPurchases(s.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+        let eventsList = eventsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
+        if (user.role !== 'admin') {
+           eventsList = eventsList.filter((ev: any) => !ev.targetUserPhone || ev.targetUserPhone === user.phone);
+        }
+        setMyEvents(eventsList);
 
-    const unsubMessages = onSnapshot(query(collection(db, 'messages'), where('toUserId', '==', user.id)), (s) => {
-      setMessages(s.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+        setDonorRecord(donor);
+        setDonorPayments(dPayments);
+        setPayments(paymentsData);
+        setPrebookings(preData);
+        setBooks(booksData);
+        setIssues(issuesData);
+        setPurchases(purchData);
+        setMessages(msgData);
+        setNotices(notData);
+        setDues(duesData);
 
-    const unsubNotices = onSnapshot(collection(db, 'notices'), (s) => {
-      setNotices(s.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+        const fetchedBanners = settingsData?.eventBanners || (settingsData?.eventBanner ? [settingsData.eventBanner] : []);
+        setEventBanners(fetchedBanners);
 
-    return () => {
-        unsubDonor();
-        unsubDonorPayments();
-        unsubPayments();
-        unsubPrebookings();
-        unsubBooks();
-        unsubIssues();
-        unsubPurchases();
-        unsubMessages();
-        unsubNotices();
+        const profileData = {
+           donorRecord: donor,
+           donorPayments: dPayments,
+           payments: paymentsData,
+           prebookings: preData,
+           issues: issuesData,
+           purchases: purchData,
+           messages: msgData,
+           dues: duesData,
+           myEvents: eventsList,
+           eventBanners: fetchedBanners
+        };
+
+        sessionStorage.setItem('usr_profile_' + user.id, JSON.stringify(profileData));
+        sessionStorage.setItem('pub_books_cache', JSON.stringify(booksData));
+        sessionStorage.setItem('main_notices_cache', JSON.stringify(notData));
+        sessionStorage.setItem(cacheKey, now.toString());
+
+      } catch (err) {
+        console.error("Error fetching user profile:", err);
+      }
     };
+
+    fetchProfileData();
+    return () => {};
   }, [user]);
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -215,8 +291,9 @@ export default function UserProfile() {
     <head>
         <meta charset="UTF-8">
         <title>লাইব্রেরি কার্ড - ${user.name}</title>
-        <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
-        <style>
+        
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+                <style>
             body {
                 font-family: 'Hind Siliguri', sans-serif;
                 background-color: #f1f5f9;
@@ -613,12 +690,28 @@ export default function UserProfile() {
           <p className="text-slate-500 font-medium text-sm mt-1">আপনার প্রোফাইল পরিচালনা করুন এবং আপডেট দেখুন</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <Link to="/buy-books" className="inline-flex items-center gap-2 bg-rose-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md hover:bg-rose-700 transition">
+             <BookmarkCheck className="w-4 h-4" />
+             বই কিনুন
+          </Link>
           <Link to="/books" className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md hover:bg-indigo-700 transition">
              <BookmarkCheck className="w-4 h-4" />
              বই খুঁজুন (Browse)
           </Link>
         </div>
       </div>
+
+      {eventBanners.filter(b => !dismissedBanners.includes(b)).map((banner, idx) => (
+        <div key={idx} className="w-full rounded-3xl overflow-hidden shadow-lg border border-slate-100 bg-white relative mb-6">
+           <button 
+             onClick={() => setDismissedBanners(prev => [...prev, banner])} 
+             className="absolute top-4 right-4 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors backdrop-blur-sm z-10"
+           >
+             <X className="w-5 h-5" />
+           </button>
+           <img src={banner} alt={`Event Banner ${idx + 1}`} className="w-full h-auto max-h-[400px] object-cover" />
+        </div>
+      ))}
 
       {lateReturnCount >= 5 && !isBorrowBlocked && (
         <div className="bg-amber-50 border border-amber-200 p-5 rounded-2xl shadow-sm">
@@ -794,7 +887,7 @@ export default function UserProfile() {
                   )}
                   <div className="col-span-2 bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 font-bengali">সদস্যের ধরন</p>
-                    <p className="font-semibold text-slate-900 capitalize text-sm font-bengali">{user?.role === 'reader' ? 'পাঠক সদস্য' : user?.role === 'donor' ? 'সম্মানিত দাতা' : user?.role === 'subadmin' ? 'সাব-অ্যাডমিন' : user?.role === 'issue_admin' ? 'ইস্যু অ্যাডমিন' : user?.role === 'admin' ? 'অ্যাডমিন' : user?.role}</p>
+                    <p className="font-semibold text-slate-900 capitalize text-sm font-bengali">{user?.role === 'reader' ? 'পাঠক সদস্য' : user?.role === 'donor' ? 'সম্মানিত দাতা' : user?.role === 'subadmin' ? 'সাব-অ্যাডমিন' : user?.role === 'visitor_admin' ? 'ভিজিটর অ্যাডমিন' : user?.role === 'admin' ? 'অ্যাডমিন' : user?.role}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-4">
@@ -813,7 +906,7 @@ export default function UserProfile() {
 
         <div className="lg:col-span-2 space-y-8">
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
              {/* Messages Summary */}
              <div className="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100 flex flex-col justify-between">
                 <div>
@@ -841,6 +934,22 @@ export default function UserProfile() {
                    নোটিশবোর্ড দেখুন <ArrowRight className="w-4 h-4" />
                 </Link>
              </div>
+
+             {/* Events Summary */}
+             {myEvents.length > 0 && (
+               <div className="bg-amber-50/50 p-6 rounded-2xl border border-amber-100 flex flex-col justify-between">
+                  <div>
+                     <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-lg flex items-center justify-center mb-4">
+                       <Calendar className="w-5 h-5" />
+                     </div>
+                     <h3 className="text-xl font-bold text-slate-900 mb-1 font-bengali">ইভেন্টস</h3>
+                     <p className="text-slate-500 text-sm mb-4 font-bengali">{myEvents.length > 0 ? <span className="font-bold text-amber-600">{myEvents.length}টি ইভেন্ট</span> : 'নতুন কোনো ইভেন্ট'} আপনার জন্য আছে।</p>
+                  </div>
+                  <Link to="/events" className="inline-flex items-center text-sm font-bold text-amber-600 hover:text-amber-800 gap-1 font-bengali">
+                     সবগুলো ইভেন্ট দেখুন <ArrowRight className="w-4 h-4" />
+                  </Link>
+               </div>
+             )}
           </div>
 
           <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">

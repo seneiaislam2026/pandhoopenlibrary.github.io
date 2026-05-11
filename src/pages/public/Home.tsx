@@ -12,8 +12,17 @@ export default function Home() {
   const navigate = useNavigate();
 
   React.useEffect(() => {
-    if (user && !loading) {
-      navigate('/dashboard', { replace: true });
+    if (!loading) {
+      if (user) {
+        navigate('/dashboard', { replace: true });
+      } else {
+        const hasVisited = localStorage.getItem('pan_dhoa_visited');
+        if (hasVisited) {
+          navigate('/login', { replace: true });
+        } else {
+          localStorage.setItem('pan_dhoa_visited', '1');
+        }
+      }
     }
   }, [user, loading, navigate]);
 
