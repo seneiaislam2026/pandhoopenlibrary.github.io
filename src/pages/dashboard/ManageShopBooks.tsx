@@ -182,13 +182,15 @@ export default function ManageShopBooks() {
 
       {showModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-[2rem] sm:rounded-[3rem] w-full max-w-2xl p-6 sm:p-12 shadow-2xl my-4 sm:my-8">
-            <h3 className="text-2xl sm:text-3xl font-black mb-6 sm:mb-8 text-slate-800 border-b border-slate-100 pb-4 sm:pb-6 flex items-center gap-3">
-              <ShoppingBag className="w-7 h-7 sm:w-8 sm:h-8 text-rose-500" />
-              {editingId ? 'বই এডিট করুন' : 'নতুন বই যোগ করুন'}
-            </h3>
+          <div className="bg-white rounded-[2rem] sm:rounded-[3rem] w-full max-w-2xl shadow-2xl my-4 sm:my-8 overflow-hidden sticky top-4">
+            <div className="sticky top-0 bg-white z-10 px-6 sm:px-12 py-6 border-b border-slate-100">
+              <h3 className="text-2xl sm:text-3xl font-black text-slate-800 flex items-center gap-3">
+                <ShoppingBag className="w-7 h-7 sm:w-8 sm:h-8 text-rose-500" />
+                {editingId ? 'বই এডিট করুন' : 'নতুন বই যোগ করুন'}
+              </h3>
+            </div>
             
-            <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
+            <form onSubmit={handleSubmit} className="p-6 sm:p-12 pt-4 sm:pt-6 space-y-5 sm:space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">বইয়ের নাম</label>
@@ -297,7 +299,7 @@ export default function ManageShopBooks() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-4 pt-8 border-t border-slate-100">
+              <div className="sticky bottom-0 bg-white z-10 flex justify-end gap-4 py-6 border-t border-slate-100">
                 <button type="button" disabled={isSubmitting} onClick={() => setShowModal(false)} className="px-8 py-4 font-black text-slate-400 hover:text-slate-600 transition disabled:opacity-50">বাতিল</button>
                 <button type="submit" disabled={isSubmitting} className="px-12 py-4 bg-slate-900 text-white rounded-2xl font-black hover:bg-rose-600 shadow-2xl transition active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2">
                   {isSubmitting && <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}

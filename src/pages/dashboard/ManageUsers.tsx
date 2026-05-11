@@ -1244,14 +1244,14 @@ const handleAddUser = async (e: React.FormEvent) => {
 
       {/* Modals */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <motion.div initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}} className="bg-white rounded-[2.5rem] w-full max-w-md p-8 sm:p-10 shadow-2xl border border-slate-100 relative max-h-[90vh] overflow-y-auto custom-scrollbar">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
+          <motion.div initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}} className="bg-white rounded-[2.5rem] w-full max-w-md shadow-2xl border border-slate-100 relative my-4 sm:my-8 overflow-hidden sticky top-4">
             <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
-            <div className="flex items-center gap-4 mb-8">
+            <div className="sticky top-0 bg-white z-10 px-8 sm:px-10 py-6 border-b border-slate-50 flex items-center gap-4">
               <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center"><UserPlus className="w-7 h-7" /></div>
               <h3 className="text-2xl font-black text-slate-900 tracking-tight font-bengali">নতুন সদস্য</h3>
             </div>
-            <form onSubmit={handleAddUser} className="space-y-4">
+            <form onSubmit={handleAddUser} className="p-8 sm:p-10 pt-4 sm:pt-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <input type="text" placeholder="নাম (বাংলা বা ইংরেজি)" required value={formData.name || ''} 
                   onChange={e => {
@@ -1336,7 +1336,7 @@ const handleAddUser = async (e: React.FormEvent) => {
                   </div>
                 </div>
               )}
-              <div className="flex justify-end gap-3 pt-6">
+              <div className="sticky bottom-0 bg-white z-10 flex justify-end gap-3 py-6 border-t border-slate-50">
                 <button type="button" disabled={loading} className="font-bengali px-4 py-2 text-slate-500 hover:bg-slate-50 rounded-xl disabled:opacity-50" onClick={()=>setShowModal(false)}>বাতিল</button>
                 <button type="submit" disabled={loading} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold font-bengali disabled:opacity-50 flex items-center gap-2">
                   {loading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
@@ -1552,14 +1552,14 @@ const handleAddUser = async (e: React.FormEvent) => {
       )}
 
       {editUser && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <motion.div initial={{y:20,opacity:0}} animate={{y:0,opacity:1}} className="bg-white rounded-[2.5rem] w-full max-w-md p-8 sm:p-10 shadow-2xl border border-slate-100 relative max-h-[90vh] overflow-y-auto custom-scrollbar">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
+          <motion.div initial={{y:20,opacity:0}} animate={{y:0,opacity:1}} className="bg-white rounded-[2.5rem] w-full max-w-md shadow-2xl border border-slate-100 relative my-4 sm:my-8 overflow-hidden sticky top-4">
             <div className="absolute top-0 left-0 w-full h-2 bg-emerald-500"></div>
-            <div className="flex items-center gap-4 mb-8">
+            <div className="sticky top-0 bg-white z-10 px-8 sm:px-10 py-6 border-b border-slate-50 flex items-center gap-4">
               <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center"><Pencil className="w-7 h-7" /></div>
               <h3 className="text-2xl font-black text-slate-900 tracking-tight font-bengali">সদস্য তথ্য আপডেট</h3>
             </div>
-            <form onSubmit={handleEditUser} className="space-y-4">
+            <form onSubmit={handleEditUser} className="p-8 sm:p-10 pt-4 sm:pt-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <input type="text" placeholder="পুরো নাম" required value={editFormData.name || ''} onChange={e=>setEditFormData({...editFormData, name:e.target.value})} className="w-full border border-slate-200 p-3 rounded-xl font-bengali"/>
                 <input type="text" placeholder="সদস্য আইডি" value={editFormData.memberId || ''} onChange={e=>setEditFormData({...editFormData, memberId:e.target.value})} className="w-full border border-slate-200 p-3 rounded-xl font-bengali"/>
@@ -1642,7 +1642,7 @@ const handleAddUser = async (e: React.FormEvent) => {
                   </div>
                 </div>
               )}
-              <div className="flex justify-end gap-3 pt-6">
+              <div className="sticky bottom-0 bg-white z-10 flex justify-end gap-3 py-6 border-t border-slate-50">
                 <button type="button" disabled={loading} onClick={()=>setEditUser(null)} className="font-bengali px-4 py-2 text-slate-500 hover:bg-slate-50 rounded-xl disabled:opacity-50">বাতিল</button>
                 <button type="submit" disabled={loading} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold font-bengali disabled:opacity-50 flex items-center gap-2">
                   {loading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}

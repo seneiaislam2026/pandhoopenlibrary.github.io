@@ -364,10 +364,6 @@ export default function MainLayout() {
         <div className="fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 md:hidden flex items-center justify-around px-2 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
            {user?.role === 'admin' ? (
              <>
-               <Link to="/dashboard/books" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/dashboard/books' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <Library className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase tracking-tighter">বই তালিকা</span>
-               </Link>
                <Link to="/dashboard/donors" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/donors' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
                   <Heart className="w-5 h-5" />
                   <span className="text-[10px] font-black uppercase tracking-tighter">দাতা সদস্য</span>
@@ -377,9 +373,9 @@ export default function MainLayout() {
                   <span className="text-[10px] font-black uppercase tracking-tighter">প্রি বুকিং</span>
                   {/* Need prebookings count, we can use 0 for main layout or add state if needed, using 0 for now */}
                </Link>
-               <Link to="/dashboard/users" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/users' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <Users className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase tracking-tighter">সদস্য ব্যবস্থাপনা</span>
+               <Link to="/dashboard/finances" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/finances' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <DollarSign className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">হিসাব-নিকাশ</span>
                </Link>
                <Link to="/dashboard" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/dashboard' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
                   <LayoutDashboard className="w-5 h-5" />

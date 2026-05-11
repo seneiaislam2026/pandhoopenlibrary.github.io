@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../store/AuthContext';
-import { Search, Plus, Edit2, Trash2, BookOpen, ShieldAlert, Download } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, BookOpen, ShieldAlert, Download, X } from 'lucide-react';
 import { onSnapshot, collection, doc, setDoc, deleteDoc, updateDoc, addDoc, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../../lib/firebase';
 import { firebaseService } from '../../services/firebaseService';
@@ -727,209 +727,229 @@ export default function ManageBooks() {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl w-full max-w-lg p-8 shadow-2xl relative my-8">
-            <h3 className="text-2xl font-black mb-6 font-bengali text-slate-800 border-b border-slate-100 pb-4">
-              {editingId ? 'বই এডিট করুন (Edit Book)' : 'নতুন বই যোগ করুন (Add Book)'}
-            </h3>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-start justify-center p-0 sm:p-4 overflow-y-auto sm:overflow-hidden">
+          <div className="bg-white sm:rounded-3xl w-full max-w-lg h-full sm:h-auto sm:max-h-[90vh] shadow-2xl relative flex flex-col">
+            <div className="p-6 sm:p-8 flex items-center justify-between border-b border-slate-100 bg-white sm:rounded-t-3xl sticky top-0 z-10 shrink-0">
+              <h3 className="text-xl sm:text-2xl font-black font-bengali text-slate-800">
+                {editingId ? 'বই এডিট করুন' : 'নতুন বই যোগ করুন'}
+              </h3>
+              <button 
+                type="button" 
+                onClick={() => setShowModal(false)}
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <X className="w-6 h-6 text-slate-400" />
+              </button>
+            </div>
             
-            <form onSubmit={handleSubmit} className="space-y-5 font-bengali">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বইয়ের কোড</label>
-                  <input type="text" value={formData.bookCode || ''} onChange={e=>setFormData({...formData, bookCode: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm" placeholder="LIB-001" />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">সেল্ফ নং (Shelf No)</label>
-                  <input type="text" value={formData.shelfNo || ''} onChange={e=>setFormData({...formData, shelfNo: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm" placeholder="A1, B2..." />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বইয়ের নাম</label>
-                <input type="text" required value={formData.title || ''} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold" placeholder="বইয়ের নাম লিখুন" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">লেখকের নাম</label>
-                <input type="text" required value={formData.author || ''} onChange={e=>setFormData({...formData, author: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold" placeholder="লেখকের নাম লিখুন" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">ক্যাটাগরি</label>
-                  <CreatableSelect
-                    isClearable
-                    value={formData.category ? { value: formData.category, label: formData.category } : null}
-                    onChange={(selected: any) => {
-                      const newCategory = selected ? selected.value : '';
-                      setFormData({
-                        ...formData, 
-                        category: newCategory, 
-                        bookCode: generateBookCode(newCategory)
-                      });
-                    }}
-                    options={BOOK_CATEGORIES.map(cat => ({ value: cat, label: cat }))}
-                    placeholder="টাইপ করুন বা সিলেক্ট করুন..."
-                    formatCreateLabel={(inputValue) => `নতুন যোগ করুন: "${inputValue}"`}
-                    styles={{
-                      ...reactSelectCustomStyles,
-                      control: (base: any, state: any) => ({
-                        ...reactSelectCustomStyles.control(base, state),
-                        minHeight: '48px',
-                        borderRadius: '0.75rem' // xl
-                      })
-                    }}
-                    className="font-bengali text-sm"
-                    classNamePrefix="react-select"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">অবস্থা</label>
-                  <Select
-                    value={{ value: formData.status, label: formData.status === 'Available' ? 'এভেইলেবল' : 'ইস্যুকৃত' }}
-                    onChange={(selected: any) => setFormData({...formData, status: selected.value})}
-                    options={[
-                      { value: 'Available', label: 'এভেইলেবল' },
-                      { value: 'Issued', label: 'ইস্যুকৃত' }
-                    ]}
-                    styles={{
-                      ...reactSelectCustomStyles,
-                      control: (base: any, state: any) => ({
-                        ...reactSelectCustomStyles.control(base, state),
-                        minHeight: '48px',
-                        borderRadius: '0.75rem'
-                      })
-                    }}
-                    className="font-bengali text-sm font-bold"
-                    classNamePrefix="react-select"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বইয়ের বিবরণ (Description)</label>
-                <textarea 
-                  value={formData.description || ''} 
-                  onChange={e=>setFormData({...formData, description: e.target.value})} 
-                  className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-50 outline-none font-bold text-sm h-32" 
-                  placeholder="বইয়ের বিষয়বস্তু সম্পর্কে বিস্তারিত লিখুন..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বই সমালোচনা (বই সম্পর্কে আপনার মন্তব্য - অপশনাল)</label>
-                <textarea 
-                  value={formData.review || ''} 
-                  onChange={e=>setFormData({...formData, review: e.target.value})} 
-                  className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm h-24" 
-                  placeholder="বইটি সম্পর্কে আপনার কোনো রিভিউ বা মন্তব্য থাকলে লিখুন..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-3">কভার ইমেজ (ঐচ্ছিক - Optional)</label>
-                
-                <div className="flex gap-2 mb-4 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
-                  <button 
-                    type="button" 
-                    onClick={() => setCoverInputType('upload')}
-                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-black transition-all ${coverInputType === 'upload' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
-                  >
-                    আপলোড (Upload)
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={() => setCoverInputType('link')}
-                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-black transition-all ${coverInputType === 'link' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
-                  >
-                    লিঙ্ক (URL Link)
-                  </button>
-                </div>
-
-                <div className="flex gap-4">
-                  {formData.cover ? (
-                    <div className="w-20 h-28 bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-sm relative group">
-                      <img src={formData.cover} alt="Preview" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                      <button type="button" onClick={() => setFormData({...formData, cover: ''})} className="absolute inset-0 bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center font-bold text-[10px]">REMOVE</button>
-                    </div>
-                  ) : (
-                    <div className="w-20 h-28 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center">
-                      <BookOpen className="w-6 h-6 text-slate-300" />
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    {coverInputType === 'upload' ? (
-                      <input 
-                        type="file" 
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            if (file.size > 2 * 1024 * 1024) {
-                              toast.error('ফাইলের সাইজ ২ এমবি-র কম হতে হবে।');
-                              return;
-                            }
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              const img = new Image();
-                              img.onload = () => {
-                                const canvas = document.createElement('canvas');
-                                const MAX_WIDTH = 400;
-                                const MAX_HEIGHT = 600;
-                                let width = img.width;
-                                let height = img.height;
-
-                                if (width > height) {
-                                  if (width > MAX_WIDTH) {
-                                    height *= MAX_WIDTH / width;
-                                    width = MAX_WIDTH;
-                                  }
-                                } else {
-                                  if (height > MAX_HEIGHT) {
-                                    width *= MAX_HEIGHT / height;
-                                    height = MAX_HEIGHT;
-                                  }
-                                }
-
-                                canvas.width = width;
-                                canvas.height = height;
-                                const ctx = canvas.getContext('2d');
-                                ctx?.drawImage(img, 0, 0, width, height);
-                                
-                                // Compress as webp/jpeg to save space, aiming for < 100kb
-                                const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-                                setFormData({ ...formData, cover: dataUrl });
-                              };
-                              img.src = reader.result as string;
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }} 
-                        className="w-full text-xs file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-black file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
-                      />
-                    ) : (
-                      <input 
-                        type="text" 
-                        placeholder="https://example.com/image.jpg"
-                        value={formData.cover?.startsWith('data:') ? '' : (formData.cover || '')}
-                        onChange={(e) => setFormData({ ...formData, cover: e.target.value })}
-                        className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-xs"
-                      />
-                    )}
-                    <p className="text-[10px] text-slate-400 mt-2">Maximum 500KB. 2:3 aspect ratio recommended.</p>
+            <div className="flex-1 overflow-y-auto p-6 sm:p-8 pt-4">
+              <form id="bookForm" onSubmit={handleSubmit} className="space-y-5 font-bengali pb-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বইয়ের কোড</label>
+                    <input type="text" value={formData.bookCode || ''} onChange={e=>setFormData({...formData, bookCode: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm" placeholder="LIB-001" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">সেল্ফ নং (Shelf No)</label>
+                    <input type="text" value={formData.shelfNo || ''} onChange={e=>setFormData({...formData, shelfNo: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm" placeholder="A1, B2..." />
                   </div>
                 </div>
-              </div>
 
-              <div className="flex justify-end gap-3 pt-6 border-t border-slate-100 mt-8">
-                <button type="button" onClick={() => setShowModal(false)} disabled={isSubmitting} className="px-6 py-2.5 font-bold text-slate-500 hover:text-slate-700 transition disabled:opacity-50">বাতিল</button>
-                <button type="submit" disabled={isSubmitting} className="px-10 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center gap-2">
-                  {isSubmitting && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-                  {editingId ? 'আপডেট (Update)' : 'সেভ (Save)'}
-                </button>
-              </div>
-            </form>
+                <div>
+                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বইয়ের নাম</label>
+                  <input type="text" required value={formData.title || ''} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold" placeholder="বইয়ের নাম লিখুন" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">লেখকের নাম</label>
+                  <input type="text" required value={formData.author || ''} onChange={e=>setFormData({...formData, author: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold" placeholder="লেখকের নাম লিখুন" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">ক্যাটাগরি</label>
+                    <CreatableSelect
+                      isClearable
+                      value={formData.category ? { value: formData.category, label: formData.category } : null}
+                      onChange={(selected: any) => {
+                        const newCategory = selected ? selected.value : '';
+                        setFormData({
+                          ...formData, 
+                          category: newCategory, 
+                          bookCode: generateBookCode(newCategory)
+                        });
+                      }}
+                      options={BOOK_CATEGORIES.map(cat => ({ value: cat, label: cat }))}
+                      placeholder="টাইপ করুন..."
+                      formatCreateLabel={(inputValue) => `নতুন: "${inputValue}"`}
+                      styles={{
+                        ...reactSelectCustomStyles,
+                        control: (base: any, state: any) => ({
+                          ...reactSelectCustomStyles.control(base, state),
+                          minHeight: '48px',
+                          borderRadius: '0.75rem'
+                        })
+                      }}
+                      className="font-bengali text-sm"
+                      classNamePrefix="react-select"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">অবস্থা</label>
+                    <Select
+                      value={{ value: formData.status, label: formData.status === 'Available' ? 'এভেইলেবল' : 'ইস্যুকৃত' }}
+                      onChange={(selected: any) => setFormData({...formData, status: selected.value})}
+                      options={[
+                        { value: 'Available', label: 'এভেইলেবল' },
+                        { value: 'Issued', label: 'ইস্যুকৃত' }
+                      ]}
+                      styles={{
+                        ...reactSelectCustomStyles,
+                        control: (base: any, state: any) => ({
+                          ...reactSelectCustomStyles.control(base, state),
+                          minHeight: '48px',
+                          borderRadius: '0.75rem'
+                        })
+                      }}
+                      className="font-bengali text-sm font-bold"
+                      classNamePrefix="react-select"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বইয়ের বিবরণ (Description)</label>
+                  <textarea 
+                    value={formData.description || ''} 
+                    onChange={e=>setFormData({...formData, description: e.target.value})} 
+                    className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-50 outline-none font-bold text-sm h-32" 
+                    placeholder="বিবরণ লিখুন..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বই সমালোচনা (ঐচ্ছিক)</label>
+                  <textarea 
+                    value={formData.review || ''} 
+                    onChange={e=>setFormData({...formData, review: e.target.value})} 
+                    className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm h-24" 
+                    placeholder="রিভিউ লিখুন..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-3">কভার ইমেজ (ঐচ্ছিক)</label>
+                  
+                  <div className="flex gap-2 mb-4 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+                    <button 
+                      type="button" 
+                      onClick={() => setCoverInputType('upload')}
+                      className={`flex-1 py-2 px-3 rounded-lg text-xs font-black transition-all ${coverInputType === 'upload' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                      আপলোড
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={() => setCoverInputType('link')}
+                      className={`flex-1 py-2 px-3 rounded-lg text-xs font-black transition-all ${coverInputType === 'link' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                      লিঙ্ক (URL)
+                    </button>
+                  </div>
+
+                  <div className="flex gap-4">
+                    {formData.cover ? (
+                      <div className="w-16 h-24 bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-sm relative group shrink-0">
+                        <img src={formData.cover} alt="Preview" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                        <button type="button" onClick={() => setFormData({...formData, cover: ''})} className="absolute inset-0 bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center font-bold text-[10px]">REMOVE</button>
+                      </div>
+                    ) : (
+                      <div className="w-16 h-24 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center shrink-0">
+                        <BookOpen className="w-6 h-6 text-slate-300" />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      {coverInputType === 'upload' ? (
+                        <input 
+                          type="file" 
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (file.size > 2 * 1024 * 1024) {
+                                toast.error('ফাইলের সাইজ ২ এমবি-র কম হতে হবে।');
+                                return;
+                              }
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                const img = new Image();
+                                img.onload = () => {
+                                  const canvas = document.createElement('canvas');
+                                  const MAX_WIDTH = 400;
+                                  const MAX_HEIGHT = 600;
+                                  let width = img.width;
+                                  let height = img.height;
+
+                                  if (width > height) {
+                                    if (width > MAX_WIDTH) {
+                                      height *= MAX_WIDTH / width;
+                                      width = MAX_WIDTH;
+                                    }
+                                  } else {
+                                    if (height > MAX_HEIGHT) {
+                                      width *= MAX_HEIGHT / height;
+                                      height = MAX_HEIGHT;
+                                    }
+                                  }
+
+                                  canvas.width = width;
+                                  canvas.height = height;
+                                  const ctx = canvas.getContext('2d');
+                                  ctx?.drawImage(img, 0, 0, width, height);
+                                  const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+                                  setFormData({ ...formData, cover: dataUrl });
+                                };
+                                img.src = reader.result as string;
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }} 
+                          className="w-full text-xs file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-black file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
+                        />
+                      ) : (
+                        <input 
+                          type="text" 
+                          placeholder="https://example.com/image.jpg"
+                          value={formData.cover?.startsWith('data:') ? '' : (formData.cover || '')}
+                          onChange={(e) => setFormData({ ...formData, cover: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-xs"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </div>
+
+            <div className="p-6 sm:p-8 bg-slate-50 border-t border-slate-100 sm:rounded-b-3xl shrink-0 flex items-center justify-between gap-4">
+              <button 
+                type="button" 
+                onClick={() => setShowModal(false)} 
+                disabled={isSubmitting} 
+                className="flex-1 py-3.5 px-4 font-black text-slate-500 hover:text-slate-700 transition disabled:opacity-50 text-sm border border-slate-200 rounded-2xl bg-white"
+              >
+                বাতিল
+              </button>
+              <button 
+                type="submit" 
+                form="bookForm"
+                disabled={isSubmitting} 
+                className="flex-[2] py-3.5 px-4 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 shadow-xl shadow-indigo-200 transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base outline-none ring-offset-2 focus:ring-2 focus:ring-indigo-500"
+              >
+                {isSubmitting && <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                {editingId ? 'পরিবর্তন সংরক্ষণ করুন' : 'নতুন বই যুক্ত করুন'}
+              </button>
+            </div>
           </div>
         </div>
       )}

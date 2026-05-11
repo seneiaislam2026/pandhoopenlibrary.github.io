@@ -35,37 +35,18 @@ export default function Finances() {
   const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const { getDocs, collection } = await import('firebase/firestore');
-        const db = (await import('../../lib/firebase')).db;
+    setLoading(true);
+    const q = query(collection(db, 'finances'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const financeData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Finance[];
+      setFinances(financeData);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching finances:", error);
+      setLoading(false);
+    });
 
-        const cacheKey = 'admin_finances_cache';
-        const cacheTime = sessionStorage.getItem('admin_finances_time');
-
-        if (cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
-           const cached = sessionStorage.getItem(cacheKey);
-           if (cached) {
-              setFinances(JSON.parse(cached));
-              setLoading(false);
-              return;
-           }
-        }
-
-        const snapshot = await getDocs(collection(db, 'finances'));
-        const financeData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Finance[];
-        setFinances(financeData);
-        setLoading(false);
-
-        sessionStorage.setItem(cacheKey, JSON.stringify(financeData));
-        sessionStorage.setItem('admin_finances_time', Date.now().toString());
-      } catch (err) {
-        console.error("Error fetching finances:", err);
-        setLoading(false);
-      }
-    };
-
-    fetchData();
+    return () => unsubscribe();
   }, []);
 
   const months = Array.from(new Set(finances.map(f => new Date(f.date).toISOString().slice(0, 7)))).sort().reverse();
@@ -74,9 +55,6 @@ export default function Finances() {
     : finances.filter(f => new Date(f.date).toISOString().slice(0, 7) === selectedMonth);
 
   const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
     const pTotalIncome = filteredFinances.filter(f => f.type === 'income').reduce((acc, curr) => acc + Number(curr.amount), 0);
     const pTotalExpense = filteredFinances.filter(f => f.type === 'expense').reduce((acc, curr) => acc + Number(curr.amount), 0);
     const pBalance = pTotalIncome - pTotalExpense;
@@ -101,6 +79,9 @@ export default function Finances() {
             .expense-text { color: #e11d48; }
             .balance-text { color: #4f46e5; }
             .text-right { text-align: right; }
+            @media print {
+              body { padding: 0; }
+            }
           </style>
         </head>
         <body>
@@ -133,17 +114,56 @@ export default function Finances() {
               `).join('')}
             </tbody>
           </table>
-          <script>
-            setTimeout(function() {
-              window.print();
-            }, 500);
-            window.onafterprint = function() { window.close(); }
-          </script>
         </body>
       </html>
     `;
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.open();
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      
+      printWindow.onload = () => {
+        setTimeout(() => {
+           printWindow.focus();
+           printWindow.print();
+        }, 200);
+      };
+      
+      // Fallback if onload doesn't trigger
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+      }, 1000);
+    } else {
+      toast.error('দয়া করে আপনার ব্রাউজারের পপ-আপ ব্লকার বন্ধ করুন।');
+      
+      // Fallback to iframe if popups are blocked
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.width = '0px';
+      iframe.style.height = '0px';
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentWindow?.document;
+      if (doc) {
+        doc.open();
+        doc.write(htmlContent);
+        doc.close();
+      }
+
+      setTimeout(() => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+        }, 5000);
+      }, 500);
+    }
   };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -358,47 +378,49 @@ export default function Finances() {
               )}
             </div>
           </div>
-          <div className="overflow-x-auto flex-1">
-            <table className="w-full text-left min-w-[500px]">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-widest font-bengali w-[120px]">তারিখ</th>
-                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-widest font-bengali">বিবরণ</th>
-                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-widest text-right font-bengali">পরিমাণ</th>
-                  {isAdmin && <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-widest text-right font-bengali w-[100px]">অ্যাকশন</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredFinances.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(f => (
-                  <tr key={f.id} className="hover:bg-slate-50/80 transition-colors group">
-                    <td className="p-4 text-sm font-medium text-slate-500 font-mono whitespace-nowrap">
-                      {new Date(f.date).toLocaleDateString()}
-                    </td>
-                    <td className="p-4 font-bold text-slate-800 font-bengali">{f.description}</td>
-                    <td className={`p-4 text-right font-black font-mono text-base whitespace-nowrap ${f.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      <div className="flex items-center justify-end gap-1">
+          <div className="flex flex-col flex-1">
+            <div className="hidden md:grid grid-cols-12 gap-4 p-4 bg-slate-50 border-b border-slate-200">
+               <div className="col-span-3 text-xs font-black text-slate-500 uppercase tracking-widest font-bengali">তারিখ</div>
+               <div className="col-span-5 text-xs font-black text-slate-500 uppercase tracking-widest font-bengali">বিবরণ</div>
+               <div className="col-span-2 text-xs font-black text-slate-500 uppercase tracking-widest text-right font-bengali">পরিমাণ</div>
+               {isAdmin && <div className="col-span-2 text-xs font-black text-slate-500 uppercase tracking-widest text-right font-bengali">অ্যাকশন</div>}
+            </div>
+            
+            <div className="divide-y divide-slate-100 flex flex-col">
+              {filteredFinances.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(f => (
+                <div key={f.id} className="grid grid-cols-1 md:grid-cols-12 gap-y-3 gap-x-4 p-4 hover:bg-slate-50/80 transition-colors group items-start md:items-center">
+                  <div className="col-span-1 border-b md:border-b-0 pb-3 md:pb-0 border-slate-100 md:col-span-3 flex items-center justify-between md:justify-start">
+                     <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded md:hidden">তারিখ</span>
+                     <span className="text-sm font-medium text-slate-500 font-mono whitespace-nowrap">{new Date(f.date).toLocaleDateString()}</span>
+                  </div>
+                  <div className="col-span-1 border-b md:border-b-0 pb-3 md:pb-0 border-slate-100 md:col-span-5 flex flex-col md:block">
+                     <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded mb-1 md:hidden w-fit">বিবরণ</span>
+                     <span className="font-bold text-slate-800 font-bengali text-lg md:text-base">{f.description}</span>
+                  </div>
+                  <div className="col-span-1 border-b md:border-b-0 pb-3 md:pb-0 border-slate-100 md:col-span-2 flex items-center justify-between md:justify-end">
+                     <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded md:hidden">পরিমাণ</span>
+                     <span className={`font-black font-mono text-xl md:text-base whitespace-nowrap flex items-center gap-1 ${f.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
                         {f.type === 'income' ? '+' : '-'}৳{f.amount}
-                      </div>
-                    </td>
-                    {isAdmin && (
-                      <td className="p-4 text-right flex justify-end">
+                     </span>
+                  </div>
+                  {isAdmin && (
+                     <div className="col-span-1 md:col-span-2 flex justify-start md:justify-end mt-1 md:mt-0">
                          {deletingId === f.id ? (
-                            <div className="flex justify-end gap-2 items-center">
-                               <button onClick={() => handleDelete(f.id, true)} className="px-3 py-1.5 bg-rose-600 text-white text-xs rounded-lg font-bold shadow-sm font-bengali">নিশ্চিত</button>
-                               <button onClick={() => setDeletingId(null)} className="px-3 py-1.5 bg-slate-200 text-slate-700 text-xs rounded-lg font-bold font-bengali">বাতিল</button>
+                            <div className="flex justify-end gap-2 items-center w-full md:w-auto">
+                               <button onClick={() => handleDelete(f.id, true)} className="flex-1 md:flex-none px-3 py-1.5 bg-rose-600 text-white text-xs rounded-lg font-bold shadow-sm font-bengali">নিশ্চিত</button>
+                               <button onClick={() => setDeletingId(null)} className="flex-1 md:flex-none px-3 py-1.5 bg-slate-200 text-slate-700 text-xs rounded-lg font-bold font-bengali">বাতিল</button>
                             </div>
                          ) : (
-                            <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => handleEdit(f)} className="p-2 border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 bg-white hover:bg-indigo-50 rounded-xl transition-all shadow-sm"><Edit2 className="w-4 h-4" /></button>
-                              <button onClick={() => handleDelete(f.id)} className="p-2 border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 bg-white hover:bg-rose-50 rounded-xl transition-all shadow-sm"><Trash2 className="w-4 h-4" /></button>
+                            <div className="flex justify-end gap-2 w-full md:w-auto opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => handleEdit(f)} className="flex-1 md:flex-none p-2 border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-200 bg-white hover:bg-indigo-50 flex items-center justify-center rounded-xl transition-all shadow-sm"><Edit2 className="w-4 h-4" /><span className="ml-2 text-xs md:hidden font-bengali font-bold">এডিট</span></button>
+                              <button onClick={() => handleDelete(f.id)} className="flex-1 md:flex-none p-2 border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 bg-white hover:bg-rose-50 flex items-center justify-center rounded-xl transition-all shadow-sm"><Trash2 className="w-4 h-4" /><span className="ml-2 text-xs md:hidden font-bengali font-bold">ডিলিট</span></button>
                             </div>
                          )}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                     </div>
+                  )}
+                </div>
+              ))}
+            </div>
             {filteredFinances.length === 0 && (
                <div className="flex flex-col items-center justify-center p-12 text-slate-400">
                   <div className="w-16 h-16 bg-slate-100 rounded-full mb-4 flex items-center justify-center">

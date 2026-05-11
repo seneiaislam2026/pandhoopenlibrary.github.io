@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy, doc, writeBatch, serverTimestamp, getDocs, limit, where, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { QrCode, Plus, Download, Printer, Search, Link as LinkIcon, Trash2, Library } from 'lucide-react';
+import { Barcode as BarcodeIcon, Plus, Download, Printer, Search, Link as LinkIcon, Trash2, Library } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
+import Barcode from 'react-barcode';
 import jsPDF from 'jspdf';
 import { toJpeg } from 'html-to-image';
 import { BOOK_CATEGORIES, reactSelectCustomStyles } from './ManageBooks';
@@ -435,25 +435,28 @@ export default function ManageStickers() {
           <div 
             key={`sticker-render-${s.id}`} 
             id={`sticker-render-${s.id}`} 
-            className="flex flex-row items-center bg-white py-2 px-3 font-bengali z-0" 
-            style={{ width: '400px', height: '180px', gap: '15px', backgroundColor: '#FFFFFF' }}
+            className="flex flex-col items-center justify-center bg-white py-3 px-4 font-bengali z-0 text-center" 
+            style={{ width: '400px', height: '180px', backgroundColor: '#FFFFFF' }}
           >
-             <QRCodeSVG value={s.url} size={110} level="H" includeMargin={false} />
-             <div className="flex flex-col justify-center flex-1">
-                <div className="mb-5">
-                  <div className="text-black bg-slate-100 rounded-md inline-block px-3 py-1">
-                     <p className="font-bold" style={{ fontSize: '22px', letterSpacing: '1px' }}>
-                       {s.code}
-                     </p>
-                  </div>
+             <div className="mb-1">
+                <Barcode 
+                  value={s.code} 
+                  width={1.6} 
+                  height={50} 
+                  fontSize={14} 
+                  margin={0}
+                  background="#ffffff"
+                  displayValue={true}
+                />
+             </div>
+             
+             <div className="flex flex-col items-center">
+                <h1 className="font-bold text-black" style={{ fontSize: '18px', lineHeight: '1.2' }}>পানধোয়া উন্মুক্ত পাঠাগার</h1>
+                <div className="flex items-center gap-4 mt-1 text-slate-700 font-bold" style={{ fontSize: '11px' }}>
+                   <span>Shelf No: {s.shelfNo}</span>
+                   <span>Category: {s.category}</span>
                 </div>
-                
-                <div>
-                  <h1 className="font-bold text-black" style={{ fontSize: '18px', lineHeight: '1.2' }}>পানধোয়া উন্মুক্ত পাঠাগার</h1>
-                  <p className="font-medium mt-1.5" style={{ color: '#4b5563', fontSize: '12px', lineHeight: '1.4' }}>
-                    ঠিকানা: পানধোয়া, সেনওয়ালিয়া-1344, আশুলিয়া, সাভার, ঢাকা।<br/>মোবাইল: 01570206953
-                  </p>
-                </div>
+                <p className="font-black text-indigo-700 mt-2" style={{ fontSize: '13px', letterSpacing: '0.5px' }}>www.pandhoalibrary.org</p>
              </div>
           </div>
         ))}
@@ -462,10 +465,10 @@ export default function ManageStickers() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bengali font-bold text-slate-800 flex items-center gap-2">
-            <QrCode className="w-6 h-6 text-indigo-600" />
-            বইয়ের স্টিকার ও QR কোড
+            <BarcodeIcon className="w-6 h-6 text-indigo-600" />
+            বইয়ের স্টিকার ও বারকোড
           </h1>
-          <p className="text-sm text-slate-500 font-bengali mt-1">Generate and manage unique QR code stickers for books</p>
+          <p className="text-sm text-slate-500 font-bengali mt-1">Generate and manage unique barcode stickers for books</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -565,8 +568,8 @@ export default function ManageStickers() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
             </div>
           ) : filteredStickers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-slate-400">
-              <QrCode className="w-12 h-12 mb-3 text-slate-300" />
+          <div className="flex flex-col items-center justify-center h-48 text-slate-400">
+              <BarcodeIcon className="w-12 h-12 mb-3 text-slate-300" />
               <p className="font-bengali font-semibold">কোনো স্টিকার পাওয়া যায়নি</p>
             </div>
           ) : (
@@ -587,12 +590,20 @@ export default function ManageStickers() {
                   <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2 bg-slate-100 px-2 py-0.5 rounded text-center w-full truncate mt-2">
                     {sticker.category}
                   </p>
-                  <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm mb-3">
-                    {/* SVG for display since it scales better */}
-                    <QRCodeSVG value={sticker.url} size={100} level="H" />
+                  <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm mb-3 w-full flex justify-center overflow-hidden">
+                    <Barcode 
+                      value={sticker.code} 
+                      width={1} 
+                      height={40} 
+                      fontSize={11} 
+                      margin={0}
+                    />
                   </div>
-                  <h3 className="font-mono font-bold text-slate-800 text-sm">{sticker.code}</h3>
-                  <p className="text-xs text-slate-500 font-medium mt-1">Shelf: {sticker.shelfNo}</p>
+                  <h3 className="font-mono font-bold text-slate-800 text-[10px] truncate w-full text-center">{sticker.code}</h3>
+                  <div className="flex flex-col items-center mt-1 gap-0.5">
+                    <p className="text-[10px] text-slate-500 font-medium">Shelf: {sticker.shelfNo}</p>
+                    <p className="text-[9px] font-black text-indigo-600">www.pandhoalibrary.org</p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -706,18 +717,18 @@ export default function ManageStickers() {
                 )}
 
                 <div>
-                   <label className="block text-sm font-semibold text-slate-700 mb-1.5">কাস্টম কিউআর লিংক (ঐচ্ছিক)</label>
+                   <label className="block text-sm font-semibold text-slate-700 mb-1.5">কাস্টম বারকোড লিংক/কোড (ঐচ্ছিক)</label>
                    <div className="relative">
                      <LinkIcon className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
                      <input
                        type="text"
                        value={customUrl}
                        onChange={e => setCustomUrl(e.target.value)}
-                       placeholder="https://..."
+                       placeholder="Code or URL..."
                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all text-sm"
                      />
                    </div>
-                   <p className="text-xs text-slate-500 mt-1.5">লিংক না দিলে স্বয়ংক্রিয়ভাবে একটি লিংক তৈরি হবে।</p>
+                   <p className="text-xs text-slate-500 mt-1.5">লিংক না দিলে স্বয়ংক্রিয়ভাবে বইয়ের কোড ব্যবহার হবে।</p>
                 </div>
               </div>
 

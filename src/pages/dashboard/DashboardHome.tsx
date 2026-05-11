@@ -299,7 +299,7 @@ export default function DashboardHome() {
              
              <Link to="/dashboard/book-requests" className="w-full flex items-center justify-center gap-3 bg-[#0B1120] hover:bg-slate-900 text-white px-6 py-5 rounded-2xl font-bold transition-all shadow-lg font-bengali text-base sm:text-lg">
                <Library className="w-6 h-6 text-slate-400 shrink-0" />
-               বই গ্রহণের আবেদন
+               বই রিকুয়েষ্ট
              </Link>
            </div>
         </div>
@@ -393,7 +393,7 @@ export default function DashboardHome() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 hover:*:shadow-2xl hover:*:border-slate-200 dark:hover:*:border-slate-700 transition-all">
         {/* Total Users Card */}
         {hasAccess('/dashboard/users') && (
-        <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between">
+        <Link to="/dashboard/users" className="block bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between">
           <div className="absolute -right-8 -top-8 w-40 h-40 bg-blue-500/10 rounded-full blur-[40px] pointer-events-none group-hover:bg-blue-500/20 transition-colors duration-500"></div>
           <div className="relative z-10 flex items-start justify-between mb-8">
             <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-sm border border-blue-100/50 dark:border-blue-500/20 group-hover:scale-110 group-hover:shadow-md transition-all duration-300">
@@ -411,12 +411,12 @@ export default function DashboardHome() {
               {stats.users}
             </p>
           </div>
-        </div>
+        </Link>
         )}
 
         {/* Total Books Card */}
         {hasAccess('/dashboard/books') && (
-        <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between">
+        <Link to="/dashboard/books" className="block bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between">
           <div className="absolute -right-8 -top-8 w-40 h-40 bg-indigo-500/10 rounded-full blur-[40px] pointer-events-none group-hover:bg-indigo-500/20 transition-colors duration-500"></div>
           <div className="relative z-10 flex items-start justify-between mb-8">
             <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-sm border border-indigo-100/50 dark:border-indigo-500/20 group-hover:scale-110 group-hover:shadow-md transition-all duration-300">
@@ -434,7 +434,7 @@ export default function DashboardHome() {
               {stats.books}
             </p>
           </div>
-        </div>
+        </Link>
         )}
 
         {/* Active Issues Card */}
@@ -460,7 +460,7 @@ export default function DashboardHome() {
 
         {/* Balance Card */}
         {hasAccess('/dashboard/finances') && (
-        <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between">
+        <Link to="/dashboard/finances" className="block bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between">
           <div className="absolute -right-8 -top-8 w-40 h-40 bg-emerald-500/10 rounded-full blur-[40px] pointer-events-none group-hover:bg-emerald-500/20 transition-colors duration-500"></div>
           <div className="relative z-10 flex items-start justify-between mb-8">
             <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-sm border border-emerald-100/50 dark:border-emerald-500/20 group-hover:scale-110 group-hover:shadow-md transition-all duration-300">
@@ -478,7 +478,7 @@ export default function DashboardHome() {
               ৳{stats.income - stats.expense}
             </p>
           </div>
-        </div>
+        </Link>
         )}
       </div>
 

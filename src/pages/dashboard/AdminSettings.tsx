@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarHeart, Users, FileText, Settings as SettingsIcon, Image as ImageIcon, CheckCircle, UploadCloud, Shield, Trash2 } from 'lucide-react';
+import { CalendarHeart, Users, FileText, Settings as SettingsIcon, Image as ImageIcon, CheckCircle, UploadCloud, Shield, Trash2, Bell, MessageSquare, ShieldAlert, UserX, Clock } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -157,6 +157,54 @@ export default function AdminSettings() {
             </div>
             <h3 className="text-xl font-bold font-bengali text-slate-800 mb-2">গঠনতন্ত্র সেটিংস</h3>
             <p className="text-sm font-bengali text-slate-500">পাঠাগারের গঠনতন্ত্র এবং নীতিসমূহ আপডেট করুন।</p>
+         </Link>
+
+         <Link to="/dashboard/notices" className="group p-6 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all">
+            <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-6 group-hover:-translate-y-1 transition-transform">
+               <Bell size={28} />
+            </div>
+            <h3 className="text-xl font-bold font-bengali text-slate-800 mb-2">নোটিশ বোর্ড</h3>
+            <p className="text-sm font-bengali text-slate-500">সকল প্রকার নোটিশ আপডেট এবং পরিচালনা করুন।</p>
+         </Link>
+
+         <Link to="/dashboard/messages" className="group p-6 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-cyan-200 transition-all">
+            <div className="w-14 h-14 bg-cyan-50 text-cyan-600 rounded-xl flex items-center justify-center mb-6 group-hover:-translate-y-1 transition-transform">
+               <MessageSquare size={28} />
+            </div>
+            <h3 className="text-xl font-bold font-bengali text-slate-800 mb-2">মেসেজসমূহ</h3>
+            <p className="text-sm font-bengali text-slate-500">ইউজারদের মেসেজ এবং টেক্সট দেখুন।</p>
+         </Link>
+
+         <Link to="/dashboard/reset-requests" className="group p-6 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-purple-200 transition-all">
+            <div className="w-14 h-14 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center mb-6 group-hover:-translate-y-1 transition-transform">
+               <ShieldAlert size={28} />
+            </div>
+            <h3 className="text-xl font-bold font-bengali text-slate-800 mb-2">রিসেট রিকোয়েস্ট</h3>
+            <p className="text-sm font-bengali text-slate-500">পাসওয়ার্ড এবং ইনফরমেশন রিসেট রিকোয়েস্ট ম্যানেজ করুন।</p>
+         </Link>
+
+         <Link to="/dashboard/book-requests" className="group p-6 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all">
+            <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-6 group-hover:-translate-y-1 transition-transform">
+               <FileText size={28} />
+            </div>
+            <h3 className="text-xl font-bold font-bengali text-slate-800 mb-2">বইয়ের অনুরোধ রিকোয়েস্ট</h3>
+            <p className="text-sm font-bengali text-slate-500">ইউজারদের নতুন বইয়ের অনুরোধগুলো দেখুন।</p>
+         </Link>
+
+         <Link to="/dashboard/pre-bookings" className="group p-6 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-amber-200 transition-all">
+            <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center mb-6 group-hover:-translate-y-1 transition-transform">
+               <Clock size={28} />
+            </div>
+            <h3 className="text-xl font-bold font-bengali text-slate-800 mb-2">প্রি-বুকিং ব্যবস্থাপনা</h3>
+            <p className="text-sm font-bengali text-slate-500">বইয়ের প্রি-বুকিং তালিকা এবং স্ট্যাটাস দেখুন।</p>
+         </Link>
+
+         <Link to="/dashboard/delete-users" className="group p-6 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-red-200 transition-all">
+            <div className="w-14 h-14 bg-red-50 text-red-600 rounded-xl flex items-center justify-center mb-6 group-hover:-translate-y-1 transition-transform">
+               <UserX size={28} />
+            </div>
+            <h3 className="text-xl font-bold font-bengali text-slate-800 mb-2">সদস্য ডিলিট করুন</h3>
+            <p className="text-sm font-bengali text-slate-500">ওয়েবসাইট থেকে যেকোনো সদস্য রিমুভ বা ডিলিট করুন।</p>
          </Link>
       </div>
 

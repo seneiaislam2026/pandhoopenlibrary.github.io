@@ -34,6 +34,7 @@ import {
   Heart,
   Package,
   QrCode,
+  Scan,
   Settings,
   Replace
 } from 'lucide-react';
@@ -197,15 +198,10 @@ export default function DashboardLayout() {
         { name: 'সদস্যদের বকেয়া (Dues)', path: '/dashboard/dues', icon: DollarSign },
         { name: 'দাতা সদস্য (Donors)', path: '/dashboard/donors', icon: DollarSign },
         { name: 'হিসাব-নিকাশ (Finances)', path: '/dashboard/finances', icon: DollarSign },
-        { name: 'নোটিশ', path: '/dashboard/notices', icon: Bell },
-        { name: 'মেসেজসমূহ', path: '/dashboard/messages', icon: MessageSquare },
-        { name: 'বইয়ের অনুরোধ (Requests)', path: '/dashboard/book-requests', icon: BookOpen },
-        { name: 'প্রি-বুকিং', path: '/dashboard/pre-bookings', icon: Clock },
         { name: 'শপ বই ব্যবস্থাপনা', path: '/dashboard/shop-books', icon: Library },
         { name: 'বই বিক্রয় অর্ডার', path: '/dashboard/shop-orders', icon: Package },
         { name: 'স্টিকার ও QR (Stickers)', path: '/dashboard/stickers', icon: QrCode },
-        { name: 'বুক রিভিও ম্যানেজমেন্ট', path: '/dashboard/manageblog', icon: FileText },
-        { name: 'ইভেন্ট পরিচালনা', path: '/dashboard/events', icon: CalendarHeart }
+        { name: 'বারকোড স্ক্যানার', path: '/dashboard/barcode-scanner', icon: Scan }
       ];
 
       const newLinks = [...baseLinks];
@@ -293,24 +289,15 @@ export default function DashboardLayout() {
     { name: 'আমার প্রোফাইল', path: '/dashboard/profile', icon: UserCircle },
     { name: 'ওভারভিউ (Overview)', path: '/dashboard', icon: LayoutDashboard },
     { name: 'সদস্য ব্যবস্থাপনা (Users)', path: '/dashboard/users', icon: Users },
-    { name: 'গঠনতন্ত্র', path: '/dashboard/constitution', icon: FileText },
-    { name: 'সদস্য ডিলিট করুন', path: '/dashboard/delete-users', icon: UserX },
     { name: 'বইয়ের তালিকা (Inventory)', path: '/dashboard/books', icon: Library },
     { name: 'স্টিকার ও QR (Stickers)', path: '/dashboard/stickers', icon: QrCode },
+    { name: 'বারকোড স্ক্যানার', path: '/dashboard/barcode-scanner', icon: Scan },
     { name: 'ইস্যু ও ফেরত (Issues)', path: '/dashboard/issues', icon: ClipboardList },
     { name: 'শপ বই ব্যবস্থাপনা', path: '/dashboard/shop-books', icon: Library },
     { name: 'বই বিক্রয় অর্ডার', path: '/dashboard/shop-orders', icon: Package },
     { name: 'সদস্যদের বকেয়া (Dues)', path: '/dashboard/dues', icon: DollarSign },
     { name: 'দাতা সদস্য (Donors)', path: '/dashboard/donors', icon: DollarSign },
     { name: 'হিসাব-নিকাশ (Finances)', path: '/dashboard/finances', icon: DollarSign },
-    { name: 'পরিচালনা পর্ষদ', path: '/dashboard/manageteam', icon: Users },
-    { name: 'বুক রিভিও ম্যানেজমেন্ট', path: '/dashboard/manageblog', icon: FileText },
-    { name: 'নোটিশ', path: '/dashboard/notices', icon: Bell },
-    { name: 'মেসেজসমূহ', path: '/dashboard/messages', icon: MessageSquare },
-    { name: 'বইয়ের অনুরোধ (Requests)', path: '/dashboard/book-requests', icon: BookOpen },
-    { name: 'রিসেট রিকোয়েস্ট', path: '/dashboard/reset-requests', icon: ShieldAlert },
-    { name: 'প্রি-বুকিং', path: '/dashboard/pre-bookings', icon: Clock },
-    { name: 'ইভেন্ট পরিচালনা', path: '/dashboard/events', icon: CalendarHeart },
     { name: 'ওয়েবসাইট সেটিংস', path: '/dashboard/settings', icon: Settings },
   ];
 
@@ -319,6 +306,7 @@ export default function DashboardLayout() {
     { name: 'ওভারভিউ', path: '/dashboard', icon: LayoutDashboard },
     { name: 'বইয়ের তালিকা', path: '/dashboard/books', icon: Library },
     { name: 'বই ইস্যু ও ফেরত', path: '/dashboard/issues', icon: Replace },
+    { name: 'বারকোড স্ক্যানার', path: '/dashboard/barcode-scanner', icon: Scan },
     { name: 'প্রি-বুকিং', path: '/dashboard/pre-bookings', icon: Clock },
   ];
 
@@ -664,31 +652,17 @@ export default function DashboardLayout() {
         <div className="fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 md:hidden flex items-center justify-around px-2 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
            {user?.role === 'admin' ? (
              <>
-               <Link to="/dashboard/books" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/dashboard/books' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <Library className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase tracking-tighter">বই তালিকা</span>
-               </Link>
                <Link to="/dashboard/donors" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/donors' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
                   <Heart className="w-5 h-5" />
                   <span className="text-[10px] font-black uppercase tracking-tighter">দাতা সদস্য</span>
                </Link>
-               <Link to="/dashboard/pre-bookings" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/pre-bookings' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <Clock className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase tracking-tighter">প্রি বুকিং</span>
-                  {preBookingsCount > 0 && (
-                    <span className="absolute top-0 right-2 w-4 h-4 bg-amber-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border border-white">
-                      {preBookingsCount}
-                    </span>
-                  )}
+               <Link to="/dashboard/barcode-scanner" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/barcode-scanner' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <Scan className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">স্ক্যানার</span>
                </Link>
-               <Link to="/dashboard/users" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/users' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <Users className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase tracking-tighter whitespace-nowrap">সদস্য ব্যবস্থাপনা</span>
-                  {notifications.filter((n: any) => !n.read && n.type === 'registration').length > 0 && (
-                    <span className="absolute top-0 right-0 w-4 h-4 bg-rose-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border border-white">
-                      {notifications.filter((n: any) => !n.read && n.type === 'registration').length}
-                    </span>
-                  )}
+               <Link to="/dashboard/finances" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/finances' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <DollarSign className="w-5 h-5" />
+                  <span className="text-[10px] font-black uppercase tracking-tighter">হিসাব-নিকাশ</span>
                </Link>
                <Link to="/dashboard" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/dashboard' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
                   <LayoutDashboard className="w-5 h-5" />

@@ -4,6 +4,7 @@ import { useAuth } from '../../store/AuthContext';
 import { BookmarkMinus, CheckCircle2, Trash2, ShieldAlert, FileDown, BookOpen } from 'lucide-react';
 import { onSnapshot, collection, doc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { motion, AnimatePresence } from 'motion/react';
 import Select from 'react-select';
 import toast from 'react-hot-toast';
 import { sendSMS } from '../../lib/sms';
@@ -808,100 +809,105 @@ export default function ManageIssues() {
       )}
 
       {showIssueForm && (
-        <form onSubmit={handleIssue} className="bg-white p-8 border border-slate-200 rounded-2xl space-y-6 shadow-xl shadow-slate-200/40 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-indigo-100 to-transparent -mr-16 -mt-16 rounded-full blur-2xl"></div>
-          
-          <h3 className="text-xl font-bold tracking-tight text-slate-900 mb-2 font-bengali">নতুন বই ইস্যু</h3>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="space-y-1.5">
-              <label className="block text-sm font-bold text-slate-700 uppercase tracking-wider font-bengali">বই <span className="text-rose-500">*</span></label>
-              <Select
-                options={bookOptions}
-                value={bookOptions.find(o => o.value === formData.bookId) || null}
-                onChange={(option: any) => setFormData(p => ({...p, bookId: option?.value || ''}))}
-                placeholder="বই খুঁজুন..."
-                styles={selectStyles}
-                classNamePrefix="react-select"
-                className="text-sm font-medium focus:outline-none font-bengali"
-                required
-              />
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto font-bengali">
+          <motion.div initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}} className="bg-white rounded-[2.5rem] w-full max-w-2xl shadow-2xl border border-slate-100 relative my-4 sm:my-8 overflow-hidden sticky top-4">
+            <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
+            <div className="sticky top-0 bg-white z-10 px-8 sm:px-10 py-6 border-b border-slate-50 flex items-center gap-4">
+              <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center"><BookOpen className="w-7 h-7" /></div>
+              <h3 className="text-2xl font-black text-slate-900 tracking-tight font-bengali">নতুন বই ইস্যু</h3>
             </div>
-            
-            <div className="space-y-1.5">
-              <label className="block text-sm font-bold text-slate-700 uppercase tracking-wider font-bengali">সদস্য <span className="text-rose-500">*</span></label>
-              <Select
-                options={userOptions}
-                value={userOptions.find(o => o.value === formData.userId) || null}
-                onChange={(option: any) => setFormData(p => ({...p, userId: option?.value || ''}))}
-                placeholder="সদস্য খুঁজুন..."
-                styles={selectStyles}
-                classNamePrefix="react-select"
-                className="text-sm font-medium focus:outline-none font-bengali"
-                required
-              />
-              {formData.userId && (
-                <div className={`mt-3 p-4 rounded-xl flex items-center justify-between shadow-sm border ${users.find(u => u.id === formData.userId)?.borrowBlocked ? "bg-rose-50 border-rose-200" : "bg-gradient-to-br from-indigo-50 to-blue-50 border-indigo-100"}`}>
-                  <div>
-                    <p className={`text-sm font-extrabold ${users.find(u => u.id === formData.userId)?.borrowBlocked ? "text-rose-700" : "text-slate-800"}`}>
-                      {users.find(u => u.id === formData.userId)?.name}
-                    </p>
-                    {users.find(u => u.id === formData.userId)?.borrowBlocked && (
-                      <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-widest animate-pulse font-bengali">
-                        সদস্য সাময়িকভাবে স্থগিত: {users.find(u => u.id === formData.userId)?.blockedReason || "কোন কারণ উল্লেখ করা হয়নি"}
-                      </p>
-                    )}
-                  </div>
-                  <div className={`px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest border shadow-sm ${users.find(u => u.id === formData.userId)?.borrowBlocked ? "bg-rose-600 text-white border-rose-600" : "bg-white text-indigo-700 border-indigo-200"}`}>
-                    ID: #{users.find(u => u.id === formData.userId)?.memberId || 'N/A'}
-                  </div>
+            <form onSubmit={handleIssue} className="p-8 sm:p-10 pt-4 sm:pt-6 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-bold text-slate-700 uppercase tracking-wider font-bengali">বই <span className="text-rose-500">*</span></label>
+                  <Select
+                    options={bookOptions}
+                    value={bookOptions.find(o => o.value === formData.bookId) || null}
+                    onChange={(option: any) => setFormData(p => ({...p, bookId: option?.value || ''}))}
+                    placeholder="বই খুঁজুন..."
+                    styles={selectStyles}
+                    classNamePrefix="react-select"
+                    className="text-sm font-medium focus:outline-none font-bengali"
+                    required
+                  />
                 </div>
-              )}
-            </div>
-            
-            <div className="space-y-1.5">
-              <label className="block text-sm font-bold text-slate-700 uppercase tracking-wider font-bengali">ফেরতের সম্ভাব্য তারিখ <span className="text-rose-500">*</span></label>
-              <input type="date" required value={formData.expectedReturnDate ? formData.expectedReturnDate.split('T')[0] : ''} onChange={e => {
-                const val = e.target.value;
-                if (!val) {
-                  setFormData(p => ({...p, expectedReturnDate: ''}));
-                  return;
-                }
-                try {
-                  const d = new Date(val);
-                  if (!isNaN(d.getTime())) {
-                    setFormData(p => ({...p, expectedReturnDate: d.toISOString()}));
+                
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-bold text-slate-700 uppercase tracking-wider font-bengali">সদস্য <span className="text-rose-500">*</span></label>
+                  <Select
+                    options={userOptions}
+                    value={userOptions.find(o => o.value === formData.userId) || null}
+                    onChange={(option: any) => setFormData(p => ({...p, userId: option?.value || ''}))}
+                    placeholder="সদস্য খুঁজুন..."
+                    styles={selectStyles}
+                    classNamePrefix="react-select"
+                    className="text-sm font-medium focus:outline-none font-bengali"
+                    required
+                  />
+                  {formData.userId && (
+                    <div className={`mt-3 p-4 rounded-xl flex items-center justify-between shadow-sm border ${users.find(u => u.id === formData.userId)?.borrowBlocked ? "bg-rose-50 border-rose-200" : "bg-gradient-to-br from-indigo-50 to-blue-50 border-indigo-100"}`}>
+                      <div>
+                        <p className={`text-sm font-extrabold ${users.find(u => u.id === formData.userId)?.borrowBlocked ? "text-rose-700" : "text-slate-800"}`}>
+                          {users.find(u => u.id === formData.userId)?.name}
+                        </p>
+                        {users.find(u => u.id === formData.userId)?.borrowBlocked && (
+                          <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-widest animate-pulse font-bengali">
+                            সদস্য সাময়িকভাবে স্থগিত: {users.find(u => u.id === formData.userId)?.blockedReason || "কোন কারণ উল্লেখ করা হয়নি"}
+                          </p>
+                        )}
+                      </div>
+                      <div className={`px-3 py-1.5 rounded-lg text-[10px] font-black tracking-widest border shadow-sm ${users.find(u => u.id === formData.userId)?.borrowBlocked ? "bg-rose-600 text-white border-rose-600" : "bg-white text-indigo-700 border-indigo-200"}`}>
+                        ID: #{users.find(u => u.id === formData.userId)?.memberId || 'N/A'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="space-y-1.5 max-w-sm">
+                <label className="block text-sm font-bold text-slate-700 uppercase tracking-wider font-bengali">ফেরতের সম্ভাব্য তারিখ <span className="text-rose-500">*</span></label>
+                <input type="date" required value={formData.expectedReturnDate ? formData.expectedReturnDate.split('T')[0] : ''} onChange={e => {
+                  const val = e.target.value;
+                  if (!val) {
+                    setFormData(p => ({...p, expectedReturnDate: ''}));
+                    return;
                   }
-                } catch (e) {
-                  // ignore
-                }
-              }} className="w-full border-2 border-slate-200 px-4 py-2 rounded-xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 font-medium text-slate-700 transition font-bengali" />
-            </div>
-          </div>
-          
-          <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">
-            <button 
-              type="button" 
-              disabled={isSubmitting}
-              onClick={() => setShowIssueForm(false)} 
-              className="px-6 py-2.5 font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition disabled:opacity-50 font-bengali"
-            >
-              বাতিল
-            </button>
-            <button 
-              type="submit" 
-              disabled={isSubmitting}
-              className="bg-slate-900 shadow-xl shadow-slate-900/10 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-black transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-bengali"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  প্রসেস করা হচ্ছে...
-                </>
-              ) : 'নিশ্চিত করুন'}
-            </button>
-          </div>
-        </form>
+                  try {
+                    const d = new Date(val);
+                    if (!isNaN(d.getTime())) {
+                      setFormData(p => ({...p, expectedReturnDate: d.toISOString()}));
+                    }
+                  } catch (e) {
+                    // ignore
+                  }
+                }} className="w-full border-2 border-slate-200 px-4 py-2 rounded-xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 font-medium text-slate-700 transition font-bengali" />
+              </div>
+              
+              <div className="sticky bottom-0 bg-white z-10 flex justify-end gap-3 py-6 border-t border-slate-50">
+                <button 
+                  type="button" 
+                  disabled={isSubmitting}
+                  onClick={() => setShowIssueForm(false)} 
+                  className="px-6 py-2.5 font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition disabled:opacity-50 font-bengali"
+                >
+                  বাতিল
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSubmitting}
+                  className="bg-slate-900 shadow-xl shadow-slate-900/10 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-black transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-bengali"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      প্রসেস করা হচ্ছে...
+                    </>
+                  ) : 'নিশ্চিত করুন'}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
       )}
 
       <div className="bg-white border border-slate-200 rounded-2xl md:rounded-3xl shadow-sm overflow-hidden md:overflow-hidden">

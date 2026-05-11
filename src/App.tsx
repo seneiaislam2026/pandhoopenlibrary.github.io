@@ -50,6 +50,7 @@ const ManageShopBooks = React.lazy(() => import('./pages/dashboard/ManageShopBoo
 const ManageShopOrders = React.lazy(() => import('./pages/dashboard/ManageShopOrders'));
 const ManageStickers = React.lazy(() => import('./pages/dashboard/ManageStickers'));
 const AdminSettings = React.lazy(() => import('./pages/dashboard/AdminSettings'));
+const BarcodeScanner = React.lazy(() => import('./pages/dashboard/BarcodeScanner'));
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) => {
@@ -132,6 +133,7 @@ function AppRoutes() {
             <Route path="shop-books" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageShopBooks /></ProtectedRoute>} />
             <Route path="shop-orders" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageShopOrders /></ProtectedRoute>} />
             <Route path="stickers" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageStickers /></ProtectedRoute>} />
+            <Route path="barcode-scanner" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><BarcodeScanner /></ProtectedRoute>} />
             <Route path="settings" element={<ProtectedRoute allowedRoles={['admin']}><AdminSettings /></ProtectedRoute>} />
             
             {/* Reader & Admin */}

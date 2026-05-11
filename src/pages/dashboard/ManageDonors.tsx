@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../store/AuthContext';
 import { Check, Search, Calendar, Plus, Trash2, Edit2, FileDown, Eye, X, ArrowRight, Ticket, DollarSign, CheckCircle } from 'lucide-react';
-import { collection, doc, setDoc, deleteDoc, updateDoc, query, orderBy, serverTimestamp, getDocsFromCache, getDocsFromServer, onSnapshot } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, updateDoc, query, orderBy, serverTimestamp, onSnapshot, where, getDocs } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
@@ -51,6 +51,11 @@ export default function ManageDonors() {
   const [paymentStatus, setPaymentStatus] = useState('Paid');
   const [paymentMonthCount, setPaymentMonthCount] = useState(1);
   const [month, setMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  const [paymentMonth, setPaymentMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
@@ -394,50 +399,50 @@ export default function ManageDonors() {
   }, [location.search, location.pathname]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const cacheKey = 'donor_members_cache';
-        const cachedDonors = sessionStorage.getItem(cacheKey);
-        if (cachedDonors) {
-          setDonors(JSON.parse(cachedDonors));
-        }
+    const fetchData = () => {
+      setLoading(true);
+      
+      // Attempt to load from cache
+      const cachedDonors = sessionStorage.getItem('cached_donor_members');
+      const cachedPayments = sessionStorage.getItem('cached_donor_payments');
+      const cacheTime = sessionStorage.getItem('cached_donors_time');
 
-        const donorsQuery = query(collection(db, 'donor-members'), orderBy('createdAt', 'asc'));
-        let donorSnap;
-        try {
-          donorSnap = await getDocsFromCache(donorsQuery);
-        } catch (e) {
-          donorSnap = await getDocsFromServer(donorsQuery);
-        }
-        const donorList = donorSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DonorMember[];
-        setDonors(donorList);
-        sessionStorage.setItem(cacheKey, JSON.stringify(donorList));
-
-        const paymentsCacheKey = 'donor_payments_cache';
-        const cachedPayments = sessionStorage.getItem(paymentsCacheKey);
-        if (cachedPayments) {
-           setPayments(JSON.parse(cachedPayments));
-        }
-
-        const paymentsQuery = collection(db, 'donor-payments');
-        let paySnap;
-        try {
-          paySnap = await getDocsFromCache(paymentsQuery);
-        } catch (e) {
-          paySnap = await getDocsFromServer(paymentsQuery);
-        }
-        const payList = paySnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DonorPayment[];
-        setPayments(payList);
-        sessionStorage.setItem(paymentsCacheKey, JSON.stringify(payList));
-        
-        setLoading(false);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.GET, 'donors-data');
+      if (cachedDonors && cachedPayments && cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
+        setDonors(JSON.parse(cachedDonors));
+        setPayments(JSON.parse(cachedPayments));
         setLoading(false);
       }
+      
+      // Standardize data fetching with real-time listeners for better performance and instant updates
+      const donorsQuery = query(collection(db, 'donor-members'), orderBy('createdAt', 'asc'));
+      const unsubDonors = onSnapshot(donorsQuery, (snapshot) => {
+        const donorList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DonorMember[];
+        setDonors(donorList);
+        sessionStorage.setItem('cached_donor_members', JSON.stringify(donorList));
+        sessionStorage.setItem('cached_donors_time', Date.now().toString());
+        setLoading(false);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, 'donor-members');
+        setLoading(false);
+      });
+
+      const paymentsQuery = collection(db, 'donor-payments');
+      const unsubPayments = onSnapshot(paymentsQuery, (snapshot) => {
+        const payList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as DonorPayment[];
+        setPayments(payList);
+        sessionStorage.setItem('cached_donor_payments', JSON.stringify(payList));
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, 'donor-payments');
+      });
+
+      return () => {
+        unsubDonors();
+        unsubPayments();
+      };
     };
 
-    fetchData();
+    const cleanup = fetchData();
+    return cleanup;
   }, []);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -520,11 +525,18 @@ export default function ManageDonors() {
     setIsSubmitting(true);
     try {
       const dbCollection = collection(db, 'donor-payments');
-      let currentYear = parseInt(month.split('-')[0], 10);
-      let currentMonthNum = parseInt(month.split('-')[1], 10);
+      const financeCollection = collection(db, 'finances');
+      const donor = donors.find(d => d.id === selectedDonorId);
+      
+      let currentYear = parseInt(paymentMonth.split('-')[0], 10);
+      let currentMonthNum = parseInt(paymentMonth.split('-')[1], 10);
+
+      const monthsBn = ["জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"];
 
       for (let i = 0; i < paymentMonthCount; i++) {
         const formattedMonth = `${currentYear}-${String(currentMonthNum).padStart(2, '0')}`;
+        const actualMonthTitle = monthsBn[currentMonthNum - 1];
+        
         const newDocRef = doc(dbCollection);
         await setDoc(newDocRef, {
           donorId: selectedDonorId,
@@ -536,6 +548,19 @@ export default function ManageDonors() {
           date: new Date().toISOString(),
           createdAt: serverTimestamp()
         });
+
+        // Auto-add to finances if status is Paid
+        if (paymentStatus === 'Paid') {
+          const financeRef = doc(financeCollection);
+          await setDoc(financeRef, {
+            id: financeRef.id,
+            type: 'income',
+            amount: amount,
+            description: `দাতা সদস্য অনুদান: ${donor?.name || 'অজানা'} (${actualMonthTitle}, ${currentYear})`,
+            date: new Date().toISOString(),
+            paymentId: newDocRef.id // link them
+          });
+        }
         
         currentMonthNum++;
         if (currentMonthNum > 12) {
@@ -559,8 +584,37 @@ export default function ManageDonors() {
     const newStatus = currentStatus === 'Paid' ? 'Unpaid' : 'Paid';
     try {
       await updateDoc(doc(db, 'donor-payments', id), { status: newStatus });
+      
+      // Update finances accordingly
+      if (newStatus === 'Paid') {
+        const p = payments.find(pay => pay.id === id);
+        const donor = donors.find(d => d.id === p?.donorId);
+        if (p) {
+          const [year, mNum] = p.month.split('-');
+          const monthsBn = ["জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"];
+          const actualMonthTitle = monthsBn[parseInt(mNum) - 1];
+
+          const financeRef = doc(collection(db, 'finances'));
+          await setDoc(financeRef, {
+            id: financeRef.id,
+            type: 'income',
+            amount: p.amount,
+            description: `দাতা সদস্য অনুদান: ${donor?.name || 'অজানা'} (${actualMonthTitle}, ${year})`,
+            date: new Date().toISOString(),
+            paymentId: id
+          });
+        }
+      } else {
+        // Find and delete related finance record
+        const financeSnap = await getDocs(query(collection(db, 'finances'), where('paymentId', '==', id)));
+        for (const doc of financeSnap.docs) {
+          await deleteDoc(doc.ref);
+        }
+      }
+      toast.success(`পেমেন্ট ${newStatus === 'Paid' ? 'পরিশোধিত' : 'বকেয়া'} হিসেবে চিহ্নিত করা হয়েছে।`);
     } catch (error) {
       console.error(error);
+      toast.error('স্ট্যাটাস আপডেট করতে সমস্যা হয়েছে।');
     }
   };
 
@@ -568,6 +622,12 @@ export default function ManageDonors() {
     if(!confirm('পেমেন্টটি ডিলিট করতে চান?')) return;
     try {
       await deleteDoc(doc(db, 'donor-payments', id));
+      // Delete from finances too
+      const financeSnap = await getDocs(query(collection(db, 'finances'), where('paymentId', '==', id)));
+      for (const doc of financeSnap.docs) {
+        await deleteDoc(doc.ref);
+      }
+      toast.success('পেমেন্ট এবং সম্পর্কিত হিসাব ডিলিট করা হয়েছে।');
     } catch (error) {
        console.error(error);
     }
@@ -1137,20 +1197,26 @@ export default function ManageDonors() {
 
       <AnimatePresence>
         {showAddDonor && (
-          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white p-8 rounded-[2rem] shadow-2xl border border-slate-200 w-full max-w-2xl"
+              className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-200 w-full max-w-2xl my-4 sm:my-8 overflow-hidden sticky top-4"
             >
-              <h3 className="font-black text-2xl mb-6 font-bengali text-slate-900 flex items-center gap-3">
-                <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
-                  <Plus className="w-6 h-6" />
-                </div>
-                {editingDonor ? 'সদস্যের তথ্য আপডেট' : 'নতুন সদস্য যোগ করুন'}
-              </h3>
-              <form onSubmit={handleAddDonor} className="space-y-5">
+              <div className="sticky top-0 bg-white z-10 p-8 pb-4 border-b border-slate-50 flex items-center justify-between">
+                <h3 className="font-black text-2xl font-bengali text-slate-900 flex items-center gap-3">
+                  <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+                    <Plus className="w-6 h-6" />
+                  </div>
+                  {editingDonor ? 'সদস্যের তথ্য আপডেট' : 'নতুন সদস্য যোগ করুন'}
+                </h3>
+                <button onClick={() => setShowAddDonor(false)} className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-400">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <form onSubmit={handleAddDonor} className="p-8 space-y-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2 font-bengali">ক্রমিক নং (Serial)</label>
@@ -1173,9 +1239,9 @@ export default function ManageDonors() {
                   <label className="block text-sm font-bold text-slate-700 mb-2 font-bengali">ঠিকানা (ঐচ্ছিক)</label>
                   <textarea value={donorForm.address || ''} onChange={e => setDonorForm({...donorForm, address: e.target.value})} className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all font-bengali" placeholder="ঠিকানা লিখুন..." rows={2}></textarea>
                 </div>
-                <div className="flex gap-4 pt-4">
+                <div className="sticky bottom-0 bg-white pt-4 flex gap-4 border-t border-slate-50 py-4 mt-8">
                   <button type="button" disabled={isSubmitting} onClick={() => setShowAddDonor(false)} className="flex-1 px-4 py-4 border-2 border-slate-200 text-slate-600 rounded-2xl text-base font-black hover:bg-slate-50 transition-all font-bengali disabled:opacity-50">বাতিল</button>
-                  <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-4 bg-slate-900 text-white rounded-2xl text-base font-black hover:bg-slate-800 shadow-lg shadow-slate-900/20 transition-all active:scale-[0.98] font-bengali disabled:opacity-50 flex items-center justify-center gap-2">
+                  <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-4 bg-slate-900 text-white rounded-2xl text-base font-black hover:bg-black shadow-lg shadow-slate-900/20 transition-all active:scale-[0.98] font-bengali disabled:opacity-50 flex items-center justify-center gap-2">
                     {isSubmitting && <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
                     সংরক্ষণ করুন
                   </button>
@@ -1188,14 +1254,14 @@ export default function ManageDonors() {
 
       <AnimatePresence>
         {showPaymentForm && (
-          <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
             <motion.div 
                initial={{ opacity: 0, scale: 0.95, y: 20 }}
                animate={{ opacity: 1, scale: 1, y: 0 }}
                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-               className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-slate-200 w-full max-w-2xl overflow-y-auto max-h-[90vh] font-bengali"
+               className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-200 w-full max-w-2xl my-4 sm:my-8 overflow-hidden sticky top-4 font-bengali"
             >
-              <div className="flex justify-between items-center mb-6">
+              <div className="sticky top-0 bg-white z-10 px-8 py-6 border-b border-slate-50 flex justify-between items-center">
                 <h3 className="font-black text-2xl font-bengali text-slate-900 flex items-center gap-3">
                   <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
                     <DollarSign className="w-6 h-6" />
@@ -1204,13 +1270,13 @@ export default function ManageDonors() {
                 </h3>
                 <button 
                   onClick={() => setShowPaymentForm(false)}
-                  className="p-2 hover:bg-slate-100 rounded-full transition-all"
+                  className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-400"
                 >
-                  <X size={24} className="text-slate-400" />
+                  <X size={24} />
                 </button>
               </div>
 
-              <form onSubmit={handleRecordPayment} className="space-y-6">
+              <form onSubmit={handleRecordPayment} className="p-8 space-y-6">
                 <div className="space-y-2">
                   <label className="block text-sm font-bold text-slate-700 font-bengali">দাতা সদস্য নির্বাচন করুন <span className="text-rose-500">*</span></label>
                   <Select
@@ -1230,7 +1296,7 @@ export default function ManageDonors() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2 font-bengali">শুরুর মাস (Start Month)</label>
-                    <input type="month" value={month} onChange={e => setMonth(e.target.value)} required className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all font-mono" />
+                    <input type="month" value={paymentMonth} onChange={e => setPaymentMonth(e.target.value)} required className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all font-mono" />
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2 font-bengali">মাসের সংখ্যা (Months)</label>
@@ -1284,7 +1350,7 @@ export default function ManageDonors() {
                   </div>
                 </div>
 
-                <div className="flex gap-4 pt-4">
+                <div className="sticky bottom-0 bg-white pt-4 flex gap-4 border-t border-slate-50 py-4 mt-4">
                   <button type="button" disabled={isSubmitting} onClick={() => setShowPaymentForm(false)} className="flex-1 px-4 py-4 border-2 border-slate-200 text-slate-600 rounded-2xl text-base font-black hover:bg-slate-50 transition-all font-bengali disabled:opacity-50">বাতিল</button>
                   <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-4 bg-indigo-600 text-white rounded-2xl text-base font-black hover:bg-indigo-700 shadow-xl shadow-indigo-900/20 transition-all active:scale-[0.98] font-bengali disabled:opacity-50 flex items-center justify-center gap-2">
                     {isSubmitting && <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
@@ -1300,16 +1366,29 @@ export default function ManageDonors() {
       {/* Main Table */}
       <div className="bg-white rounded-[24px] shadow-sm border border-slate-200/60 overflow-hidden">
         <div className="p-4 sm:p-5 border-b border-slate-100/80 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50">
-          <div className="relative w-full sm:w-[320px]">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="সদস্যদের খুঁজুন..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-[16px] text-sm font-bold focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all font-bengali shadow-sm text-slate-700"
-            />
+          <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
+            <div className="relative w-full sm:w-[280px]">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="সদস্যদের খুঁজুন..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-[16px] text-sm font-bold focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all font-bengali shadow-sm text-slate-700"
+              />
+            </div>
+            
+            <div className="w-full sm:w-auto relative">
+              <input 
+                type="month" 
+                value={month} 
+                onChange={e => setMonth(e.target.value)}
+                className="w-full sm:w-[180px] px-4 py-3 bg-white border border-slate-200 rounded-[16px] text-sm font-bold focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all font-mono shadow-sm text-slate-700"
+              />
+              <div className="absolute -top-2.5 left-3 bg-white px-2 text-[9px] font-black text-indigo-500 uppercase tracking-widest border border-indigo-50 rounded font-sans">View Month</div>
+            </div>
           </div>
+
           <Select
             value={{
               value: filterOption,
@@ -1358,8 +1437,9 @@ export default function ManageDonors() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:hidden">
               {filtered.map((d, index) => {
                 const donorPayments = (paymentsByDonor.get(d.id) || []).filter(p => p.month === month);
+                const isPaid = donorPayments.some(p => p.status === 'Paid');
                 const totalPaid = donorPayments.reduce((s, p) => p.status === 'Paid' ? s + Number(p.amount) : s, 0);
-                const hasUnpaid = donorPayments.some(p => p.status === 'Unpaid') || donorPayments.length === 0;
+                const currentStatus = isPaid ? 'Paid' : 'Due';
 
                 return (
                    <div key={d.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col gap-4">
@@ -1369,8 +1449,8 @@ export default function ManageDonors() {
                               {d.serial || (index + 1).toString().replace(/[0-9]/g, function(w) { return String.fromCharCode(w.charCodeAt(0) + 2486) })}
                             </span>
                             <div>
-                              <h4 className="font-bold text-slate-900 font-bengali text-lg leading-loose mb-2">{d.name}</h4>
-                              <p className="text-xs font-bold font-mono text-slate-500 tracking-widest">{d.phone}</p>
+                               <h4 className="font-bold text-slate-900 font-bengali text-lg leading-loose mb-2">{d.name}</h4>
+                               <p className="text-xs font-bold font-mono text-slate-500 tracking-widest">{d.phone}</p>
                             </div>
                          </div>
                       </div>
@@ -1387,13 +1467,13 @@ export default function ManageDonors() {
                       </div>
 
                       <div className="flex items-center justify-between mt-1">
-                         {hasUnpaid ? (
+                         {currentStatus === 'Due' ? (
                              <span className="inline-flex text-[11px] bg-rose-50 border border-rose-100 text-rose-600 font-bold px-2.5 py-1 rounded-md font-bengali shadow-sm">
-                               বকেয়া আছে
+                                বকেয়া আছে
                              </span>
                           ) : (
                              <span className="inline-flex text-[11px] bg-emerald-50 border border-emerald-100 text-emerald-600 font-bold px-2.5 py-1 rounded-md font-bengali shadow-sm">
-                               পরিশোধিত
+                                পরিশোধিত
                              </span>
                           )}
                          
@@ -1433,8 +1513,9 @@ export default function ManageDonors() {
                 <tbody className="divide-y divide-slate-100">
                   {filtered.map((d, index) => {
                     const donorPayments = (paymentsByDonor.get(d.id) || []).filter(p => p.month === month);
+                    const isPaid = donorPayments.some(p => p.status === 'Paid');
                     const totalPaid = donorPayments.reduce((s, p) => p.status === 'Paid' ? s + Number(p.amount) : s, 0);
-                    const hasUnpaid = donorPayments.some(p => p.status === 'Unpaid') || donorPayments.length === 0;
+                    const hasUnpaid = !isPaid;
 
                     return (
                       <tr key={d.id} className="hover:bg-slate-50/80 transition-all group">
@@ -1490,8 +1571,8 @@ export default function ManageDonors() {
                           </div>
                         </td>
                       </tr>
-                    )
-                  })}
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
