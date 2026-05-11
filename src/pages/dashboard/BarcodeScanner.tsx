@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Html5QrcodeScanner } from "html5-qrcode";
+import { Html5Qrcode } from "html5-qrcode";
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { collection, query, where, getDocs, doc, updateDoc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { Search, Scan, Book, User, Calendar, CheckCircle2, XCircle, ArrowLeftRight, RefreshCcw, ScanLine } from 'lucide-react';
@@ -44,32 +44,37 @@ export default function BarcodeScanner() {
   }, [selectedUserId, book]);
 
   useEffect(() => {
-    // Initialize scanner
-    const scanner = new Html5QrcodeScanner(
-      "reader",
-      { 
-        fps: 10, 
-        qrbox: { width: 250, height: 150 },
-        aspectRatio: 1.0
-      },
-      /* verbose= */ false
-    );
+    const html5QrCode = new Html5Qrcode("reader");
+    
+    const startScanner = async () => {
+      try {
+        await html5QrCode.start(
+          { facingMode: "environment" }, 
+          { 
+            fps: 10, 
+            qrbox: { width: 250, height: 150 },
+            aspectRatio: 1.0
+          },
+          (decodedText) => {
+            setScanResult(decodedText);
+            handleBookLookup(decodedText);
+            html5QrCode.stop().catch(err => console.error("Error stopping scanner", err));
+          },
+          () => {} // failure callback
+        );
+      } catch (err) {
+        console.error("Camera start error:", err);
+      }
+    };
 
-    scanner.render(onScanSuccess, onScanFailure);
-
-    function onScanSuccess(decodedText: string, decodedResult: any) {
-      console.log(`Scan result: ${decodedText}`, decodedResult);
-      setScanResult(decodedText);
-      handleBookLookup(decodedText);
-      scanner.clear(); // Stop scanning after success
-    }
-
-    function onScanFailure(error: any) {
-      // Ignore errors during scan
+    if (!scanResult) {
+      startScanner();
     }
 
     return () => {
-      scanner.clear().catch(error => console.error("Failed to clear scanner", error));
+      if (html5QrCode.isScanning) {
+        html5QrCode.stop().catch(err => console.error("Cleanup error:", err));
+      }
     };
   }, []);
 
@@ -236,17 +241,18 @@ export default function BarcodeScanner() {
 
     // Re-initialize scanner
     setTimeout(() => {
-      const scanner = new Html5QrcodeScanner(
-        "reader",
+      const html5QrCode = new Html5Qrcode("reader");
+      html5QrCode.start(
+        { facingMode: "environment" },
         { fps: 10, qrbox: { width: 250, height: 150 } },
-        false
-      );
-      scanner.render((decodedText: string) => {
-        setScanResult(decodedText);
-        handleBookLookup(decodedText);
-        scanner.clear();
-      }, () => {});
-    }, 100);
+        (decodedText: string) => {
+          setScanResult(decodedText);
+          handleBookLookup(decodedText);
+          html5QrCode.stop().catch(err => console.error("Stop error:", err));
+        },
+        () => {} // failure
+      ).catch(err => console.error("Restart error:", err));
+    }, 300);
   };
 
   const userOptions = users.map(u => ({
