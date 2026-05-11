@@ -22,7 +22,13 @@ export default function ManageIssues() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get('action') === 'issue') {
-      setFormData({ bookId: '', userId: '', expectedReturnDate: '' });
+      const sevenDaysLater = new Date();
+      sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+      setFormData({ 
+        bookId: '', 
+        userId: '', 
+        expectedReturnDate: sevenDaysLater.toISOString().split('T')[0] 
+      });
       setShowIssueForm(true);
     }
   }, [location]);
@@ -749,7 +755,13 @@ export default function ManageIssues() {
              </button>
              <button 
                onClick={() => {
-                 setFormData({ bookId: '', userId: '', expectedReturnDate: '' });
+                 const sevenDaysLater = new Date();
+                 sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+                 setFormData({ 
+                   bookId: '', 
+                   userId: '', 
+                   expectedReturnDate: sevenDaysLater.toISOString().split('T')[0] 
+                 });
                  setShowIssueForm(true);
                }} 
                className="flex-1 md:flex-none justify-center bg-indigo-600 shadow-lg shadow-indigo-600/20 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all font-bengali whitespace-nowrap"

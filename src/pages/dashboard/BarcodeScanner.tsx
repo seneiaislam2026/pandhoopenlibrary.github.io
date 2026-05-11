@@ -109,8 +109,16 @@ export default function BarcodeScanner() {
         setScanResult(null);
         // Restart scanner maybe? In UI we'll have a button.
       } else {
-        const bookData = { id: snap.docs[0].id, ...snap.docs[0].data() };
+        const bookData = { id: snap.docs[0].id, ...snap.docs[0].data() } as any;
         setBook(bookData);
+        
+        // Auto set 7 days return date
+        if (bookData.status === 'Available') {
+          const sevenDaysLater = new Date();
+          sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+          setExpectedReturnDate(sevenDaysLater.toISOString().split('T')[0]);
+        }
+        
         toast.success("বইটি পাওয়া গিয়েছে!");
       }
     } catch (err) {

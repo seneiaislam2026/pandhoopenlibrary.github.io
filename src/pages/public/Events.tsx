@@ -51,7 +51,9 @@ export default function Events() {
     deadline: '',
     type: 'সাংস্কৃতিক',
     status: 'Active' as const,
-    image: ''
+    image: '',
+    requiredDocuments: [] as string[],
+    customQuestions: [] as string[]
   });
   const printRef = useRef<HTMLDivElement>(null);
 
