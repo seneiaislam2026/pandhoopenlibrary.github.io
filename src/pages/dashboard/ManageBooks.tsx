@@ -260,7 +260,7 @@ CRITICAL RULES:
         category: parsed.category || prev.category || (bookInfoRaw?.categories ? bookInfoRaw.categories[0] : ''),
         description: parsed.description || prev.description || (bookInfoRaw?.description || ''),
         cover: prev.cover || thumbnailUrl,
-        barcode: prev.barcode || isbn
+        barcode: isbn
       }));
       
     } catch (err) {
@@ -273,7 +273,11 @@ CRITICAL RULES:
     setIsScanning(true);
     setTimeout(async () => {
       try {
-        const html5QrCode = new Html5Qrcode("isbn-reader");
+        const html5QrCode = new Html5Qrcode("isbn-reader", {
+          formatsToSupport: [ 
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 
+          ]
+        } as any);
         scannerInstance.current = html5QrCode;
         let cameraConfig: any = { facingMode: "environment" };
         
@@ -295,8 +299,8 @@ CRITICAL RULES:
             fps: 10,
             qrbox: (w, h) => {
               const minEdge = Math.min(w, h);
-              const width = Math.floor(minEdge * 0.8);
-              return { width: width, height: Math.floor(width * 0.5) };
+              const width = Math.floor(minEdge * 0.85);
+              return { width: width, height: Math.floor(width * 0.55) };
             }
           },
           (decodedText) => {

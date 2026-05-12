@@ -56,7 +56,11 @@ export default function BarcodeScanner() {
       return;
     }
 
-    const html5QrCode = new Html5Qrcode("reader");
+    const html5QrCode = new Html5Qrcode("reader", {
+      formatsToSupport: [ 
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 
+      ]
+    } as any);
     scannerInstance.current = html5QrCode;
     isScanningBlocked.current = false;
     
@@ -81,32 +85,28 @@ export default function BarcodeScanner() {
           { 
             fps: 10, 
             qrbox: (videoWidth, videoHeight) => {
-              // Mobile friendly size
               const minEdge = Math.min(videoWidth, videoHeight);
-              const width = Math.floor(minEdge * 0.8);
-              return { width: width, height: Math.floor(width * 0.5) };
+              const width = Math.floor(minEdge * 0.85);
+              return { width: width, height: Math.floor(width * 0.55) };
             }
           },
-          (decodedText) => {
+          async (decodedText) => {
             if (isScanningBlocked.current) return;
-            isScanningBlocked.current = true;
             
+            // For book scans, we block and handle
             if (!book) {
-              // First scan: Looking for a book
-              setIsScannerActive(false); // turn off camera after successful book scan
+              isScanningBlocked.current = true;
               setScanResult(decodedText);
+              // Stop scanner before updating state that might unmount to prevent crashes
+              try { await html5QrCode.stop(); } catch(e) {}
+              setIsScannerActive(false); 
               handleBookLookup(decodedText);
             } else if (book.status === 'Available' && !selectedUserId) {
-              // Second scan: Looking for a member
+              // Member scan
               handleMemberScan(decodedText);
-              // We might want to keep the scanner active for another scan or turn it off
-              // Let's turn it off for now to reduce CPU, but allow a button to restart
-              setIsScannerActive(false); 
-            } else {
-              // Default behavior
-              setIsScannerActive(false);
-              setScanResult(decodedText);
-              handleBookLookup(decodedText);
+              // Keep scanner active but maybe block briefly
+              isScanningBlocked.current = true;
+              setTimeout(() => { isScanningBlocked.current = false; }, 2000);
             }
           },
           () => {} // failure callback
@@ -361,200 +361,196 @@ export default function BarcodeScanner() {
         </div>
       </div>
 
-      <AnimatePresence mode="wait">
-        {!scanResult && (
-          <div className={cn("bg-white p-4 max-w-sm mx-auto rounded-[2rem] shadow-xl border border-slate-100 overflow-hidden text-center mb-8")}>
-            {!isScannerActive ? (
-              <div className="py-10">
-                 <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <ScanLine size={40} />
-                 </div>
-                 <h3 className="text-xl font-bold text-slate-800 mb-2">বারকোড স্ক্যানার</h3>
-                 <p className="text-slate-500 mb-8 max-w-[250px] mx-auto">ডিভাইসের ক্যামেরা ব্যবহার করে বইয়ের বারকোড স্ক্যান করতে নিচে ক্লিক করুন।</p>
-                 <button
-                   onClick={() => setIsScannerActive(true)}
-                   className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all active:scale-95 flex flex-row items-center justify-center mx-auto gap-2"
-                 >
-                   <Scan size={20} />
-                   ক্যামেরা চালু করুন
-                 </button>
-              </div>
-            ) : (
-              <>
-                <div id="reader" className="w-full min-h-[300px] flex items-center justify-center rounded-2xl overflow-hidden border-2 border-indigo-100 bg-slate-50 relative">
-                   <button 
-                     onClick={() => setIsScannerActive(false)}
-                     className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center z-50 hover:bg-rose-500 transition-colors"
-                   >
-                     <XCircle size={20} />
-                   </button>
-                </div>
-                <div className="mt-4 text-center">
-                  <div className="flex items-center justify-center gap-2 text-indigo-600 font-bold mb-1">
-                    <div className="w-2 h-2 rounded-full bg-indigo-600 animate-ping"></div>
-                    বারকোড স্ক্যান করুন
-                  </div>
-                  <p className="text-xs text-slate-400">বইয়ের বারকোড ক্যামেরার সামনে ধরুন</p>
-                </div>
-              </>
-            )}
+      <div className="space-y-6">
+        {/* Scanner Section - Keep it in DOM but hidden when not active */}
+        <div className={cn(
+          "bg-white p-4 max-w-sm mx-auto rounded-[2rem] shadow-xl border border-slate-100 overflow-hidden text-center",
+          (scanResult || !isScannerActive) && "hidden"
+        )}>
+          <div id="reader" className="w-full min-h-[300px] flex items-center justify-center rounded-2xl overflow-hidden border-2 border-indigo-100 bg-slate-50 relative">
+             <button 
+               onClick={() => setIsScannerActive(false)}
+               className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center z-50 hover:bg-rose-500 transition-colors"
+             >
+               <XCircle size={20} />
+             </button>
           </div>
-        )}
-      </AnimatePresence>
-
-      <div className={cn("mb-6")}>
-        <div className="relative">
-          <input
-            ref={inputRef}
-            type="text"
-            value={manualCode}
-            onChange={(e) => setManualCode(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                const code = manualCode.trim();
-                setManualCode('');
-                
-                if (!book) {
-                  setScanResult(code);
-                  handleBookLookup(code);
-                } else if (book.status === 'Available' && !selectedUserId) {
-                  handleMemberScan(code);
-                } else if (book.status === 'Available' && selectedUserId) {
-                  // If both selected, maybe perform action? 
-                  // For now just keep it or let buttons do it.
-                  handleMemberScan(code); // Update user if scanned another
-                }
-              }
-            }}
-            placeholder={!book ? "বইয়ের বারকোড স্ক্যান করুন..." : "মেম্বার আইডি স্ক্যান করুন..."}
-            className="w-full px-5 py-4 bg-white border-2 border-indigo-100 rounded-2xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all font-black text-indigo-600 placeholder:text-slate-300 placeholder:font-bold"
-          />
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-200">
-             <ScanLine size={24} />
+          <div className="mt-4 text-center">
+            <div className="flex items-center justify-center gap-2 text-indigo-600 font-bold mb-1">
+              <div className="w-2 h-2 rounded-full bg-indigo-600 animate-ping"></div>
+              বারকোড স্ক্যান করুন
+            </div>
+            <p className="text-xs text-slate-400">বইয়ের বারকোড ক্যামেরার সামনে ধরুন</p>
           </div>
         </div>
-        <p className="text-center text-slate-400 text-xs mt-2 italic font-medium font-bengali">
-          {!book ? "বইয়ের বারকোড মেশিন দিয়ে স্ক্যান করুন।" : "এবার মেম্বারের বারকোড বা আইডি কার্ড স্ক্যান করুন।"}
-        </p>
-      </div>
 
-      <AnimatePresence mode="wait">
-        {scanResult && (
-          <motion.div
-            key="result"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-6"
-          >
-            {loading ? (
-              <div className="bg-white p-12 rounded-[2.5rem] text-center shadow-lg border border-slate-100">
-                <RefreshCcw className="w-10 h-10 text-indigo-500 animate-spin mx-auto mb-4" />
-                <p className="font-bold text-slate-600">উপাত্ত খুঁজে বের করা হচ্ছে...</p>
-              </div>
-            ) : book ? (
-              <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-slate-100 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50/50 rounded-bl-full -mr-8 -mt-8 -z-0"></div>
-                
-                <div className="relative z-10">
-                  <div className="flex items-start gap-4 mb-6">
-                    <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400 shrink-0">
-                      <Book size={32} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <span className="inline-block px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black rounded-lg mb-1 uppercase tracking-tighter">
-                        Code: {book.bookCode}
-                      </span>
-                      <h3 className="text-xl font-black text-slate-900 leading-tight">{book.title}</h3>
-                      <p className="text-sm text-slate-500 font-medium">{book.author || 'অজানা লেখক'}</p>
-                    </div>
+        {/* Manual Input Section */}
+        <div className={cn("transition-all", scanResult && "opacity-50 pointer-events-none")}>
+          <div className="relative">
+            <input
+              ref={inputRef}
+              type="text"
+              value={manualCode}
+              onChange={(e) => setManualCode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const code = manualCode.trim();
+                  if (!code) return;
+                  setManualCode('');
+                  
+                  if (!book) {
+                    setScanResult(code);
+                    handleBookLookup(code);
+                  } else if (book.status === 'Available' && !selectedUserId) {
+                    handleMemberScan(code);
+                  } else {
+                    handleBookLookup(code);
+                  }
+                }
+              }}
+              placeholder={!book ? "বইয়ের বারকোড স্ক্যান করুন..." : "মেম্বার আইডি স্ক্যান করুন..."}
+              className="w-full px-5 py-4 bg-white border-2 border-indigo-100 rounded-2xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all font-black text-indigo-600 placeholder:text-slate-300 placeholder:font-bold shadow-sm"
+            />
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-200">
+               <ScanLine size={24} />
+            </div>
+          </div>
+          <p className="text-center text-slate-400 text-xs mt-2 italic font-medium">
+            {!book ? "বইয়ের বারকোড মেশিন দিয়ে স্ক্যান করুন।" : "এবার মেম্বারের বারকোড বা আইডি কার্ড স্ক্যান করুন।"}
+          </p>
+        </div>
+
+        {/* Results Section */}
+        <div className="min-h-[200px]">
+          {!scanResult && !isScannerActive && !loading && !book && (
+            <div className="bg-white p-10 rounded-[2rem] text-center border border-dashed border-slate-200">
+               <div className="w-16 h-16 bg-slate-50 text-slate-300 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <ScanLine size={32} />
+               </div>
+               <h3 className="text-lg font-bold text-slate-700">স্ক্যান শুরু করুন</h3>
+               <button
+                  onClick={() => setIsScannerActive(true)}
+                  className="mt-6 px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition active:scale-95 flex items-center justify-center gap-2 mx-auto"
+                >
+                  <Scan size={18} />
+                  ক্যামেরা চালু করুন
+                </button>
+            </div>
+          )}
+
+          {loading && (
+            <div className="bg-white p-12 rounded-[2.5rem] text-center shadow-lg border border-slate-100">
+              <RefreshCcw className="w-10 h-10 text-indigo-500 animate-spin mx-auto mb-4" />
+              <p className="font-bold text-slate-600">উপাত্ত খুঁজে বের করা হচ্ছে...</p>
+            </div>
+          )}
+
+          {!loading && scanResult && book && (
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-slate-100 relative overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50/50 rounded-bl-full -mr-8 -mt-8 -z-0"></div>
+              
+              <div className="relative z-10 font-bengali">
+                {/* Book Details */}
+                <div className="flex items-start gap-4 mb-6">
+                  <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400 shrink-0">
+                    <Book size={32} />
                   </div>
-
-                  <div className="flex items-center gap-2 mb-8">
-                    <div className={cn(
-                      "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black",
-                      book.status === 'Available' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-amber-50 text-amber-600 border border-amber-100"
-                    )}>
-                      {book.status === 'Available' ? <CheckCircle2 size={16} /> : <ArrowLeftRight size={16} />}
-                      {book.status === 'Available' ? 'পাওয়া যাবে (Available)' : 'ইস্যুকৃত (Issued)'}
-                    </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="inline-block px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black rounded-lg mb-1 uppercase tracking-tighter">
+                      Code: {book.bookCode}
+                    </span>
+                    <h3 className="text-xl font-black text-slate-900 leading-tight">{book.title}</h3>
+                    <p className="text-sm text-slate-500 font-medium">{book.author || 'অজানা লেখক'}</p>
                   </div>
-
-                  {book.status === 'Available' ? (
-                    <div className="space-y-6">
-                      <div className="space-y-4 bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                        <div>
-                          <label className="block text-sm font-bold text-slate-700 mb-2">মেম্বার সিলেক্ট করুন (বা স্ক্যান করুন)</label>
-                          <Select
-                            options={userOptions}
-                            styles={selectStyles}
-                            value={userOptions.find(o => o.value === selectedUserId)}
-                            placeholder="নাম বা আইডি লিখুন..."
-                            onChange={(opt: any) => setSelectedUserId(opt?.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-bold text-slate-700 mb-2">ফেরত দেওয়ার তারিখ</label>
-                          <input
-                            type="date"
-                            value={expectedReturnDate}
-                            onChange={e => setExpectedReturnDate(e.target.value)}
-                            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-mono"
-                          />
-                        </div>
-                      </div>
-                      <button
-                        onClick={handleIssue}
-                        disabled={isSubmitting}
-                        className="w-full h-14 bg-indigo-600 text-white rounded-2xl font-black text-lg hover:bg-indigo-700 shadow-xl shadow-indigo-200 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50"
-                      >
-                        {isSubmitting ? <RefreshCcw className="animate-spin" /> : <ScanLine />}
-                        বই ইস্যু করুন
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      <div className="bg-amber-50 p-6 rounded-3xl border border-amber-100">
-                        <div className="flex items-center gap-2 text-amber-800 font-bold mb-2">
-                          <User size={18} />
-                          বর্তমানে যার কাছে আছে:
-                        </div>
-                        <p className="text-xl font-bold text-amber-900">{book.currentReaderName}</p>
-                      </div>
-                      <button
-                        onClick={handleReturn}
-                        disabled={isSubmitting}
-                        className="w-full h-14 bg-emerald-600 text-white rounded-2xl font-black text-lg hover:bg-emerald-700 shadow-xl shadow-emerald-200 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50"
-                      >
-                        {isSubmitting ? <RefreshCcw className="animate-spin" /> : <RefreshCcw />}
-                        বই ফেরত নিন
-                      </button>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={resetScanner}
-                    className="w-full mt-4 py-3 text-slate-500 font-bold hover:text-indigo-600 transition-colors"
-                  >
-                    আবার স্ক্যান করুন
-                  </button>
                 </div>
-              </div>
-            ) : (
-              <div className="bg-white p-12 rounded-[2.5rem] text-center shadow-lg border border-slate-100">
-                <XCircle className="w-16 h-16 text-rose-500 mx-auto mb-4" />
-                <h3 className="text-xl font-black text-slate-900 mb-2">বই পাওয়া যায়নি!</h3>
-                <p className="text-slate-500 mb-8">বারকোডটি সঠিক কিনা যাচাই করুন।</p>
+
+                <div className="flex items-center gap-2 mb-8">
+                  <div className={cn(
+                    "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black",
+                    book.status === 'Available' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-amber-50 text-amber-600 border border-amber-100"
+                  )}>
+                    {book.status === 'Available' ? <CheckCircle2 size={16} /> : <ArrowLeftRight size={16} />}
+                    {book.status === 'Available' ? 'পাওয়া যাবে (Available)' : 'ইস্যুকৃত (Issued)'}
+                  </div>
+                </div>
+
+                {book.status === 'Available' ? (
+                  <div className="space-y-6">
+                    <div className="space-y-4 bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                      <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">মেম্বার সিলেক্ট করুন (বা স্ক্যান করুন)</label>
+                        <Select
+                          options={userOptions}
+                          styles={selectStyles}
+                          value={userOptions.find(o => o.value === selectedUserId)}
+                          placeholder="নাম বা আইডি লিখুন..."
+                          onChange={(opt: any) => setSelectedUserId(opt?.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">ফেরত দেওয়ার তারিখ</label>
+                        <input
+                          type="date"
+                          value={expectedReturnDate}
+                          onChange={e => setExpectedReturnDate(e.target.value)}
+                          className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-mono"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleIssue}
+                      disabled={isSubmitting}
+                      className="w-full h-14 bg-indigo-600 text-white rounded-2xl font-black text-lg hover:bg-indigo-700 shadow-xl shadow-indigo-200 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      {isSubmitting ? <RefreshCcw className="animate-spin" /> : <ScanLine />}
+                      বই ইস্যু করুন
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="bg-amber-50 p-6 rounded-3xl border border-amber-100">
+                      <div className="flex items-center gap-2 text-amber-800 font-bold mb-2">
+                        <User size={18} />
+                        বর্তমানে যার কাছে আছে:
+                      </div>
+                      <p className="text-xl font-bold text-amber-900">{book.currentReaderName}</p>
+                    </div>
+                    <button
+                      onClick={handleReturn}
+                      disabled={isSubmitting}
+                      className="w-full h-14 bg-emerald-600 text-white rounded-2xl font-black text-lg hover:bg-emerald-700 shadow-xl shadow-emerald-200 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      {isSubmitting ? <RefreshCcw className="animate-spin" /> : <RefreshCcw />}
+                      বই ফেরত নিন
+                    </button>
+                  </div>
+                )}
+
                 <button
                   onClick={resetScanner}
-                  className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-100"
+                  className="w-full mt-4 py-3 text-slate-500 font-bold hover:text-indigo-600 transition-colors"
                 >
-                  আবার চেষ্টা করুন
+                  আবার স্ক্যান করুন
                 </button>
               </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </div>
+          )}
+
+          {!loading && scanResult && !book && (
+            <div className="bg-white p-12 rounded-[2.5rem] text-center shadow-lg border border-slate-100 animate-in zoom-in duration-300">
+              <XCircle className="w-16 h-16 text-rose-500 mx-auto mb-4" />
+              <h3 className="text-xl font-black text-slate-900 mb-2">বই পাওয়া যায়নি!</h3>
+              <p className="text-slate-500 mb-8 font-bengali">বারকোডটি সঠিক কিনা যাচাই করুন।</p>
+              <button
+                onClick={resetScanner}
+                className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-100"
+              >
+                আবার চেষ্টা করুন
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
