@@ -87,7 +87,7 @@ export default function BarcodeScanner() {
             qrbox: (videoWidth, videoHeight) => {
               const minEdge = Math.min(videoWidth, videoHeight);
               const width = Math.floor(minEdge * 0.85);
-              return { width: width, height: Math.floor(width * 0.55) };
+              return { width: width, height: width };
             }
           },
           async (decodedText) => {
@@ -367,7 +367,7 @@ export default function BarcodeScanner() {
           "bg-white p-2 max-w-sm mx-auto rounded-[2rem] shadow-xl border border-slate-100 overflow-hidden text-center",
           (scanResult || !isScannerActive) && "hidden"
         )}>
-          <div id="reader" className="w-full min-h-[220px] max-h-[250px] flex items-center justify-center rounded-2xl overflow-hidden border-2 border-indigo-100 bg-slate-50 relative">
+          <div id="reader" className="w-full min-h-[350px] max-h-[400px] flex items-center justify-center rounded-2xl overflow-hidden border-2 border-indigo-100 bg-slate-50 relative">
              <button 
                onClick={() => setIsScannerActive(false)}
                className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center z-50 hover:bg-rose-500 transition-colors"
@@ -386,11 +386,12 @@ export default function BarcodeScanner() {
 
         {/* Manual Input Section */}
         <div className={cn("transition-all", scanResult && "opacity-50 pointer-events-none")}>
-          <div className="relative">
+          <div className="relative group">
             <input
               ref={inputRef}
               type="text"
               value={manualCode}
+              autoFocus
               onChange={(e) => setManualCode(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -408,15 +409,15 @@ export default function BarcodeScanner() {
                   }
                 }
               }}
-              placeholder={!book ? "বইয়ের বারকোড স্ক্যান করুন..." : "মেম্বার আইডি স্ক্যান করুন..."}
-              className="w-full px-5 py-4 bg-white border-2 border-indigo-100 rounded-2xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all font-black text-indigo-600 placeholder:text-slate-300 placeholder:font-bold shadow-sm"
+              placeholder={!book ? "বইয়ের বারকোড দিন..." : "মেম্বার আইডি দিন..."}
+              className="w-full px-5 py-4 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-50 transition-all font-black text-indigo-600 placeholder:text-slate-300 placeholder:font-bold shadow-inner"
             />
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-200">
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-400">
                <ScanLine size={24} />
             </div>
           </div>
-          <p className="text-center text-slate-400 text-xs mt-2 italic font-medium">
-            {!book ? "বইয়ের বারকোড মেশিন দিয়ে স্ক্যান করুন।" : "এবার মেম্বারের বারকোড বা আইডি কার্ড স্ক্যান করুন।"}
+          <p className="text-center text-slate-400 text-[10px] mt-2 italic font-medium">
+            {!book ? "বারকোড মেশিন দিয়ে স্ক্যান করলে এখানে বই অটোমেটিক আসবে।" : "এবার মেম্বারের বারকোড স্ক্যান করুন।"}
           </p>
         </div>
 

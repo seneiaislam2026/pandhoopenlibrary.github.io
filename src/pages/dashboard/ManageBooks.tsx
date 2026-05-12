@@ -300,7 +300,7 @@ CRITICAL RULES:
             qrbox: (w, h) => {
               const minEdge = Math.min(w, h);
               const width = Math.floor(minEdge * 0.85);
-              return { width: width, height: Math.floor(width * 0.55) };
+              return { width: width, height: width };
             }
           },
           (decodedText) => {
@@ -1193,7 +1193,7 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
                        <ScanLine className="w-5 h-5 text-indigo-500" />
                        বারকোড স্ক্যান করুন
                     </div>
-                    <div id="isbn-reader" className="w-full max-w-[280px] min-h-[180px] overflow-hidden rounded-2xl bg-black"></div>
+                    <div id="isbn-reader" className="w-full max-w-[280px] min-h-[300px] overflow-hidden rounded-2xl bg-black"></div>
                     <button 
                       type="button" 
                       onClick={stopIsbnScanner}
@@ -1228,11 +1228,6 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
                     <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">শেল্ফ নং (Shelf No)</label>
                     <input type="text" value={formData.shelfNo || ''} onChange={e=>setFormData({...formData, shelfNo: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm" placeholder="A1, B2..." />
                   </div>
-                </div>
-
-                <div>
-                   <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বইয়ের বারকোড (ISBN/UPC)</label>
-                   <input type="text" value={formData.barcode || ''} onChange={e=>setFormData({...formData, barcode: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold font-mono text-sm" placeholder="Scan or type barcode" />
                 </div>
 
                 <div>

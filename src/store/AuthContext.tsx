@@ -48,157 +48,112 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let unsubscribeProfile: (() => void) | null = null;
+    let isSubscribed = true;
+    let unsubscribeProfileSubscription: (() => void) | null = null;
 
-    // Check for manual user in localStorage
-    const savedManualUser = localStorage.getItem('pandho_manual_user');
-    if (savedManualUser && !auth.currentUser) {
+    const fetchAndUpdateProfile = async (uid: string, isManual = false, initialData?: User) => {
       try {
-        const parsed = JSON.parse(savedManualUser);
-        setUser(parsed);
-        setToken('manual_session');
+        const { getDoc } = await import('firebase/firestore');
+        const docRef = doc(db, 'users', uid);
+        const docSnap = await getDoc(docRef);
         
-        let isManualSubscribed = true;
-        const fetchManualProfile = async () => {
-          try {
-            const { getDoc } = await import('firebase/firestore');
-            const docRef = doc(db, 'users', parsed.id);
-            const docSnap = await getDoc(docRef);
-            if (!isManualSubscribed) return;
-            if (docSnap.exists()) {
-              setUser({ ...docSnap.data() as User, id: docSnap.id });
-            }
-          } catch (error: any) {
-            if (isManualSubscribed) {
-               handleFirestoreError(error, OperationType.GET, `users/${parsed.id}`);
+        if (!isSubscribed) return;
+
+        if (docSnap.exists()) {
+          const data = docSnap.data() as User;
+          const isSuperAdmin = 
+            data.email === 'seneiaislam@gmail.com' || 
+            data.email === 'admin@library.com' || 
+            data.email === 'seneiaislam@library.com' ||
+            data.username === 'admin' ||
+            data.username === 'seneiaislam';
+            
+          const finalUser = { ...data, id: uid };
+          if (isSuperAdmin) finalUser.role = 'admin';
+
+          if (!isManual && finalUser.status === 'pending' && !isSuperAdmin) {
+            setUser(null);
+            setToken(null);
+            signOut(auth);
+          } else {
+            setUser(finalUser);
+            if (!isManual) {
+              localStorage.setItem(`auth_user_${uid}`, JSON.stringify(data));
+              localStorage.setItem(`auth_user_time_${uid}`, Date.now().toString());
             }
           }
-        };
-        fetchManualProfile();
-        unsubscribeProfile = () => { isManualSubscribed = false; };
-      } catch (e) {
-        localStorage.removeItem('pandho_manual_user');
+        } else if (initialData) {
+          setUser(initialData);
+        }
+      } catch (err) {
+        console.warn("Profile fetch error:", err);
+        if (initialData) setUser(initialData);
+      } finally {
+        if (isSubscribed) setLoading(false);
       }
-    }
+    };
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // If we are choosing Firebase Auth, clear manual local storage to avoid conflict
         localStorage.removeItem('pandho_manual_user');
-        
         const idToken = await firebaseUser.getIdToken();
-        setToken(idToken);
-
-        let isSubscribed = true;
-        const fetchProfile = async () => {
-          try {
-            const { getDoc } = await import('firebase/firestore');
-            const docRef = doc(db, 'users', firebaseUser.uid);
-            
-            const cachedProfile = localStorage.getItem(`auth_user_${firebaseUser.uid}`);
-            const cacheTime = localStorage.getItem(`auth_user_time_${firebaseUser.uid}`);
-            
-            let data: User;
-            let exists = false;
-
-            if (cachedProfile && cacheTime && (Date.now() - parseInt(cacheTime) < 60 * 60 * 1000)) {
-               data = JSON.parse(cachedProfile);
-               exists = true;
-            } else {
-               const { getDoc, getDocFromCache } = await import('firebase/firestore');
-               try {
-                 const docSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
-                 exists = docSnap.exists();
-                 if (exists) {
-                   data = docSnap.data() as User;
-                   localStorage.setItem(`auth_user_${firebaseUser.uid}`, JSON.stringify(data));
-                   localStorage.setItem(`auth_user_time_${firebaseUser.uid}`, Date.now().toString());
-                 }
-               } catch (err: any) {
-                 if (err.message?.includes('Quota exceeded') && cachedProfile) {
-                    console.warn("Quota exceeded while fetching profile. Using stale cache.");
-                    data = JSON.parse(cachedProfile);
-                    exists = true;
-                 } else {
-                    // Try one last time with strict cache if server fails for any reason
-                    try {
-                      const snap = await getDocFromCache(doc(db, 'users', firebaseUser.uid));
-                      if (snap.exists()) {
-                        data = snap.data() as User;
-                        exists = true;
-                      } else {
-                        throw err;
-                      }
-                    } catch (e) {
-                      throw err;
-                    }
-                 }
-               }
-            }
-
-            if (!isSubscribed) return;
-
-            if (exists) {
-              const isSuperAdmin = 
-                firebaseUser.email === 'seneiaislam@gmail.com' || 
-                firebaseUser.email === 'admin@library.com' || 
-                firebaseUser.email === 'seneiaislam@library.com' ||
-                data!.username === 'admin' ||
-                data!.username === 'seneiaislam';
-                
-              if (isSuperAdmin && data!.role !== 'admin') {
-                data!.role = 'admin';
-              }
-              if (data!.status === 'pending' && !isSuperAdmin) {
-                 setUser(null);
-                 setToken(null);
-                 signOut(auth);
-              } else {
-                 setUser({ ...data!, email: firebaseUser.email || undefined, id: firebaseUser.uid });
-              }
-            } else {
-              // Fallback if no profile yet
-              const isSuperAdmin = 
-                firebaseUser.email === 'seneiaislam@gmail.com' || 
-                firebaseUser.email === 'admin@library.com' || 
-                firebaseUser.email === 'seneiaislam@library.com' ||
-                firebaseUser.email?.startsWith('admin@') ||
-                firebaseUser.email?.startsWith('seneiaislam@');
-                
-              setUser({
-                id: firebaseUser.uid,
-                name: firebaseUser.displayName || 'User',
-                username: firebaseUser.email?.split('@')[0] || '',
-                email: firebaseUser.email || undefined,
-                role: isSuperAdmin ? 'admin' : 'reader'
-              });
-            }
+        
+        if (isSubscribed) {
+          setToken(idToken);
+        }
+        
+        const cachedProfile = localStorage.getItem(`auth_user_${firebaseUser.uid}`);
+        const cacheTime = localStorage.getItem(`auth_user_time_${firebaseUser.uid}`);
+        
+        if (cachedProfile && cacheTime && (Date.now() - parseInt(cacheTime) < 60 * 60 * 1000)) {
+          const data = JSON.parse(cachedProfile);
+          if (isSubscribed) {
+            setUser({ ...data, id: firebaseUser.uid, email: firebaseUser.email || data.email });
             setLoading(false);
-          } catch (err: any) {
+          }
+          // Still fetch fresh in background
+          fetchAndUpdateProfile(firebaseUser.uid);
+        } else {
+          fetchAndUpdateProfile(firebaseUser.uid, false, {
+            id: firebaseUser.uid,
+            name: firebaseUser.displayName || 'User',
+            username: firebaseUser.email?.split('@')[0] || '',
+            email: firebaseUser.email || undefined,
+            role: 'reader'
+          });
+        }
+      } else {
+        const savedManualUser = localStorage.getItem('pandho_manual_user');
+        if (savedManualUser) {
+          try {
+            const parsed = JSON.parse(savedManualUser);
             if (isSubscribed) {
-              handleFirestoreError(err, OperationType.GET, `users/${firebaseUser.uid}`);
+              setUser(parsed);
+              setToken('manual_session');
+            }
+            fetchAndUpdateProfile(parsed.id, true);
+          } catch (e) {
+            localStorage.removeItem('pandho_manual_user');
+            if (isSubscribed) {
+              setUser(null);
+              setToken(null);
               setLoading(false);
             }
           }
-        };
-
-        fetchProfile();
-
-        unsubscribeProfile = () => { isSubscribed = false; };
-      } else {
-        if (!localStorage.getItem('pandho_manual_user')) {
-          if (unsubscribeProfile) unsubscribeProfile();
-          setUser(null);
-          setToken(null);
+        } else {
+          if (isSubscribed) {
+            setUser(null);
+            setToken(null);
+            setLoading(false);
+          }
         }
-        // Immediately set loading to false if no user is found
-        setLoading(false);
       }
     });
 
     return () => {
+      isSubscribed = false;
       unsubscribeAuth();
-      if (unsubscribeProfile) unsubscribeProfile();
+      if (unsubscribeProfileSubscription) unsubscribeProfileSubscription();
     };
   }, []);
 
