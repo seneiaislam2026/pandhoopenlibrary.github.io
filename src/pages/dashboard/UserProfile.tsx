@@ -685,17 +685,6 @@ export default function UserProfile() {
   
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-12 font-bengali">
-      {/* Banner for Book List */}
-      <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
-        <div>
-          <h3 className="text-xl font-bold text-indigo-900 tracking-tight">আপনার কাঙ্ক্ষিত বইটি খুঁজছেন?</h3>
-          <p className="text-indigo-700 font-medium mt-1 text-sm">পাঠাগারের বিশাল সংগ্রহ থেকে যে কোনো বই খুঁজে নিতে আমাদের বইয়ের তালিকা দেখুন।</p>
-        </div>
-        <Link to="/dashboard/book-requests" className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold whitespace-nowrap shadow-md hover:bg-indigo-700 transition flex items-center gap-2">
-          <BookOpen className="w-5 h-5"/>
-          বই তালিকা দেখুন
-        </Link>
-      </div>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
