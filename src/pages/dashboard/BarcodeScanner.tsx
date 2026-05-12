@@ -20,7 +20,10 @@ export default function BarcodeScanner() {
   const [expectedReturnDate, setExpectedReturnDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [manualCode, setManualCode] = useState('');
+  const [isScannerActive, setIsScannerActive] = useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const scannerInstance = React.useRef<Html5Qrcode | null>(null);
+  const isScanningBlocked = React.useRef(false);
   const { user: currentUser } = useAuth();
   const navigate = useNavigate();
 
@@ -32,7 +35,7 @@ export default function BarcodeScanner() {
     
     // Global listener to refocus if clicked away
     const handleGlobalClick = () => {
-       if (!selectedUserId && !book) {
+       if (!selectedUserId && !book && !isScannerActive) {
          inputRef.current?.focus();
        }
     };
@@ -41,42 +44,76 @@ export default function BarcodeScanner() {
     return () => {
       window.removeEventListener('click', handleGlobalClick);
     };
-  }, [selectedUserId, book]);
+  }, [selectedUserId, book, isScannerActive]);
 
   useEffect(() => {
+    if (!isScannerActive) {
+      if (scannerInstance.current && scannerInstance.current.isScanning) {
+         scannerInstance.current.stop().then(() => {
+             scannerInstance.current?.clear();
+         }).catch(err => console.error("Error stopping scanner", err));
+      }
+      return;
+    }
+
     const html5QrCode = new Html5Qrcode("reader");
+    scannerInstance.current = html5QrCode;
+    isScanningBlocked.current = false;
     
     const startScanner = async () => {
       try {
+        let cameraConfig: any = { facingMode: "environment" };
+        
+        try {
+          const devices = await Html5Qrcode.getCameras();
+          if (devices && devices.length > 0) {
+            const backCamera = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('environment'));
+            if (backCamera) {
+              cameraConfig = backCamera.id;
+            }
+          }
+        } catch (e) {
+          console.warn("Could not probe cameras, using default environment mode", e);
+        }
+
         await html5QrCode.start(
-          { facingMode: "environment" }, 
+          cameraConfig, 
           { 
             fps: 10, 
-            qrbox: { width: 250, height: 150 },
-            aspectRatio: 1.0
+            qrbox: (videoWidth, videoHeight) => {
+              // Mobile friendly size
+              const minEdge = Math.min(videoWidth, videoHeight);
+              const width = Math.floor(minEdge * 0.8);
+              return { width: width, height: Math.floor(width * 0.5) };
+            }
           },
           (decodedText) => {
+            if (isScanningBlocked.current) return;
+            isScanningBlocked.current = true;
+            if (html5QrCode.pause) {
+              try { html5QrCode.pause(true); } catch(e) {}
+            }
+            setIsScannerActive(false); // turn off camera after successful scan
             setScanResult(decodedText);
             handleBookLookup(decodedText);
-            html5QrCode.stop().catch(err => console.error("Error stopping scanner", err));
           },
           () => {} // failure callback
         );
       } catch (err) {
         console.error("Camera start error:", err);
+        toast.error("ক্যামেরা চালু করতে সমস্যা হয়েছে। দয়া করে ব্রাউজারের ক্যামেরা পারমিশন চেক করুন।");
+        setIsScannerActive(false);
       }
     };
 
-    if (!scanResult) {
-      startScanner();
-    }
+    startScanner();
 
     return () => {
       if (html5QrCode.isScanning) {
         html5QrCode.stop().catch(err => console.error("Cleanup error:", err));
       }
     };
-  }, []);
+  }, [isScannerActive]);
 
   useEffect(() => {
     // Fetch users for issuing
@@ -247,20 +284,12 @@ export default function BarcodeScanner() {
       inputRef.current?.focus();
     }, 200);
 
-    // Re-initialize scanner
-    setTimeout(() => {
-      const html5QrCode = new Html5Qrcode("reader");
-      html5QrCode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 150 } },
-        (decodedText: string) => {
-          setScanResult(decodedText);
-          handleBookLookup(decodedText);
-          html5QrCode.stop().catch(err => console.error("Stop error:", err));
-        },
-        () => {} // failure
-      ).catch(err => console.error("Restart error:", err));
-    }, 300);
+    isScanningBlocked.current = false;
+    if (scannerInstance.current && scannerInstance.current.resume) {
+      try {
+        scannerInstance.current.resume();
+      } catch(e) {}
+    }
   };
 
   const userOptions = users.map(u => ({
@@ -314,25 +343,45 @@ export default function BarcodeScanner() {
         </div>
       </div>
 
-      <AnimatePresence mode="wait">
-        {!scanResult ? (
-          <motion.div 
-            key="scanner"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden"
-          >
-            <div id="reader" className="rounded-3xl overflow-hidden border-4 border-indigo-100 bg-slate-50"></div>
-            <div className="mt-8 text-center">
-              <div className="flex items-center justify-center gap-2 text-indigo-600 font-bold mb-2">
-                <div className="w-2 h-2 rounded-full bg-indigo-600 animate-ping"></div>
-                স্ক্যান করার জন্য বইয়ের বারকোড সামনে ধরুন
-              </div>
-              <p className="text-xs text-slate-400">ক্যামেরা অ্যাক্সেস নিশ্চিত করুন</p>
-            </div>
-          </motion.div>
+      <div className={cn("bg-white p-4 max-w-sm mx-auto rounded-[2rem] shadow-xl border border-slate-100 overflow-hidden text-center", scanResult && "hidden")}>
+        {!isScannerActive ? (
+          <div className="py-10">
+             <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <ScanLine size={40} />
+             </div>
+             <h3 className="text-xl font-bold text-slate-800 mb-2">বারকোড স্ক্যানার</h3>
+             <p className="text-slate-500 mb-8 max-w-[250px] mx-auto">ডিভাইসের ক্যামেরা ব্যবহার করে বইয়ের বারকোড স্ক্যান করতে নিচে ক্লিক করুন।</p>
+             <button
+               onClick={() => setIsScannerActive(true)}
+               className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all active:scale-95 flex flex-row items-center justify-center mx-auto gap-2"
+             >
+               <Scan size={20} />
+               ক্যামেরা চালু করুন
+             </button>
+          </div>
         ) : (
+          <>
+            <div id="reader" className="w-full min-h-[300px] flex items-center justify-center rounded-2xl overflow-hidden border-2 border-indigo-100 bg-slate-50 relative">
+               <button 
+                 onClick={() => setIsScannerActive(false)}
+                 className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center z-50 hover:bg-rose-500 transition-colors"
+               >
+                 <XCircle size={20} />
+               </button>
+            </div>
+            <div className="mt-4 text-center">
+              <div className="flex items-center justify-center gap-2 text-indigo-600 font-bold mb-1">
+                <div className="w-2 h-2 rounded-full bg-indigo-600 animate-ping"></div>
+                বারকোড স্ক্যান করুন
+              </div>
+              <p className="text-xs text-slate-400">বইয়ের বারকোড ক্যামেরার সামনে ধরুন</p>
+            </div>
+          </>
+        )}
+      </div>
+
+      <AnimatePresence mode="wait">
+        {scanResult && (
           <motion.div
             key="result"
             initial={{ opacity: 0, y: 20 }}

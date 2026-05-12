@@ -3,7 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../../store/AuthContext";
 import { firebaseService } from "../../services/firebaseService";
 import { db, handleFirestoreError, OperationType } from "../../lib/firebase";
-import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, addDoc, serverTimestamp, getDocs } from "firebase/firestore";
 import {
   Users,
   Library,
@@ -22,7 +22,8 @@ import {
   X,
   Search,
   Plus,
-  ImageIcon
+  ImageIcon,
+  Clock
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import toast from 'react-hot-toast';
@@ -108,8 +109,6 @@ export default function DashboardHome() {
             return;
           }
 
-          const { getDocs } = await import('firebase/firestore');
-          
           const qIssues = query(collection(db, 'issues'), where('userId', '==', user.id));
           const [issuesSnap, booksSnap] = await Promise.all([
              getDocs(qIssues),
@@ -266,55 +265,7 @@ export default function DashboardHome() {
   if (!user) return null;
 
   if (user.role !== "admin" && user.role !== "visitor_admin" && user.role !== "subadmin") {
-    return (
-      <div className="space-y-6">
-        {eventBanners.filter(b => !dismissedBanners.includes(b)).map((banner, idx) => (
-          <motion.div 
-            key={idx} 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="w-full rounded-2xl overflow-hidden shadow-lg border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 relative"
-          >
-             <button 
-               onClick={() => setDismissedBanners(prev => [...prev, banner])} 
-               className="absolute top-3 right-3 bg-black/50 text-white p-1.5 rounded-full hover:bg-black/70 transition-colors backdrop-blur-sm z-10"
-             >
-               <X className="w-4 h-4" />
-             </button>
-             <img src={banner} alt={`Event Banner ${idx + 1}`} className="w-full h-auto max-h-[350px] object-cover" />
-          </motion.div>
-        ))}
-
-        <div className="bg-gradient-to-br from-indigo-50 via-white to-purple-50 dark:from-slate-800 dark:via-slate-900 dark:to-slate-900 rounded-3xl p-6 sm:p-8 shadow-sm relative border border-indigo-100/50 dark:border-slate-800">
-           <p className="text-slate-600 dark:text-slate-400 font-bold mb-1 font-bengali text-lg">স্বাগতম,</p>
-           <h2 className="text-3xl sm:text-4xl font-black mb-6 text-slate-900 dark:text-white font-bengali">
-             {user.name || user.username} 👋
-           </h2>
-
-           <div className="space-y-3">
-             <Link to="/dashboard/books" className="w-full flex items-center justify-center gap-3 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-white px-6 py-5 rounded-2xl font-bold transition-all shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-100 dark:border-slate-700 font-bengali text-base sm:text-lg">
-               <Search className="w-6 h-6 text-slate-500 dark:text-slate-400 shrink-0" />
-               বইয়ের তালিকা এবং এভেইলেবল বই দেখুন
-             </Link>
-             
-             <Link to="/dashboard/book-requests" className="w-full flex items-center justify-center gap-3 bg-[#0B1120] hover:bg-slate-900 text-white px-6 py-5 rounded-2xl font-bold transition-all shadow-lg font-bengali text-base sm:text-lg">
-               <Library className="w-6 h-6 text-slate-400 shrink-0" />
-               বই রিকুয়েষ্ট
-             </Link>
-           </div>
-        </div>
-
-        <Link to="/dashboard/profile" className="block bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-sm border border-slate-100 dark:border-slate-800 text-center flex flex-col items-center hover:bg-slate-50 dark:hover:bg-slate-800 transition">
-           <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
-              <UserCircle2 className="w-10 h-10 text-slate-400" />
-           </div>
-           <h3 className="text-xl font-black text-slate-900 dark:text-white font-bengali mb-2">আমার প্রোফাইল</h3>
-           <p className="text-slate-500 text-sm font-bengali leading-relaxed max-w-sm">
-             আপনার ব্যক্তিগত তথ্য, বইয়ের কোড এবং পেমেন্ট হিস্ট্রি।
-           </p>
-        </Link>
-      </div>
-    );
+    return <Navigate to="/dashboard/books" replace />;
   }
 
   // Admin Dashboard
@@ -480,72 +431,6 @@ export default function DashboardHome() {
           </div>
         </Link>
         )}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-black font-bengali text-slate-800 dark:text-white tracking-tight">
-              দ্রুত পদক্ষেপ
-            </h3>
-          </div>
-
-          <div className="space-y-6">
-            {/* Book Management */}
-            {hasAccess('/dashboard/books') && (
-            <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-sm transition-colors">
-              <h4 className="font-bengali font-bold text-slate-600 dark:text-slate-300 mb-4 text-sm flex items-center gap-2">
-                <Library className="w-4 h-4" /> বই ব্যবস্থাপনা
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Link
-                  to="/dashboard/books"
-                  className="flex items-center gap-3 p-3.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600/50 rounded-xl shadow-sm hover:shadow-md hover:border-amber-300 hover:text-amber-700 dark:hover:border-amber-500/50 dark:text-slate-200 transition-all font-bengali font-bold text-slate-700 group"
-                >
-                  <div className="p-2 bg-amber-50 dark:bg-amber-500/10 rounded-lg group-hover:bg-amber-100 transition-colors">
-                    <BookPlus className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                  </div>
-                  <span>
-                    নতুন বই যোগ করুন
-                  </span>
-                </Link>
-                <Link
-                  to="/dashboard/purchases"
-                  className="flex items-center gap-3 p-3.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600/50 rounded-xl shadow-sm hover:shadow-md hover:border-pink-300 hover:text-pink-700 dark:hover:border-pink-500/50 dark:text-slate-200 transition-all font-bengali font-bold text-slate-700 group"
-                >
-                  <div className="p-2 bg-pink-50 dark:bg-pink-500/10 rounded-lg group-hover:bg-pink-100 transition-colors">
-                    <ShoppingCart className="w-5 h-5 text-pink-600 dark:text-pink-400" />
-                  </div>
-                  <span>
-                    বই ক্রয়ের অনুরোধ
-                  </span>
-                </Link>
-              </div>
-            </div>
-            )}
-
-            {/* Special Button */}
-            {hasAccess('/dashboard/messages') && (
-            <div className="pt-2">
-              <Link
-                to="/dashboard/messages"
-                className="flex items-center justify-center gap-3 p-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 text-white font-bengali font-bold text-lg rounded-xl shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20 hover:shadow-xl hover:shadow-indigo-300 hover:scale-[1.02] active:scale-[0.98] transition-all bg-[length:200%_auto] hover:bg-right duration-500"
-              >
-                <MessageSquare className="w-6 h-6 text-pink-200" />
-                ম্যাসেঞ্জার খুলুন
-              </Link>
-            </div>
-            )}
-          </div>
-        </div>
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col transition-colors">
-          <h3 className="text-xl font-black font-bengali text-slate-800 dark:text-white tracking-tight mb-4">
-            সাম্প্রতিক কার্যকলাপ
-          </h3>
-          <div className="flex-1 flex items-center justify-center text-center py-12 text-slate-500 dark:text-slate-400 font-bengali text-sm bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-dashed border-slate-200 dark:border-slate-600 transition-colors">
-            রিয়েলটাইম আপডেট বন্ধ আছে (কোটা সংরক্ষণের জন্য)। ড্যাশবোর্ড রিফ্রেশ করুন।
-          </div>
-        </div>
       </div>
     </div>
   );

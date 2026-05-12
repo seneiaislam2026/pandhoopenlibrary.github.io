@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../store/AuthContext';
 import { BookOpen, Send, Clock, CheckCircle, Trash2, Library, BookHeart, XCircle, CheckCircle2, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { onSnapshot, collection, doc, setDoc, deleteDoc, updateDoc, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { onSnapshot, collection, doc, setDoc, deleteDoc, updateDoc, addDoc, serverTimestamp, getDoc, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import toast from 'react-hot-toast';
 import { sendSMS } from '../../lib/sms';
@@ -22,15 +22,24 @@ export default function BookRequests() {
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({ bookTitle: '', authorName: '' });
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'subadmin' || user?.role === 'visitor_admin';
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "book-requests"), (snapshot) => {
+    if (!user) return;
+    
+    let q;
+    if (isAdmin) {
+      q = collection(db, "book-requests");
+    } else {
+      q = query(collection(db, "book-requests"), where("userId", "==", user.id));
+    }
+    
+    const unsub = onSnapshot(q, (snapshot) => {
       setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BookRequest[]);
       setLoading(false);
     });
     return () => unsub();
-  }, []);
+  }, [user, isAdmin]);
 
   const handleRequest = async (e: React.FormEvent) => {
     e.preventDefault();

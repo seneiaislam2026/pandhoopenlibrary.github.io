@@ -93,7 +93,7 @@ service cloud.firestore {
 
     // Pre-bookings
     match /pre-bookings/{bookingId} {
-      allow read: if isAdmin() || isIssueAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow read: if isAdmin() || isSubadmin() || isVisitorAdmin() || isIssueAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow create: if isSignedIn() && incoming().userId == request.auth.uid;
       allow update: if isAdmin() || isIssueAdmin() || (isSignedIn() && existing().userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status']) && existing().status == 'Pending');
       allow delete: if isAdmin() || isIssueAdmin();
@@ -105,14 +105,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     match /shop-orders/{id} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow read: if isAdmin() || isSubadmin() || isVisitorAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow create: if true;
       allow update, delete: if isAdmin();
     }
 
     // Messages
     match /messages/{messageId} {
-      allow read: if isAdmin() || isSubadmin() || (isSignedIn() && (resource.data.toUserId == request.auth.uid || resource.data.fromUserId == request.auth.uid));
+      allow read: if isAdmin() || isSubadmin() || isVisitorAdmin() || (isSignedIn() && (resource.data.toUserId == request.auth.uid || resource.data.fromUserId == request.auth.uid));
       allow create: if isSignedIn();
       allow update: if isAdmin() || isSubadmin() || (isSignedIn() && existing().toUserId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'isRead']));
       allow delete: if isAdmin() || isSubadmin();
@@ -126,7 +126,7 @@ service cloud.firestore {
 
     // Notifications
     match /notifications/{id} {
-      allow read: if isAdmin() || isSubadmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow read: if isAdmin() || isSubadmin() || isVisitorAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow write: if isAdmin() || isSubadmin();
     }
 
@@ -151,11 +151,11 @@ service cloud.firestore {
       allow create: if isSignedIn() && incoming().userId == request.auth.uid;
       allow update, delete: if isAdmin() || isSubadmin() || (isSignedIn() && existing().userId == request.auth.uid);
     }
-    match /book-requests/{id} { allow read: if isAdmin() || isSubadmin(); allow create: if isSignedIn(); allow update, delete: if isAdmin() || isSubadmin(); }
-    match /reset-requests/{id} { allow read: if isAdmin() || isSubadmin(); allow create: if true; allow update, delete: if isAdmin() || isSubadmin(); }
-    match /payments/{id} { allow read: if isAdmin() || isSubadmin() || (isSignedIn() && resource.data.userId == request.auth.uid); allow create: if isSignedIn(); allow update, delete: if isAdmin() || isSubadmin(); }
-    match /donor-payments/{id} { allow read, write: if isAdmin() || isSubadmin(); }
-    match /book-stickers/{id} { allow read, write: if isAdmin() || isSubadmin(); }
+    match /book-requests/{id} { allow read: if isAdmin() || isSubadmin() || isVisitorAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid); allow create: if isSignedIn(); allow update, delete: if isAdmin() || isSubadmin(); }
+    match /reset-requests/{id} { allow read: if isAdmin() || isSubadmin() || isVisitorAdmin(); allow create: if true; allow update, delete: if isAdmin() || isSubadmin(); }
+    match /payments/{id} { allow read: if isAdmin() || isSubadmin() || isVisitorAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid); allow create: if isSignedIn(); allow update, delete: if isAdmin() || isSubadmin(); }
+    match /donor-payments/{id} { allow read: if isAdmin() || isSubadmin() || isVisitorAdmin(); allow write: if isAdmin() || isSubadmin(); }
+    match /book-stickers/{id} { allow read: if isAdmin() || isSubadmin() || isVisitorAdmin(); allow write: if isAdmin() || isSubadmin(); }
     match /test/{id} { allow read: if true; }
   }
 }

@@ -134,6 +134,8 @@ export default function Books() {
     }
   };
 
+  const [visibleCount, setVisibleCount] = useState(20);
+
   const filtered = React.useMemo(() => {
     const term = debouncedSearch.toLowerCase();
     return books.filter(b => {
@@ -142,6 +144,11 @@ export default function Books() {
       return matchesSearch && matchesCategory;
     });
   }, [books, debouncedSearch, categoryFilter]);
+
+  // Reset visibleCount when search or category changes
+  useEffect(() => {
+    setVisibleCount(20);
+  }, [debouncedSearch, categoryFilter]);
 
   return (
     <motion.div 
@@ -234,19 +241,19 @@ export default function Books() {
                 }
               }
             }}
-            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-8"
+            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-6"
           >
-            {filtered.map((book) => (
+            {filtered.slice(0, visibleCount).map((book) => (
               <motion.div
                 key={book.id}
                 variants={{
                   hidden: { opacity: 0, y: 20 },
                   show: { opacity: 1, y: 0 }
                 }}
-                className="bg-white rounded-2xl sm:rounded-[2.5rem] border border-slate-100 p-3 sm:p-4 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col h-full cursor-pointer"
+                className="bg-white rounded-2xl border border-slate-200 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col h-full cursor-pointer relative overflow-hidden"
                 onClick={() => setSelectedBook(book)}
               >
-                <div className="relative aspect-[3/4] rounded-xl sm:rounded-3xl overflow-hidden mb-3 sm:mb-6 bg-slate-50">
+                <div className="relative h-[160px] sm:h-[200px] w-full shrink-0 bg-slate-50 border-b border-slate-100">
                   {book.cover ? (
                     <img 
                       src={book.cover} 
@@ -254,7 +261,7 @@ export default function Books() {
                       loading="lazy" 
                       decoding="async"
                       referrerPolicy="no-referrer" 
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                      className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500" 
                     />
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center p-4 text-slate-200">
@@ -262,46 +269,51 @@ export default function Books() {
                       <span className="text-[10px] font-black text-center font-bengali opacity-30 leading-tight">{book.title}</span>
                     </div>
                   )}
-                  <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
-                    <span className={`px-2 py-1 rounded-md sm:rounded-lg text-[8px] sm:text-[10px] font-black font-bengali shadow-md ${
-                      book.status === 'Available' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
+                  <div className="absolute top-2 right-2">
+                    <span className={`px-2 py-1 rounded-md text-[9px] font-bold font-bengali shadow-sm backdrop-blur-md ${
+                      book.status === 'Available' ? 'bg-emerald-500/90 text-white' : 'bg-rose-500/90 text-white'
                     }`}>
                       {book.status === 'Available' ? 'এভেইলেবল' : 'বুকড'}
                     </span>
                   </div>
                 </div>
 
-                <div className="flex-1 px-1 flex flex-col">
-                  <p className="text-[8px] sm:text-[9px] font-black text-indigo-600 uppercase tracking-widest mb-1 font-bengali truncate">{book.category || 'সাধারণ'}</p>
-                  <h3 className="text-xs sm:text-base font-black text-slate-900 font-bengali leading-snug group-hover:text-indigo-600 transition-colors flex-1 line-clamp-2">{book.title}</h3>
-                  <p className="text-[9px] sm:text-xs text-slate-400 font-bengali font-bold mt-1 truncate">{book.author}</p>
+                <div className="flex-1 p-2.5 sm:p-3.5 flex flex-col">
+                  <p className="text-[9px] sm:text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1 font-bengali truncate">{book.category || 'সাধারণ'}</p>
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-900 font-bengali leading-snug group-hover:text-indigo-600 transition-colors flex-1 line-clamp-2">{book.title}</h3>
+                  <p className="text-[10px] sm:text-xs text-slate-500 font-bengali font-medium mt-1 truncate">{book.author}</p>
                 </div>
 
-                <button
-                  onClick={(e) => { e.stopPropagation(); handlePreBook(book.id); }}
-                  disabled={(book.status !== 'Available' && book.status !== 'AVAILABLE') || prebooking === book.id || requestedBooks.includes(book.id)}
-                  className="mt-3 sm:mt-6 w-full py-2.5 sm:py-4 rounded-lg sm:rounded-xl font-black font-bengali text-[10px] sm:text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/50 flex items-center justify-center gap-1.5 sm:gap-2 bg-slate-900 text-white hover:bg-indigo-600 shadow-md shadow-slate-200 disabled:bg-slate-50 disabled:text-slate-300 disabled:shadow-none active:scale-[0.98]"
-                >
-                  {requestedBooks.includes(book.id) ? (
-                    <CheckCircle2 size={14} className="sm:w-4 sm:h-4" />
-                  ) : (book.status === 'Available' || book.status === 'AVAILABLE') ? (
-                    <Clock size={14} className="sm:w-4 sm:h-4" />
-                  ) : null}
-                  <span className="hidden sm:inline">
-                    {requestedBooks.includes(book.id) ? 'অনুরোধ পাঠানো হয়েছে' : (book.status === 'Available' || book.status === 'AVAILABLE') ? 'প্রিবুক করুন' : 'বইটি এখন অন্য পাঠকের কাছে আছে'}
-                  </span>
-                  <span className="sm:hidden flex flex-col items-center leading-tight">
-                    <span>{requestedBooks.includes(book.id) ? 'অনুরোধ' : (book.status === 'Available' || book.status === 'AVAILABLE') ? 'প্রিবুক' : 'সংগ্রহে নেই'}</span>
-                    {(book.status !== 'Available' && book.status !== 'AVAILABLE' && book.expectedReturnDate) && (
-                      <span className="text-[9px] font-bold text-indigo-200 mt-1.5 whitespace-nowrap bg-indigo-900/40 px-2 py-0.5 rounded shadow-sm">
-                        আসার সম্ভাব্য তারিখ: {new Date(book.expectedReturnDate).toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' })}
-                      </span>
-                    )}
-                  </span>
-                </button>
+                <div className="px-2.5 sm:px-3.5 pb-2.5 sm:pb-3.5 mt-auto relative z-20" onClick={e=>e.stopPropagation()}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handlePreBook(book.id); }}
+                    disabled={(book.status !== 'Available' && book.status !== 'AVAILABLE') || prebooking === book.id || requestedBooks.includes(book.id)}
+                    className="w-full py-1.5 h-8 rounded-lg font-bold font-bengali text-[10px] sm:text-[11px] transition-all focus:outline-none flex items-center justify-center gap-1.5 bg-slate-900 text-white hover:bg-indigo-600 disabled:bg-slate-50 disabled:text-slate-400 border border-slate-900 hover:border-indigo-600 disabled:border-slate-200 disabled:shadow-none active:scale-[0.98]"
+                  >
+                    {requestedBooks.includes(book.id) ? (
+                      <CheckCircle2 size={12} className="sm:w-3 sm:h-3" />
+                    ) : (book.status === 'Available' || book.status === 'AVAILABLE') ? (
+                      <Clock size={12} className="sm:w-3 sm:h-3" />
+                    ) : null}
+                    <span>
+                      {requestedBooks.includes(book.id) ? 'রিকুয়েষ্ট সেন্ট' : (book.status === 'Available' || book.status === 'AVAILABLE') ? 'প্রিবুক করুন' : 'সংগ্রহে নেই'}
+                    </span>
+                  </button>
+                </div>
               </motion.div>
             ))}
           </motion.div>
+        )}
+
+        {!loading && filtered.length > visibleCount && (
+          <div className="mt-12 flex justify-center">
+            <button
+              onClick={() => setVisibleCount(prev => prev + 20)}
+              className="bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white px-8 py-3 rounded-full font-bold font-bengali transition-colors shadow-sm"
+            >
+              আরো বই দেখান
+            </button>
+          </div>
         )}
 
         {!loading && filtered.length === 0 && (
@@ -394,7 +406,7 @@ export default function Books() {
                        <p className="text-sm md:text-base font-black text-slate-700 break-all">{selectedBook.bookCode || 'N/A'}</p>
                     </div>
                     <div className="p-3 md:p-6 bg-slate-50 rounded-2xl flex flex-col justify-center">
-                       <h5 className="text-[10px] md:text-xs font-black text-slate-400 uppercase mb-1 md:mb-2">সেল্ফ নং</h5>
+                       <h5 className="text-[10px] md:text-xs font-black text-slate-400 uppercase mb-1 md:mb-2">শেল্ফ নং</h5>
                        <p className="text-sm md:text-base font-black text-slate-700 break-all font-bengali">{selectedBook.shelfNo || 'N/A'}</p>
                     </div>
                     <div className="p-3 md:p-6 bg-slate-50 rounded-2xl col-span-2 md:col-span-1 flex flex-col justify-center">

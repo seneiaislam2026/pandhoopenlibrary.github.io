@@ -53,54 +53,55 @@ export default function ManageStickers() {
   const [selectedStickerIds, setSelectedStickerIds] = useState<string[]>([]);
 
   useEffect(() => {
-    const fetchData = async () => {
+    setLoading(true);
+    
+    // Fetch Books
+    const fetchBooks = async () => {
       try {
-        const { getDocs, collection } = await import('firebase/firestore');
-        const db = (await import('../../lib/firebase')).db;
-
-        const cacheKeyStickers = 'admin_stickers_cache';
-        const cacheKeyBooks = 'admin_books_cache';
-        const cacheTime = sessionStorage.getItem('admin_stickers_time');
-
-        if (cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
-           const cachedStickers = sessionStorage.getItem(cacheKeyStickers);
-           const cachedBooks = sessionStorage.getItem(cacheKeyBooks);
-           if (cachedStickers && cachedBooks) {
-              setStickers(JSON.parse(cachedStickers));
-              setBooks(JSON.parse(cachedBooks));
-              setLoading(false);
-              return;
-           }
-        }
-
-        const [stickerSnap, booksSnap] = await Promise.all([
-          getDocs(collection(db, 'book-stickers')),
-          getDocs(collection(db, 'books'))
-        ]);
-
-        const fetchedStickers = stickerSnap.docs.map(docSub => ({ id: docSub.id, ...docSub.data() })) as Sticker[];
-        fetchedStickers.sort((a, b) => {
-          const dateA = a.createdAt?.seconds || 0;
-          const dateB = b.createdAt?.seconds || 0;
-          return dateB - dateA;
-        });
-        
+        const booksSnap = await getDocs(collection(db, 'books'));
         const fetchedBooks = booksSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-        setStickers(fetchedStickers);
         setBooks(fetchedBooks);
-        setLoading(false);
-
-        sessionStorage.setItem(cacheKeyStickers, JSON.stringify(fetchedStickers));
-        sessionStorage.setItem(cacheKeyBooks, JSON.stringify(fetchedBooks));
-        sessionStorage.setItem('admin_stickers_time', Date.now().toString());
+        sessionStorage.setItem('admin_books_cache', JSON.stringify(fetchedBooks));
+        sessionStorage.setItem('admin_books_time', Date.now().toString());
       } catch (err) {
-        handleFirestoreError(err, OperationType.LIST, 'book-stickers');
-        setLoading(false);
+        console.error("Error fetching books:", err);
       }
     };
 
-    fetchData();
+    // Use cache initially if valid
+    const cacheKeyBooks = 'admin_books_cache';
+    const cacheTime = sessionStorage.getItem('admin_books_time');
+    if (cacheTime && (Date.now() - parseInt(cacheTime) < 5 * 60 * 1000)) {
+      const cachedBooks = sessionStorage.getItem(cacheKeyBooks);
+      if (cachedBooks) {
+        setBooks(JSON.parse(cachedBooks));
+      } else {
+        fetchBooks();
+      }
+    } else {
+      fetchBooks();
+    }
+
+    // Real-time stickers listener
+    const q = query(collection(db, 'book-stickers'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedStickers = snapshot.docs.map(docSub => ({ 
+        id: docSub.id, 
+        ...docSub.data() 
+      })) as Sticker[];
+      
+      setStickers(fetchedStickers);
+      setLoading(false);
+      
+      // Update cache
+      sessionStorage.setItem('admin_stickers_cache', JSON.stringify(fetchedStickers));
+      sessionStorage.setItem('admin_stickers_time', Date.now().toString());
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'book-stickers');
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const handleGenerate = async (e: React.FormEvent) => {
@@ -211,10 +212,9 @@ export default function ManageStickers() {
         return 'GEN';
       };
 
-      const snapSeq = await getDocs(collection(db, 'book-stickers'));
       let currentSeq = 0;
-      snapSeq.docs.forEach(docSnap => {
-        const c = docSnap.data().code || '';
+      stickers.forEach(s => {
+        const c = s.code || '';
         const parts = c.split('-');
         const lastPartStr = parts[parts.length - 1];
         const lastNumStrEng = bdToEngNum(lastPartStr);

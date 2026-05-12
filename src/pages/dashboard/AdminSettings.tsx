@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarHeart, Users, FileText, Settings as SettingsIcon, Image as ImageIcon, CheckCircle, UploadCloud, Shield, Trash2, Bell, MessageSquare, ShieldAlert, UserX, Clock } from 'lucide-react';
+import { CalendarHeart, Users, FileText, Settings as SettingsIcon, Image as ImageIcon, CheckCircle, UploadCloud, Shield, Trash2, Bell, MessageSquare, ShieldAlert, UserX, Clock, LayoutGrid, Tags } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -9,6 +9,8 @@ import toast from 'react-hot-toast';
 const availableSubadminRoutes = [
   { name: 'সদস্য ব্যবস্থাপনা (Users)', path: '/dashboard/users' },
   { name: 'বইয়ের তালিকা (Inventory)', path: '/dashboard/books' },
+  { name: 'শেল্ফ ব্যবস্থাপনা (Shelves)', path: '/dashboard/manage-shelves' },
+  { name: 'ক্যাটাগরি ব্যবস্থাপনা (Categories)', path: '/dashboard/manage-categories' },
   { name: 'ইস্যু ও ফেরত (Issues)', path: '/dashboard/issues' },
   { name: 'সদস্যদের বকেয়া (Dues)', path: '/dashboard/dues' },
   { name: 'দাতা সদস্য (Donors)', path: '/dashboard/donors' },
@@ -197,6 +199,22 @@ export default function AdminSettings() {
             </div>
             <h3 className="text-xl font-bold font-bengali text-slate-800 mb-2">প্রি-বুকিং ব্যবস্থাপনা</h3>
             <p className="text-sm font-bengali text-slate-500">বইয়ের প্রি-বুকিং তালিকা এবং স্ট্যাটাস দেখুন।</p>
+         </Link>
+
+         <Link to="/dashboard/manage-shelves" className="group p-6 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all">
+            <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mb-6 group-hover:-translate-y-1 transition-transform">
+               <LayoutGrid size={28} />
+            </div>
+            <h3 className="text-xl font-bold font-bengali text-slate-800 mb-2">শেল্ফ ব্যবস্থাপনা</h3>
+            <p className="text-sm font-bengali text-slate-500">বই সিলেক্ট করে ম্যানুয়ালি শেল্ফে অর্গানাইজ করুন।</p>
+         </Link>
+
+         <Link to="/dashboard/manage-categories" className="group p-6 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-emerald-200 transition-all">
+            <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-6 group-hover:-translate-y-1 transition-transform">
+               <Tags size={28} />
+            </div>
+            <h3 className="text-xl font-bold font-bengali text-slate-800 mb-2">ক্যাটাগরি ব্যবস্থাপনা</h3>
+            <p className="text-sm font-bengali text-slate-500">একসাথে অনেকগুলো বইয়ের ক্যাটাগরি আপডেট করুন।</p>
          </Link>
 
          <Link to="/dashboard/delete-users" className="group p-6 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-red-200 transition-all">

@@ -49,6 +49,8 @@ const DeleteUsers = React.lazy(() => import('./pages/dashboard/DeleteUsers'));
 const ManageShopBooks = React.lazy(() => import('./pages/dashboard/ManageShopBooks'));
 const ManageShopOrders = React.lazy(() => import('./pages/dashboard/ManageShopOrders'));
 const ManageStickers = React.lazy(() => import('./pages/dashboard/ManageStickers'));
+const ManageShelves = React.lazy(() => import('./pages/dashboard/ManageShelves'));
+const ManageCategories = React.lazy(() => import('./pages/dashboard/ManageCategories'));
 const AdminSettings = React.lazy(() => import('./pages/dashboard/AdminSettings'));
 const BarcodeScanner = React.lazy(() => import('./pages/dashboard/BarcodeScanner'));
 
@@ -133,6 +135,8 @@ function AppRoutes() {
             <Route path="shop-books" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageShopBooks /></ProtectedRoute>} />
             <Route path="shop-orders" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageShopOrders /></ProtectedRoute>} />
             <Route path="stickers" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><ManageStickers /></ProtectedRoute>} />
+            <Route path="manage-shelves" element={<ProtectedRoute allowedRoles={['admin', 'subadmin']}><ManageShelves /></ProtectedRoute>} />
+            <Route path="manage-categories" element={<ProtectedRoute allowedRoles={['admin', 'subadmin']}><ManageCategories /></ProtectedRoute>} />
             <Route path="barcode-scanner" element={<ProtectedRoute allowedRoles={['admin', 'subadmin', 'visitor_admin']}><BarcodeScanner /></ProtectedRoute>} />
             <Route path="settings" element={<ProtectedRoute allowedRoles={['admin']}><AdminSettings /></ProtectedRoute>} />
             

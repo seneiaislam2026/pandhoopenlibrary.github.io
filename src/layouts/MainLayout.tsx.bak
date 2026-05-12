@@ -385,7 +385,7 @@ export default function MainLayout() {
            ) : (
              <>
                <Link to="/dashboard/book-requests" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/dashboard/book-requests' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <BookOpen className="w-5 h-5" />
+                  <Library className="w-5 h-5" />
                   <span className="text-[10px] font-black uppercase tracking-tighter">বইয়ের অনুরোধ</span>
                </Link>
                <Link to="/dashboard/notice-board" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/notice-board' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>

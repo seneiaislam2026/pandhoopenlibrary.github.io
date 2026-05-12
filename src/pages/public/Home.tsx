@@ -12,14 +12,12 @@ export default function Home() {
   const navigate = useNavigate();
 
   React.useEffect(() => {
+    // Only set visit flag, do not redirect users away from the landing page unless logged in.
     if (!loading) {
       if (user) {
         navigate('/dashboard', { replace: true });
       } else {
-        const hasVisited = localStorage.getItem('pan_dhoa_visited');
-        if (hasVisited) {
-          navigate('/login', { replace: true });
-        } else {
+        if (!localStorage.getItem('pan_dhoa_visited')) {
           localStorage.setItem('pan_dhoa_visited', '1');
         }
       }

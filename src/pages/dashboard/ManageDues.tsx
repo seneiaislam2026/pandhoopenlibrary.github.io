@@ -60,9 +60,15 @@ export default function ManageDues() {
     const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
       const usersData = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() })) as LibUser[];
-      const filteredUsers = usersData.filter(
-        (u: any) => u.role !== "admin" && u.status === "active",
-      );
+      const filteredUsers = usersData.filter((u: any) => {
+        if (u.role === "admin" || u.status !== "active") return false;
+        if (u.hasGiftSubscription) {
+          if (!u.giftSubscriptionExpiry || new Date(u.giftSubscriptionExpiry).getTime() > Date.now()) {
+            return false; // Hide from Dues if gift subscription is active
+          }
+        }
+        return true;
+      });
       setUsers(filteredUsers);
       setLoading(false);
     });
@@ -447,9 +453,9 @@ export default function ManageDues() {
             )}
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[800px]">
-            <thead className="bg-[#f8fafc] border-b border-slate-200">
+        <div className="md:overflow-x-auto w-full">
+          <table className="w-full text-left">
+            <thead className="bg-[#f8fafc] border-b border-slate-200 hidden md:table-header-group">
               <tr>
                 <th className="p-5 text-xs font-black tracking-widest text-[#64748B] uppercase">
                   সদস্য
@@ -470,7 +476,7 @@ export default function ManageDues() {
                 )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y md:divide-slate-100 flex flex-col md:table-row-group">
               {payments
                 .filter(
                   (p) =>
@@ -496,27 +502,33 @@ export default function ManageDues() {
                     new Date(b.date).getTime() - new Date(a.date).getTime(),
                 )
                 .map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
-                    <td className="p-5">
-                      <div className="font-bold text-slate-800 text-[15px] font-bengali tracking-tight mb-1">
-                        {p.userName || "Member"}
-                      </div>
-                      <div className="text-xs text-slate-500 font-medium font-sans">
-                        {new Date(p.date).toLocaleDateString()}
+                  <tr key={p.id} className="hover:bg-slate-50 transition-colors group flex flex-col md:table-row py-4 md:py-0 border-b border-slate-200 md:border-0 px-4 md:px-0">
+                    <td className="p-2 md:p-5 flex justify-between items-center md:table-cell">
+                      <span className="md:hidden font-black text-[10px] uppercase text-slate-500 font-bengali">সদস্য</span>
+                      <div className="text-right md:text-left">
+                        <div className="font-bold text-slate-800 text-[15px] font-bengali tracking-tight mb-1">
+                          {p.userName || "Member"}
+                        </div>
+                        <div className="text-xs text-slate-500 font-medium font-sans">
+                          {new Date(p.date).toLocaleDateString()}
+                        </div>
                       </div>
                     </td>
-                    <td className="p-5">
-                       <div className="flex flex-col text-sm font-bold text-slate-800">
+                    <td className="p-2 md:p-5 flex justify-between items-center md:table-cell border-t border-slate-50 md:border-0">
+                       <span className="md:hidden font-black text-[10px] uppercase text-slate-500 font-bengali">মাস</span>
+                       <div className="flex flex-col text-sm font-bold text-slate-800 text-right md:text-left">
                           <span>{new Date(p.month).toLocaleString('default', { month: 'short' })}</span>
                           <span>{p.month.split('-')[0]}</span>
                        </div>
                     </td>
-                    <td className="p-5 font-black text-lg text-emerald-600 tracking-tight">
-                      ৳{p.amount}
+                    <td className="p-2 md:p-5 flex justify-between items-center md:table-cell border-t border-slate-50 md:border-0 font-black text-lg text-emerald-600 tracking-tight">
+                      <span className="md:hidden font-black text-[10px] uppercase text-slate-500 font-bengali">পরিমান</span>
+                      <span>৳{p.amount}</span>
                     </td>
-                    <td className="p-5">
-                      <div className="flex flex-col gap-2 items-start">
-                        <div className="flex items-center gap-1.5">
+                    <td className="p-2 md:p-5 flex justify-between items-start md:items-center md:table-cell border-t border-slate-50 md:border-0">
+                      <span className="md:hidden font-black text-[10px] uppercase text-slate-500 font-bengali pt-1">স্ট্যাটাস</span>
+                      <div className="flex flex-col gap-2 items-end md:items-start text-right md:text-left">
+                        <div className="flex flex-wrap justify-end md:justify-start items-center gap-1.5">
                           <span className="text-[10px] font-bold tracking-widest uppercase bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 text-slate-600 w-fit">
                             {p.trxId || "CASH/ADMIN"}
                           </span>
@@ -537,13 +549,13 @@ export default function ManageDues() {
                       </div>
                     </td>
                     {currentUser?.role !== "visitor_admin" && (
-                      <td className="p-5 text-right align-middle">
-                        <div className="flex justify-end gap-2.5 relative z-0 group-hover:z-10">
+                      <td className="p-4 md:p-5 md:text-right align-middle border-t border-slate-100 md:border-0 mt-2 md:mt-0">
+                        <div className="flex justify-center md:justify-end gap-2.5 relative z-0 group-hover:z-10">
                           {(p.status && p.status !== "Approved" && p.status !== "Paid" && p.status !== "Unpaid") && (
                             <button
                               type="button"
                               onClick={() => handleApprove(p.id)}
-                              className="bg-emerald-500 text-white text-[10px] px-3.5 py-2 font-black uppercase tracking-wider rounded-lg shadow-sm shadow-emerald-500/20 hover:bg-emerald-600 transition flex items-center gap-1.5 active:scale-95"
+                              className="bg-emerald-500 text-white text-[10px] px-3.5 py-2 font-black uppercase tracking-wider rounded-lg shadow-sm shadow-emerald-500/20 hover:bg-emerald-600 transition flex items-center gap-1.5 active:scale-95 flex-1 md:flex-none justify-center"
                               title="Approve"
                             >
                               <Check className="w-3.5 h-3.5" /> Approve
@@ -552,7 +564,7 @@ export default function ManageDues() {
                           <button
                             type="button"
                             onClick={() => setEditingPayment(p)}
-                            className="bg-white text-indigo-600 border border-indigo-200 text-[10px] px-3 py-2 font-black uppercase tracking-wider rounded-lg shadow-sm hover:bg-indigo-50 hover:border-indigo-300 transition flex items-center justify-center active:scale-95"
+                            className="bg-white text-indigo-600 border border-indigo-200 text-[10px] px-4 py-2.5 font-black uppercase tracking-wider rounded-lg shadow-sm hover:bg-indigo-50 hover:border-indigo-300 transition flex items-center justify-center active:scale-95 flex-1 md:flex-none"
                             title="Edit"
                           >
                             <Edit2 className="w-4 h-4" />
@@ -560,7 +572,7 @@ export default function ManageDues() {
                           <button
                             type="button"
                             onClick={() => handleDeletePayment(p.id)}
-                            className="text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-600 border border-rose-200 px-3 py-2 rounded-lg hover:bg-rose-600 hover:text-white hover:border-rose-600 transition flex items-center justify-center shadow-sm active:scale-95"
+                            className="text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-600 border border-rose-200 px-4 py-2.5 rounded-lg hover:bg-rose-600 hover:text-white hover:border-rose-600 transition flex items-center justify-center shadow-sm active:scale-95 flex-1 md:flex-none"
                             title="Delete"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -571,8 +583,8 @@ export default function ManageDues() {
                   </tr>
                 ))}
               {payments.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-500 font-medium font-bengali">
+                <tr className="flex md:table-row">
+                  <td colSpan={5} className="p-8 text-center text-slate-500 font-medium font-bengali w-full">
                     কোনো পেমেন্ট হিস্ট্রি নেই।
                   </td>
                 </tr>

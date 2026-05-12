@@ -81,7 +81,7 @@ export default function ManagePreBookings() {
           <div className="hidden md:grid grid-cols-12 gap-4 p-5 bg-[#f8fafc] border-b border-slate-200">
             <div className="col-span-3 text-[11px] font-black tracking-widest text-[#64748B] uppercase font-bengali">সদস্য</div>
             <div className="col-span-3 text-[11px] font-black tracking-widest text-[#64748B] uppercase font-bengali">বই</div>
-            <div className="col-span-2 text-[11px] font-black tracking-widest text-[#64748B] uppercase font-bengali">অর্ডার তারিখ</div>
+            <div className="col-span-2 text-[11px] font-black tracking-widest text-[#64748B] uppercase font-bengali">অনুরোধের তারিখ</div>
             <div className="col-span-2 text-[11px] font-black tracking-widest text-[#64748B] uppercase font-bengali">স্ট্যাটাস</div>
             <div className="col-span-2 text-[11px] font-black tracking-widest text-[#64748B] uppercase font-bengali text-right">অ্যাকশন</div>
           </div>
@@ -121,8 +121,8 @@ export default function ManagePreBookings() {
                     </div>
 
                     <div className="col-span-1 border-b md:border-b-0 pb-4 md:pb-0 border-slate-100 md:col-span-2 flex flex-row md:flex-col justify-between md:justify-start items-center md:items-start text-sm font-bold text-slate-500 font-mono">
-                        <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded md:hidden">অর্ডার তারিখ</span>
-                        <span>{new Date(b.date).toLocaleDateString()}</span>
+                        <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded md:hidden font-bengali">অনুরোধের তারিখ</span>
+                        <span>{b.date ? (typeof b.date === 'string' ? new Date(b.date) : (b.date as any).toDate?.() || new Date((b.date as any).seconds * 1000)).toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A'}</span>
                     </div>
 
                     <div className="col-span-1 border-b md:border-b-0 pb-4 md:pb-0 border-slate-100 md:col-span-2 flex flex-row md:flex-col justify-between md:justify-start items-center md:items-start">
