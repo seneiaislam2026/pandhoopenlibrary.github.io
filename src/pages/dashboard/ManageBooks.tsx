@@ -181,7 +181,16 @@ export default function ManageBooks() {
           bookInfoString = JSON.stringify(bookInfoRaw);
           thumbnailUrl = bookInfoRaw.imageLinks?.thumbnail?.replace('http:', 'https:') || '';
         } else {
-          bookInfoString = `No database info found for ISBN: ${isbn}`;
+          // If ISBN query returned nothing, try a general query as it might be a partial code or alternative barcode
+          const res2 = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${isbn}`);
+          const data2 = await res2.json();
+          if (data2.items && data2.items.length > 0) {
+            bookInfoRaw = data2.items[0].volumeInfo;
+            bookInfoString = JSON.stringify(bookInfoRaw);
+            thumbnailUrl = bookInfoRaw.imageLinks?.thumbnail?.replace('http:', 'https:') || '';
+          } else {
+            bookInfoString = `No database info found for identifier: ${isbn}`;
+          }
         }
       } catch (e) {
         bookInfoString = `Error fetching database info for ISBN: ${isbn}`;
@@ -250,7 +259,8 @@ CRITICAL RULES:
         author: parsed.author || prev.author || (bookInfoRaw?.authors ? bookInfoRaw.authors.join(', ') : ''),
         category: parsed.category || prev.category || (bookInfoRaw?.categories ? bookInfoRaw.categories[0] : ''),
         description: parsed.description || prev.description || (bookInfoRaw?.description || ''),
-        cover: prev.cover || thumbnailUrl
+        cover: prev.cover || thumbnailUrl,
+        barcode: prev.barcode || isbn
       }));
       
     } catch (err) {
@@ -433,7 +443,18 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
     }
   };
 
-  const [formData, setFormData] = useState<{ title: string; author: string; category: string; cover: string; status: string; bookCode: string; shelfNo: string; review: string; description: string }>({ 
+  const [formData, setFormData] = useState<{ 
+    title: string; 
+    author: string; 
+    category: string; 
+    cover: string; 
+    status: string; 
+    bookCode: string; 
+    shelfNo: string; 
+    review: string; 
+    description: string;
+    barcode: string;
+  }>({ 
     title: '', 
     author: '', 
     category: '', 
@@ -442,7 +463,8 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
     bookCode: '',
     shelfNo: '',
     review: '',
-    description: ''
+    description: '',
+    barcode: ''
   });
   const [coverInputType, setCoverInputType] = useState<'upload' | 'link'>('upload');
 
@@ -674,7 +696,7 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
               updateCache(updated);
               return updated;
             });
-            setFormData({ title: '', author: '', category: '', cover: '', status: 'Available', bookCode: '', shelfNo: '', review: '', description: '' });
+            setFormData({ title: '', author: '', category: '', cover: '', status: 'Available', bookCode: '', shelfNo: '', review: '', description: '', barcode: '' });
             setEditingId(null);
             toast.success('সফলভাবে বই আপডেট করা হয়েছে!');
         } else {
@@ -704,8 +726,10 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
               bookCode: generateBookCode(prev.category || ''), 
               shelfNo: finalShelfNo, 
               review: '', 
-              description: '' 
+              description: '',
+              barcode: ''
             }));
+            setShowModal(false);
         }
     } catch (error: any) {
         if (error.message?.includes('permission-denied') || error.code === 'permission-denied') {
@@ -729,7 +753,8 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
       bookCode: book.bookCode || '',
       shelfNo: book.shelfNo || '',
       review: book.review || '',
-      description: book.description || ''
+      description: book.description || '',
+      barcode: (book as any).barcode || ''
     });
     setEditingId(book.id);
     setShowModal(true);
@@ -917,7 +942,7 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
               {isActuallyAdmin && (
                 <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={() => { setFormData({ title: '', author: '', category: '', cover: '', status: 'Available', bookCode: '', shelfNo: '', review: '', description: '' }); setEditingId(null); setShowModal(true); }}
+                    onClick={() => { setFormData({ title: '', author: '', category: '', cover: '', status: 'Available', bookCode: '', shelfNo: '', review: '', description: '', barcode: '' }); setEditingId(null); setShowModal(true); }}
                     className="bg-indigo-500 hover:bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-indigo-500/20 transition-all active:scale-95 group whitespace-nowrap min-w-[160px]"
                   >
                     <Plus className="w-5 h-5" /> 
@@ -1187,7 +1212,7 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
               )}
 
               <form id="bookForm" onSubmit={handleSubmit} className="space-y-5 font-bengali pb-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4 text-slate-800">
                   <div>
                     <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বইয়ের কোড</label>
                     <input type="text" value={formData.bookCode || ''} onChange={e=>setFormData({...formData, bookCode: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm" placeholder="LIB-001" />
@@ -1196,6 +1221,11 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
                     <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">শেল্ফ নং (Shelf No)</label>
                     <input type="text" value={formData.shelfNo || ''} onChange={e=>setFormData({...formData, shelfNo: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm" placeholder="A1, B2..." />
                   </div>
+                </div>
+
+                <div>
+                   <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বইয়ের বারকোড (ISBN/UPC)</label>
+                   <input type="text" value={formData.barcode || ''} onChange={e=>setFormData({...formData, barcode: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold font-mono text-sm" placeholder="Scan or type barcode" />
                 </div>
 
                 <div>

@@ -39,6 +39,7 @@ export default function ManageStickers() {
   
   // Form State
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [generationMode, setGenerationMode] = useState<'new' | 'existing'>('new');
   const [category, setCategory] = useState('');
   const [shelfNo, setShelfNo] = useState('');
@@ -299,13 +300,17 @@ export default function ManageStickers() {
     handleDownloadPDF(matchedStickers);
   };
 
+  const [stickersToProcess, setStickersToProcess] = useState<Sticker[]>([]);
+
   const handleDownloadPDF = async (stickersToPrint: Sticker[]) => {
     if (stickersToPrint.length === 0) return;
     
+    setIsGeneratingPDF(true);
+    setStickersToProcess(stickersToPrint);
     const toastId = toast.loading('PDF জেনারেট হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন...');
     
-    // Give the DOM a tiny bit of time to settle just in case components re-rendered
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Give the DOM time to render the hidden elements
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     try {
       const doc = new jsPDF({
@@ -314,62 +319,33 @@ export default function ManageStickers() {
         format: 'a4'
       });
 
-      // A4 Size: 210 x 297 mm
-      // Make a grid of 3x8 stickers per page (horizontal layout)
-      const cols = 3;
-      const rows = 8;
-      const marginX = 10;
-      const marginY = 10;
-      const stickerWidth = (210 - (marginX * 2)) / cols; // ~63.3mm
-      const stickerHeight = (297 - (marginY * 2)) / rows; // ~34.6mm
+      const itemsPerPage = 24; // 3x8 grid
+      const pagesCount = Math.ceil(stickersToPrint.length / itemsPerPage);
       
-      let currentItem = 0;
-
-      while (currentItem < stickersToPrint.length) {
-        if (currentItem > 0) doc.addPage();
+      for (let p = 0; p < pagesCount; p++) {
+        if (p > 0) doc.addPage();
         
-        for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-            if (currentItem >= stickersToPrint.length) break;
-            const sticker = stickersToPrint[currentItem];
-            
-            const x = marginX + (c * stickerWidth);
-            const y = marginY + (r * stickerHeight);
-            
-            // Draw Sub-box (Sticker outline)
-            doc.setDrawColor(200, 200, 200);
-            doc.rect(x + 2, y + 2, stickerWidth - 4, stickerHeight - 4);
-            
-            // Get the HTML node and convert to canvas to preserve Bengali fonts
-            const stickerNode = document.getElementById(`sticker-render-${sticker.id}`);
-            if (stickerNode) {
-              try {
-                const imgData = await toJpeg(stickerNode, {
-                  quality: 0.85,
-                  pixelRatio: 1.5,
-                  backgroundColor: '#ffffff'
-                });
-                // Calculate padding inside the cell
-                doc.addImage(imgData, 'JPEG', x + 3, y + 3, stickerWidth - 6, stickerHeight - 6);
-              } catch (nodeErr) {
-                 console.warn(`Failed to generate jpeg for sticker ${sticker.id}`, nodeErr);
-              }
-              // Yield occasionally to prevent UI freezing without slowing it down too much
-              if (currentItem % 10 === 0) {
-                await new Promise(resolve => setTimeout(resolve, 0));
-              }
-            }
-
-            currentItem++;
-          }
+        const pageNode = document.getElementById(`sticker-page-render-${p}`);
+        if (pageNode) {
+          const dataUrl = await toJpeg(pageNode, {
+            quality: 0.9,
+            pixelRatio: 1.5,
+            backgroundColor: '#ffffff'
+          });
+          doc.addImage(dataUrl, 'JPEG', 0, 0, 210, 297);
         }
+        
+        toast.loading(`পেজ তৈরি হচ্ছে: ${p + 1} / ${pagesCount}`, { id: toastId });
       }
 
       doc.save(`Stickers_${new Date().getTime()}.pdf`);
-      toast.success('PDF Downloaded!', { id: toastId });
+      toast.success('PDF ডাউনলোড সম্পন্ন হয়েছে!', { id: toastId });
     } catch (err: any) {
       console.error(err);
-      toast.error('Could not generate PDF', { id: toastId });
+      toast.error('PDF তৈরি করা সম্ভব হয়নি', { id: toastId });
+    } finally {
+      setIsGeneratingPDF(false);
+      setStickersToProcess([]);
     }
   };
 
@@ -426,41 +402,55 @@ export default function ManageStickers() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Hidden layout for PDF rendering with correct Bengali typography */}
-      <div 
-        className="absolute w-0 h-0 overflow-hidden pointer-events-none opacity-0 z-[-999]" 
-        aria-hidden="true"
-      >
-        {filteredStickers.map(s => (
-          <div 
-            key={`sticker-render-${s.id}`} 
-            id={`sticker-render-${s.id}`} 
-            className="flex flex-col items-center justify-center bg-white py-3 px-4 font-bengali z-0 text-center" 
-            style={{ width: '400px', height: '180px', backgroundColor: '#FFFFFF' }}
-          >
-             <div className="mb-1">
-                <Barcode 
-                  value={s.code} 
-                  width={1.6} 
-                  height={50} 
-                  fontSize={14} 
-                  margin={0}
-                  background="#ffffff"
-                  displayValue={true}
-                />
-             </div>
-             
-             <div className="flex flex-col items-center">
-                <h1 className="font-bold text-black" style={{ fontSize: '18px', lineHeight: '1.2' }}>পানধোয়া উন্মুক্ত পাঠাগার</h1>
-                <div className="flex items-center gap-4 mt-1 text-slate-700 font-bold" style={{ fontSize: '11px' }}>
-                   <span>Shelf No: {s.shelfNo}</span>
-                   <span>Category: {s.category}</span>
+      {isGeneratingPDF && (
+        <div 
+          className="absolute w-0 h-0 overflow-hidden pointer-events-none opacity-0 z-[-999]" 
+          aria-hidden="true"
+          style={{ width: '210mm' }}
+        >
+          {Array.from({ length: Math.ceil(stickersToProcess.length / 24) }).map((_, pageIdx) => (
+            <div 
+              key={`page-${pageIdx}`}
+              id={`sticker-page-render-${pageIdx}`}
+              className="grid grid-cols-3 grid-rows-8 bg-white"
+              style={{ 
+                width: '210mm', 
+                height: '297mm', 
+                padding: '10mm',
+                gap: '2mm'
+              }}
+            >
+              {stickersToProcess.slice(pageIdx * 24, (pageIdx + 1) * 24).map(s => (
+                <div 
+                  key={s.id}
+                  className="flex flex-col items-center justify-center border border-slate-200 p-2 text-center overflow-hidden bg-white"
+                  style={{ height: '34mm' }}
+                >
+                  <div className="mb-0.5">
+                    <Barcode 
+                      value={s.code} 
+                      width={1.2} 
+                      height={35} 
+                      fontSize={11} 
+                      margin={0}
+                      background="#ffffff"
+                      displayValue={true}
+                    />
+                  </div>
+                  <div className="flex flex-col items-center leading-tight">
+                    <h1 className="font-bold text-black" style={{ fontSize: '13px' }}>পানধোয়া উন্মুক্ত পাঠাগার</h1>
+                    <div className="flex items-center gap-2 mt-0.5 text-slate-700 font-bold" style={{ fontSize: '8px' }}>
+                       <span>Shelf: {s.shelfNo}</span>
+                       <span>Cat: {s.category}</span>
+                    </div>
+                    <p className="font-black text-indigo-700 mt-1" style={{ fontSize: '9px' }}>www.pandhoalibrary.org</p>
+                  </div>
                 </div>
-                <p className="font-black text-indigo-700 mt-2" style={{ fontSize: '13px', letterSpacing: '0.5px' }}>www.pandhoalibrary.org</p>
-             </div>
-          </div>
-        ))}
-      </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

@@ -20,7 +20,7 @@ export default function BarcodeScanner() {
   const [expectedReturnDate, setExpectedReturnDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [manualCode, setManualCode] = useState('');
-  const [isScannerActive, setIsScannerActive] = useState(false);
+  const [isScannerActive, setIsScannerActive] = useState(true);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const scannerInstance = React.useRef<Html5Qrcode | null>(null);
   const isScanningBlocked = React.useRef(false);
@@ -90,12 +90,24 @@ export default function BarcodeScanner() {
           (decodedText) => {
             if (isScanningBlocked.current) return;
             isScanningBlocked.current = true;
-            if (html5QrCode.pause) {
-              try { html5QrCode.pause(true); } catch(e) {}
+            
+            if (!book) {
+              // First scan: Looking for a book
+              setIsScannerActive(false); // turn off camera after successful book scan
+              setScanResult(decodedText);
+              handleBookLookup(decodedText);
+            } else if (book.status === 'Available' && !selectedUserId) {
+              // Second scan: Looking for a member
+              handleMemberScan(decodedText);
+              // We might want to keep the scanner active for another scan or turn it off
+              // Let's turn it off for now to reduce CPU, but allow a button to restart
+              setIsScannerActive(false); 
+            } else {
+              // Default behavior
+              setIsScannerActive(false);
+              setScanResult(decodedText);
+              handleBookLookup(decodedText);
             }
-            setIsScannerActive(false); // turn off camera after successful scan
-            setScanResult(decodedText);
-            handleBookLookup(decodedText);
           },
           () => {} // failure callback
         );
@@ -138,13 +150,27 @@ export default function BarcodeScanner() {
     setLoading(true);
     setBook(null);
     try {
-      const q = query(collection(db, "books"), where("bookCode", "==", code));
-      const snap = await getDocs(q);
+      // First try searching by bookCode
+      let q = query(collection(db, "books"), where("bookCode", "==", code));
+      let snap = await getDocs(q);
+      
+      // If not found by bookCode, try searching by the new barcode field (ISBN/UPC)
+      if (snap.empty) {
+        q = query(collection(db, "books"), where("barcode", "==", code));
+        snap = await getDocs(q);
+      }
       
       if (snap.empty) {
-        toast.error("বইটি খুঁজে পাওয়া যায়নি!");
+        // If still not found, check if this is a memberId being scanned while a book is NOT found yet
+        // Maybe the user scanned the member first by mistake?
+        const memberQuery = query(collection(db, "users"), where("memberId", "==", code));
+        const memberSnap = await getDocs(memberQuery);
+        if (!memberSnap.empty) {
+           toast.error("এটি একজন মেম্বারের আইডি। দয়া করে আগে বই স্ক্যান করুন।");
+        } else {
+           toast.error("বইটি খুঁজে পাওয়া যায়নি!");
+        }
         setScanResult(null);
-        // Restart scanner maybe? In UI we'll have a button.
       } else {
         const bookData = { id: snap.docs[0].id, ...snap.docs[0].data() } as any;
         setBook(bookData);
@@ -157,11 +183,26 @@ export default function BarcodeScanner() {
         }
         
         toast.success("বইটি পাওয়া গিয়েছে!");
+        
+        // After finding a book, we refocus the input for scanning the member
+        setTimeout(() => {
+          inputRef.current?.focus();
+        }, 500);
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.GET, "books");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMemberScan = (code: string) => {
+    const foundUser = users.find(u => u.memberId === code || u.id === code || u.username === code.toLowerCase());
+    if (foundUser) {
+      setSelectedUserId(foundUser.id);
+      toast.success(`${foundUser.name} সিলেক্ট করা হয়েছে।`);
+    } else {
+      toast.error("এই মেম্বার আইডিটি খুঁজে পাওয়া যায়নি!");
     }
   };
 
@@ -278,6 +319,7 @@ export default function BarcodeScanner() {
     setBook(null);
     setSelectedUserId(null);
     setExpectedReturnDate('');
+    setIsScannerActive(true);
     
     // Refocus for physical machine
     setTimeout(() => {
@@ -319,8 +361,48 @@ export default function BarcodeScanner() {
         </div>
       </div>
 
-      {/* Hidden/Focused input for physical barcode machines */}
-      <div className="mb-6">
+      <AnimatePresence mode="wait">
+        {!scanResult && (
+          <div className={cn("bg-white p-4 max-w-sm mx-auto rounded-[2rem] shadow-xl border border-slate-100 overflow-hidden text-center mb-8")}>
+            {!isScannerActive ? (
+              <div className="py-10">
+                 <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <ScanLine size={40} />
+                 </div>
+                 <h3 className="text-xl font-bold text-slate-800 mb-2">বারকোড স্ক্যানার</h3>
+                 <p className="text-slate-500 mb-8 max-w-[250px] mx-auto">ডিভাইসের ক্যামেরা ব্যবহার করে বইয়ের বারকোড স্ক্যান করতে নিচে ক্লিক করুন।</p>
+                 <button
+                   onClick={() => setIsScannerActive(true)}
+                   className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all active:scale-95 flex flex-row items-center justify-center mx-auto gap-2"
+                 >
+                   <Scan size={20} />
+                   ক্যামেরা চালু করুন
+                 </button>
+              </div>
+            ) : (
+              <>
+                <div id="reader" className="w-full min-h-[300px] flex items-center justify-center rounded-2xl overflow-hidden border-2 border-indigo-100 bg-slate-50 relative">
+                   <button 
+                     onClick={() => setIsScannerActive(false)}
+                     className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center z-50 hover:bg-rose-500 transition-colors"
+                   >
+                     <XCircle size={20} />
+                   </button>
+                </div>
+                <div className="mt-4 text-center">
+                  <div className="flex items-center justify-center gap-2 text-indigo-600 font-bold mb-1">
+                    <div className="w-2 h-2 rounded-full bg-indigo-600 animate-ping"></div>
+                    বারকোড স্ক্যান করুন
+                  </div>
+                  <p className="text-xs text-slate-400">বইয়ের বারকোড ক্যামেরার সামনে ধরুন</p>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </AnimatePresence>
+
+      <div className={cn("mb-6")}>
         <div className="relative">
           <input
             ref={inputRef}
@@ -329,55 +411,31 @@ export default function BarcodeScanner() {
             onChange={(e) => setManualCode(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                setScanResult(manualCode);
-                handleBookLookup(manualCode);
+                const code = manualCode.trim();
                 setManualCode('');
+                
+                if (!book) {
+                  setScanResult(code);
+                  handleBookLookup(code);
+                } else if (book.status === 'Available' && !selectedUserId) {
+                  handleMemberScan(code);
+                } else if (book.status === 'Available' && selectedUserId) {
+                  // If both selected, maybe perform action? 
+                  // For now just keep it or let buttons do it.
+                  handleMemberScan(code); // Update user if scanned another
+                }
               }
             }}
-            placeholder="বারকোড মেশিন দিয়ে স্ক্যান করুন বা এখানে লিখুন..."
+            placeholder={!book ? "বইয়ের বারকোড স্ক্যান করুন..." : "মেম্বার আইডি স্ক্যান করুন..."}
             className="w-full px-5 py-4 bg-white border-2 border-indigo-100 rounded-2xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all font-black text-indigo-600 placeholder:text-slate-300 placeholder:font-bold"
           />
           <div className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-200">
              <ScanLine size={24} />
           </div>
         </div>
-      </div>
-
-      <div className={cn("bg-white p-4 max-w-sm mx-auto rounded-[2rem] shadow-xl border border-slate-100 overflow-hidden text-center", scanResult && "hidden")}>
-        {!isScannerActive ? (
-          <div className="py-10">
-             <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                <ScanLine size={40} />
-             </div>
-             <h3 className="text-xl font-bold text-slate-800 mb-2">বারকোড স্ক্যানার</h3>
-             <p className="text-slate-500 mb-8 max-w-[250px] mx-auto">ডিভাইসের ক্যামেরা ব্যবহার করে বইয়ের বারকোড স্ক্যান করতে নিচে ক্লিক করুন।</p>
-             <button
-               onClick={() => setIsScannerActive(true)}
-               className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all active:scale-95 flex flex-row items-center justify-center mx-auto gap-2"
-             >
-               <Scan size={20} />
-               ক্যামেরা চালু করুন
-             </button>
-          </div>
-        ) : (
-          <>
-            <div id="reader" className="w-full min-h-[300px] flex items-center justify-center rounded-2xl overflow-hidden border-2 border-indigo-100 bg-slate-50 relative">
-               <button 
-                 onClick={() => setIsScannerActive(false)}
-                 className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center z-50 hover:bg-rose-500 transition-colors"
-               >
-                 <XCircle size={20} />
-               </button>
-            </div>
-            <div className="mt-4 text-center">
-              <div className="flex items-center justify-center gap-2 text-indigo-600 font-bold mb-1">
-                <div className="w-2 h-2 rounded-full bg-indigo-600 animate-ping"></div>
-                বারকোড স্ক্যান করুন
-              </div>
-              <p className="text-xs text-slate-400">বইয়ের বারকোড ক্যামেরার সামনে ধরুন</p>
-            </div>
-          </>
-        )}
+        <p className="text-center text-slate-400 text-xs mt-2 italic font-medium font-bengali">
+          {!book ? "বইয়ের বারকোড মেশিন দিয়ে স্ক্যান করুন।" : "এবার মেম্বারের বারকোড বা আইডি কার্ড স্ক্যান করুন।"}
+        </p>
       </div>
 
       <AnimatePresence mode="wait">
@@ -425,10 +483,11 @@ export default function BarcodeScanner() {
                     <div className="space-y-6">
                       <div className="space-y-4 bg-slate-50 p-6 rounded-3xl border border-slate-100">
                         <div>
-                          <label className="block text-sm font-bold text-slate-700 mb-2">মেম্বার সিলেক্ট করুন</label>
+                          <label className="block text-sm font-bold text-slate-700 mb-2">মেম্বার সিলেক্ট করুন (বা স্ক্যান করুন)</label>
                           <Select
                             options={userOptions}
                             styles={selectStyles}
+                            value={userOptions.find(o => o.value === selectedUserId)}
                             placeholder="নাম বা আইডি লিখুন..."
                             onChange={(opt: any) => setSelectedUserId(opt?.value)}
                           />

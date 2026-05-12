@@ -395,15 +395,14 @@ export default function ManageUsers() {
             </div>
             
             <div class="barcode-section">
-                <div class="barcode-placeholder">
-                    ${Array.from({length: 12}).map(() => `
-                        <div class="barcode-line" style="width: 2px;"></div>
-                        <div class="barcode-line" style="width: 1px;"></div>
-                        <div class="barcode-line" style="width: 3px;"></div>
-                        <div class="barcode-line" style="width: 2px;"></div>
-                    `).join('')}
+                <div style="margin-bottom: 5px; height: 45px; display: flex; justify-content: center; align-items: center;">
+                    ${usr.memberId ? `
+                        <img src="https://bwipjs-api.metafloor.com/?bcid=code128&text=${usr.memberId}&scale=2&height=10&includetext=false" alt="${usr.memberId}" style="max-height: 40px; max-width: 100%; object-fit: contain;" />
+                    ` : `
+                        <img src="https://bwipjs-api.metafloor.com/?bcid=code128&text=${usr.username || 'USER'}&scale=2&height=10&includetext=false" alt="${usr.username}" style="max-height: 40px; max-width: 100%; object-fit: contain;" />
+                    `}
                 </div>
-                ${usr.memberId ? `<div class="barcode-text">${usr.memberId}</div>` : ''}
+                <div class="barcode-text">${usr.memberId || usr.username || ''}</div>
             </div>
 
             <div class="card-footer">

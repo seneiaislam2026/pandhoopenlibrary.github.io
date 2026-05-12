@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarHeart, Users, FileText, Settings as SettingsIcon, Image as ImageIcon, CheckCircle, UploadCloud, Shield, Trash2, Bell, MessageSquare, ShieldAlert, UserX, Clock, LayoutGrid, Tags, ScanFace, X, Camera as CameraIcon } from 'lucide-react';
+import { CalendarHeart, Users, FileText, Settings as SettingsIcon, Image as ImageIcon, CheckCircle, UploadCloud, Shield, Trash2, Bell, MessageSquare, ShieldAlert, UserX, Clock, LayoutGrid, Tags, ScanFace, X, Camera as CameraIcon, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -684,6 +684,27 @@ export default function AdminSettings() {
              </p>
          </div>
          
+         <div className="relative z-10 mb-8 pt-8 border-t border-slate-200">
+             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-indigo-50 p-6 rounded-3xl border border-indigo-100">
+                 <div className="flex items-center gap-4">
+                     <div className="w-12 h-12 bg-white text-indigo-600 rounded-xl flex items-center justify-center shadow-sm">
+                         <Package className="w-6 h-6" />
+                     </div>
+                     <div>
+                        <h2 className="text-xl font-black font-bengali text-slate-800">বইয়ের স্টক ব্যবস্থাপনা</h2>
+                        <p className="text-indigo-600/70 font-bengali text-sm mt-1">লাইব্রেরির বইয়ের বার্ষিক স্টক স্ট্যাটাস চেক করুন।</p>
+                     </div>
+                 </div>
+                 <Link 
+                   to="/dashboard/stock-take"
+                   className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl font-bold font-bengali transition active:scale-95 shadow-lg shadow-indigo-200 flex items-center justify-center gap-2"
+                 >
+                   ম্যানেজ স্টক পেইজ এ যান
+                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                 </Link>
+             </div>
+         </div>
+
          <div className="relative z-10 flex justify-end">
              <button 
                 onClick={saveSettings} 
