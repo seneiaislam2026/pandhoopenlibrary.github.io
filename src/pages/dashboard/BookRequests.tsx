@@ -76,34 +76,6 @@ export default function BookRequests() {
     if (!confirm(`আপনি কি এই রিকোয়েস্টটি ${status === 'Approved' ? 'অনুমোদন' : status === 'Added' ? 'যুক্ত সম্পন্ন' : 'বাতিল'} করতে চান?`)) return;
     try {
         await updateDoc(doc(db, "book-requests", req.id), { status });
-        
-        let messageText = '';
-        if (status === 'Approved') {
-            messageText = `প্রিয় ${req.userName}, আপনার অনুরোধকৃত "${req.bookTitle}" বইটি গ্রহন করা হয়েছে। খুব শীঘ্রই আমরা বইটি পাঠাগারে যুক্ত করব ইনশাআল্লাহ। পানধোয়া উন্মুক্ত পাঠাগার`;
-        } else if (status === 'Added') {
-            messageText = `প্রিয় ${req.userName}, আপনার অনুরোধের ভিত্তিতে "${req.bookTitle}" বইটি পাঠাগারে যুক্ত করা হয়েছে। পানধোয়া উন্মুক্ত পাঠাগার`;
-        } else if (status === 'Rejected') {
-            messageText = `প্রিয় ${req.userName}, আপনার অনুরোধকৃত "${req.bookTitle}" বইটি এই মুহূর্তে যুক্ত করা সম্ভব হচ্ছে না। পানধোয়া উন্মুক্ত পাঠাগার`;
-        }
-
-        if (messageText) {
-            // Fetch user's phone number
-            const userDoc = await getDoc(doc(db, "users", req.userId));
-            const phone = userDoc.data()?.phone;
-            
-            if (phone) {
-                console.log(`Sending SMS to ${phone} for book request ${status}`);
-                // Use the background worker to avoid blocking
-                (async () => {
-                    const success = await sendSMS(phone, messageText);
-                    if (!success) {
-                        toast.error("সদস্যের মোবাইলে SMS পাঠানো সম্ভব হয়নি।", { icon: '⚠️' });
-                    }
-                })();
-            } else {
-                console.warn(`User ${req.userId} has no phone number, skipping SMS.`);
-            }
-        }
         toast.success(`স্ট্যাটাস ${status === 'Added' ? 'সম্পন্ন' : status === 'Approved' ? 'গৃহীত' : 'বাতিল'} করা হয়েছে।`);
     } catch (err) {
         console.error("Error updating request:", err);

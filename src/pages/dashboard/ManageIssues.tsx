@@ -95,45 +95,48 @@ export default function ManageIssues() {
     sessionStorage.setItem('admin_issues_cache_time', Date.now().toString());
   };
 
-  useEffect(() => {
-    // Check for overdue issues and send SMS automatically
+  const handleSendOverdueAlerts = async () => {
     if (issues.length === 0 || users.length === 0 || books.length === 0) return;
 
     let processing = false;
 
-    const checkAndSendOverdueAlerts = async () => {
-      if (processing) return;
-      processing = true;
+    if (processing) return;
+    processing = true;
+    let alertsSent = 0;
 
-      for (const issue of issues) {
-        if ((issue.status === 'ISSUED' || issue.status === 'Issued') && !issue.autoAlertSent && new Date(issue.expectedReturnDate) < new Date()) {
-          const issueUser = users.find(u => u.id === issue.userId);
-          const issueBook = books.find(b => b.id === issue.bookId);
+    for (const issue of issues) {
+      if ((issue.status === 'ISSUED' || issue.status === 'Issued') && !issue.autoAlertSent && new Date(issue.expectedReturnDate) < new Date()) {
+        const issueUser = users.find(u => u.id === issue.userId);
+        const issueBook = books.find(b => b.id === issue.bookId);
 
-          if (issueUser && issueUser.phone) {
-            const smsMessage = `প্রিয় ${issueUser.name}, পানধোয়া উন্মুক্ত পাঠাগার থেকে নেওয়া আপনার "${issueBook?.title || 'বইটি'}" বইটির ফেরত দেওয়ার তারিখ অতিক্রম হয়েছে। দয়া করে বইটি দ্রুত ফেরত দিন। ওয়েবসাইট: www.pandhoalibrary.org`;
+        if (issueUser && issueUser.phone) {
+          const smsMessage = `প্রিয় ${issueUser.name}, পানধোয়া উন্মুক্ত পাঠাগার থেকে নেওয়া আপনার "${issueBook?.title || 'বইটি'}" বইটির ফেরত দেওয়ার তারিখ অতিক্রম হয়েছে। দয়া করে বইটি দ্রুত ফেরত দিন। ওয়েবসাইট: www.pandhoalibrary.org`;
+          
+          try {
+            const success = await sendSMS(issueUser.phone, smsMessage);
             
-            try {
-              const success = await sendSMS(issueUser.phone, smsMessage);
-              
-              if (success) {
-                  const currentNote = issue.adminNote || '';
-                  await updateDoc(doc(db, "issues", issue.id), {
-                    autoAlertSent: true,
-                    adminNote: currentNote ? currentNote + ' | AUTO ALERT SENT' : 'AUTO ALERT SENT'
-                  });
-              }
-            } catch (err) {
-              console.error("Auto alert failed for issue", issue.id, err);
+            if (success) {
+                const currentNote = issue.adminNote || '';
+                await updateDoc(doc(db, "issues", issue.id), {
+                  autoAlertSent: true,
+                  adminNote: currentNote ? currentNote + ' | AUTO ALERT SENT' : 'AUTO ALERT SENT'
+                });
+                alertsSent++;
             }
+          } catch (err) {
+            console.error("Auto alert failed for issue", issue.id, err);
           }
         }
       }
-      processing = false;
-    };
-
-    checkAndSendOverdueAlerts();
-  }, [issues, users, books]);
+    }
+    processing = false;
+    
+    if (alertsSent > 0) {
+      toast.success(`${alertsSent} জনকে মেয়াদ উত্তীর্ণের মেসেজ পাঠানো হয়েছে।`);
+    } else {
+      toast.error('নতুন কোনো মেয়াদ উত্তীর্ণ সদস্য পাওয়া যায়নি যাদের মেসেজ পাঠানো বাকি আছে।');
+    }
+  };
 
   const handleUpdateNote = async (id: string, text: string = note) => {
     try {
@@ -688,27 +691,6 @@ export default function ManageIssues() {
       });
       toast.success('সময় বৃদ্ধি করা হয়েছে।');
 
-      const issue = issues.find(i => i.id === id);
-      if (issue) {
-        const issueUser = users.find(u => u.id === issue.userId);
-        const issueBook = books.find(b => b.id === issue.bookId);
-        if (issueUser && issueUser.phone) {
-          const smsMessage = `প্রিয় ${issueUser.name}, পানধোয়া উন্মুক্ত পাঠাগার থেকে নেওয়া আপনার "${issueBook?.title || 'বইটি'}" বইটির ফেরত দেওয়ার সময় বৃদ্ধি করে নতুন তারিখ ${bdDate} করা হয়েছে। ওয়েবসাইট: www.pandhoalibrary.org`;
-          
-          // Send SMS in background
-          (async () => {
-            try {
-              const success = await sendSMS(issueUser.phone || '', smsMessage);
-              if (!success) {
-                toast.error("সদস্যের মোবাইলে SMS পাঠানো সম্ভব হয়নি।", { icon: '⚠️' });
-              }
-            } catch (e) {
-              console.error("SMS Error:", e);
-            }
-          })();
-        }
-      }
-
       setExtendConfig(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `issues/${id}`);
@@ -750,6 +732,9 @@ export default function ManageIssues() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
              />
+             <button onClick={handleSendOverdueAlerts} className="flex-1 md:flex-none justify-center bg-amber-50 text-amber-700 px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-amber-100 transition shadow-sm border border-amber-200/50 hover:border-amber-300 whitespace-nowrap">
+               মেয়াদ উত্তীর্ণদের <br className="md:hidden" /> মেসেজ দিন
+             </button>
              <button onClick={downloadOverdueReport} className="flex-1 md:flex-none justify-center bg-rose-50/50 text-rose-600 px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-rose-100 transition shadow-sm border border-rose-200/50 hover:border-rose-300">
                <FileDown className="w-5 h-5 truncate" /> ওভারডিউ রিপোর্ট
              </button>
