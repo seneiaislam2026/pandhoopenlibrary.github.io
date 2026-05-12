@@ -3,7 +3,7 @@ import { collection, onSnapshot, query, orderBy, doc, writeBatch, serverTimestam
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { Search, Plus, Trash2, Library, CheckCircle, ListChecks, Settings2, Filter, Save, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { BOOK_CATEGORIES } from './ManageBooks';
 
 interface Book {

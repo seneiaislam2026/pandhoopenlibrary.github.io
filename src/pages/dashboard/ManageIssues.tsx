@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../store/AuthContext';
-import { BookmarkMinus, CheckCircle2, Trash2, ShieldAlert, FileDown, BookOpen } from 'lucide-react';
+import { BookmarkMinus, CheckCircle2, Trash2, ShieldAlert, FileDown, BookOpen, ScanFace, Camera as CameraIcon, X } from 'lucide-react';
 import { onSnapshot, collection, doc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { motion, AnimatePresence } from 'motion/react';
@@ -34,6 +34,148 @@ export default function ManageIssues() {
   }, [location]);
 
   const [formData, setFormData] = useState({ bookId: '', userId: '', expectedReturnDate: '' });
+
+  // AI Scanner State
+  const [showAiScanner, setShowAiScanner] = useState(false);
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+
+  const startCamera = async () => {
+    try {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+      }
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' }
+      });
+      setStream(newStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = newStream;
+      }
+    } catch (err: any) {
+      toast.error('Camera access denied or unavailable: ' + err.message);
+    }
+  };
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      setStream(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!showAiScanner && stream) {
+      stopCamera();
+    }
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+      }
+    };
+  }, [showAiScanner]);
+
+  const captureAndProcessAI = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    
+    let width = video.videoWidth;
+    let height = video.videoHeight;
+    const MAX_WIDTH = 800; // Resize to max 800 width for faster inference
+    if (width > MAX_WIDTH) {
+       height = Math.round((height * MAX_WIDTH) / width);
+       width = MAX_WIDTH;
+    }
+    
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.drawImage(video, 0, 0, width, height);
+    const base64Image = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+    
+    setIsAiProcessing(true);
+    const toastId = toast.loading('AI বইটিকে শনাক্ত করছে...', { duration: 15000 });
+    
+    try {
+      const dbDoc = await import('firebase/firestore').then(mod => mod.getDoc(mod.doc(db, 'settings', 'general')));
+      const aiToken = dbDoc.exists() ? dbDoc.data().sysToken : '';
+
+      const sysInstruction = `You are a strict library book cover parser. 
+The user is giving you a photo of a book cover.
+Return exactly and only a strict JSON object: {"titleBn": "Exact title in Bengali", "titleEn": "Transliterated/Exact title in English"}. Do not include markdown, do not include anything else.`;
+
+      const response = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: aiToken,
+          model: "gemini-1.5-flash",
+          systemInstruction: sysInstruction,
+          contents: [{
+            role: "user",
+            parts: [
+              { text: "Extract the exact book title from this cover image." },
+              { inlineData: { mimeType: "image/jpeg", data: base64Image } }
+            ]
+          }]
+        })
+      });
+      
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'AI Failed');
+      
+      const text = data.text;
+      if (!text) throw new Error("Could not parse result from AI.");
+      
+      const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleanJson);
+      
+      if (parsed.titleBn || parsed.titleEn) {
+         toast.success('Found book title: ' + (parsed.titleBn || parsed.titleEn), { id: toastId });
+         
+         const normalizeText = (t: string) => t ? t.toLowerCase()
+              .replace(/[\s\-_]/g, '')
+              .replace(/য়/g, 'য')
+              .replace(/ড়/g, 'র')
+              .replace(/ী/g, 'ি')
+              .replace(/ূ/g, 'ু')
+              .replace(/ণ/g, 'ন')
+              .replace(/শ/g, 'স')
+              .replace(/ষ/g, 'স')
+              .replace(/[ঁংঃ]/g, '') : '';
+
+         const targetBn = normalizeText(parsed.titleBn);
+         const targetEn = normalizeText(parsed.titleEn);
+         
+         const matchedBook = books.find(b => {
+             const bt = normalizeText(b.title);
+             return (targetBn && (bt.includes(targetBn) || targetBn.includes(bt))) || 
+                    (targetEn && (bt.includes(targetEn) || targetEn.includes(bt)));
+         });
+
+         if (matchedBook) {
+            setFormData(prev => ({ ...prev, bookId: matchedBook.id }));
+            toast.success('Book selected automatically!');
+            setShowAiScanner(false);
+            stopCamera();
+         } else {
+            toast.error('The extracted title "' + (parsed.titleBn || parsed.titleEn) + '" was not found in your inventory.', { id: toastId, duration: 5000 });
+         }
+      } else {
+        toast.error('AI could not confidently find the title.', { id: toastId });
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error('AI Processing failed: ' + err.message, { id: toastId });
+    } finally {
+      setIsAiProcessing(false);
+    }
+  };
 
   const [editId, setEditId] = useState<string | null>(null);
   const [note, setNote] = useState('');
@@ -808,6 +950,53 @@ export default function ManageIssues() {
       {showIssueForm && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto font-bengali">
           <motion.div initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}} className="bg-white rounded-[2.5rem] w-full max-w-2xl shadow-2xl border border-slate-100 relative my-4 sm:my-8 overflow-hidden sticky top-4">
+            
+            {showAiScanner && (
+              <div className="absolute inset-0 z-[60] bg-white flex flex-col items-center justify-center p-6">
+                <div className="w-full max-w-md bg-slate-900 rounded-3xl overflow-hidden shadow-2xl relative">
+                  <div className="absolute top-4 right-4 z-10 flex gap-2">
+                    <button 
+                      onClick={() => {
+                        setShowAiScanner(false);
+                        stopCamera();
+                      }}
+                      className="w-10 h-10 bg-black/50 text-white rounded-full flex items-center justify-center backdrop-blur hover:bg-white hover:text-black transition"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="relative aspect-[3/4] bg-black">
+                    <video 
+                      ref={videoRef}
+                      autoPlay 
+                      playsInline 
+                      className="w-full h-full object-cover"
+                    />
+                    <canvas ref={canvasRef} className="hidden" />
+                    
+                    <div className="absolute inset-0 pointer-events-none">
+                      <div className="w-full h-full border-[10px] border-slate-900/50"></div>
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-64 border-2 border-white/50 rounded-xl flex items-center justify-center">
+                        <div className="w-12 h-12 border-4 border-indigo-500 rounded-full animate-ping opacity-50"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-6 bg-slate-900 flex flex-col items-center">
+                    <button
+                      onClick={captureAndProcessAI}
+                      disabled={isAiProcessing}
+                      className="w-16 h-16 bg-white rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-slate-200 transition-transform active:scale-95 mb-4 shadow-lg shadow-white/20"
+                    >
+                      <CameraIcon size={28} className="text-slate-900" />
+                    </button>
+                    <p className="text-center text-slate-300 text-sm font-medium font-bengali">
+                      {isAiProcessing ? "AI স্ক্যান করছে..." : "বইয়ের কাভার স্ক্যান করুন"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
             <div className="sticky top-0 bg-white z-10 px-8 sm:px-10 py-6 border-b border-slate-50 flex items-center gap-4">
               <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center"><BookOpen className="w-7 h-7" /></div>
@@ -827,6 +1016,18 @@ export default function ManageIssues() {
                     className="text-sm font-medium focus:outline-none font-bengali"
                     required
                   />
+                  <div className="flex flex-col space-y-1.5 mt-2">
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        setShowAiScanner(true);
+                        startCamera();
+                      }}
+                      className="bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 text-indigo-700 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition"
+                    >
+                      <ScanFace size={18} /> এআই স্ক্যানার দিয়ে বইটি খুঁজুন
+                    </button>
+                  </div>
                 </div>
                 
                 <div className="space-y-1.5">

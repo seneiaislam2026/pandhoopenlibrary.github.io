@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarHeart, Users, FileText, Settings as SettingsIcon, Image as ImageIcon, CheckCircle, UploadCloud, Shield, Trash2, Bell, MessageSquare, ShieldAlert, UserX, Clock, LayoutGrid, Tags } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { CalendarHeart, Users, FileText, Settings as SettingsIcon, Image as ImageIcon, CheckCircle, UploadCloud, Shield, Trash2, Bell, MessageSquare, ShieldAlert, UserX, Clock, LayoutGrid, Tags, ScanFace, X, Camera as CameraIcon } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import toast from 'react-hot-toast';
 
@@ -29,8 +29,21 @@ const availableSubadminRoutes = [
 export default function AdminSettings() {
   const [eventBanners, setEventBanners] = useState<string[]>([]);
   const [subadminAccess, setSubadminAccess] = useState<string[]>([]);
+  const [aiToken, setAiToken] = useState<string>('');
+  const [smsToken, setSmsToken] = useState<string>('');
+  const [smsSenderId, setSmsSenderId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // AI Scanner State
+  const [showAiScanner, setShowAiScanner] = useState(false);
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+
+  // Added newly mapped state for the book save
+  const [scannedBookDetails, setScannedBookDetails] = useState<any>(null);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -39,15 +52,13 @@ export default function AdminSettings() {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const data = docSnap.data();
-          // Support both legacy single banner and new multiple banners
-          if (Array.isArray(data.eventBanners)) {
-            setEventBanners(data.eventBanners);
-          } else if (data.eventBanner) {
-            setEventBanners([data.eventBanner]);
-          } else {
-            setEventBanners([]);
-          }
+          if (Array.isArray(data.eventBanners)) setEventBanners(data.eventBanners);
+          else if (data.eventBanner) setEventBanners([data.eventBanner]);
+          else setEventBanners([]);
           setSubadminAccess(data.subadminAccess || []);
+          setAiToken(data.sysToken || '');
+          setSmsToken(data.smsToken || '');
+          setSmsSenderId(data.smsSenderId || '');
         }
       } catch (err) {
         console.error(err);
@@ -55,6 +66,159 @@ export default function AdminSettings() {
     };
     fetchSettings();
   }, []);
+
+  const startCamera = async () => {
+    try {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' }
+      });
+      setStream(newStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = newStream;
+        videoRef.current.play();
+      }
+    } catch (err) {
+      console.error("Error accessing camera:", err);
+      toast.error('ক্যামেরা চালু করতে সমস্যা হয়েছে।');
+    }
+  };
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+  };
+
+  const generateBookCode = async (categoryStr: string) => {
+    try {
+      const dbRef = collection(db, "books");
+      const q = query(dbRef, where("category", "==", categoryStr));
+      const res = await getDocs(q);
+      const count = res.size + 1;
+      const getPrefix = (cat: string) => {
+        if (!cat) return "GEN";
+        if (cat.includes("শিশু")) return "CHI";
+        if (cat.includes("ইসলাম")) return "ISL";
+        if (cat.includes("গল্প") || cat.includes("ফুটবল")) return "STO";
+        if (cat.includes("ইতিহাস")) return "HIS";
+        if (cat.includes("প্রবন্ধ")) return "ESS";
+        if (cat.includes("কবিতা")) return "POE";
+        if (cat.includes("জীবনী")) return "BIO";
+        if (cat.includes("বিজ্ঞান")) return "SCI";
+        if (cat.includes("উপন্যাস")) return "NOV";
+        if (cat.includes("নাটক")) return "DRA";
+        return cat.substring(0, 3).toUpperCase();
+      };
+      const r = Math.floor(100 + Math.random() * 900);
+      return `${getPrefix(categoryStr)}-${count}${r}`;
+    } catch {
+      return `BOK-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+  };
+
+  const captureAndAnalyze = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    setIsAiProcessing(true);
+    const toastId = toast.loading('AI বইয়ের কাভার থেকে তথ্য পড়ছে...', { style: { fontFamily: 'Hind Siliguri' } });
+
+    try {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D context not possible');
+      
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const base64Image = canvas.toDataURL('image/jpeg', 0.5);
+      const base64Data = base64Image.split(',')[1];
+
+      const sysInstruction = `You are an AI assistant that extracts book details from book covers, specifically for Bengali and English books. Look at the image provided and extract the book's title, author, and likely category in Bengali text. Category must be one of: "শিশু-কিশোর", "ইসলামী বই", "গল্প", "ইতিহাস", "প্রবন্ধ", "কবিতা", "জীবনী ও স্মৃতিচারণ", "বিজ্ঞান", "উপন্যাস", "নাটক" or a fitting short Bengali label. Return a strict JSON object without markdown formatting, using these exact keys: "title", "author", "category". If you cannot identify the title, output "". Do the same for author and category. Example: {"title": "হিমু", "author": "হুমায়ূন আহমেদ", "category": "উপন্যাস"}`;
+
+      const res = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: sysInstruction,
+          contents: [{
+            role: "user",
+            parts: [
+              { text: "Extract the book info from this cover image." },
+              {
+                inlineData: {
+                  mimeType: "image/jpeg",
+                  data: base64Data
+                }
+              }
+            ]
+          }]
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'AI Failed');
+
+      // Extract JSON from response text
+      let text = data.text;
+      
+      // Attempt to clean markdown json blocks if any
+      if (text.includes('```json')) {
+        text = text.split('```json')[1].split('```')[0].trim();
+      } else if (text.includes('```')) {
+         text = text.split('```')[1].split('```')[0].trim();
+      }
+
+      const bookData = JSON.parse(text);
+      if (!bookData.title) throw new Error('বইয়ের নাম পাওয়া যায়নি। আবার চেষ্টা করুন।');
+
+      // Success
+      toast.success('সফলভাবে তথ্য পাওয়া গেছে!', { id: toastId });
+      stopCamera();
+      
+      const bookCode = await generateBookCode(bookData.category);
+
+      setScannedBookDetails({
+         ...bookData,
+         cover: base64Image,
+         bookCode,
+         shelfNo: '',
+         status: 'Available',
+         review: '',
+         description: ''
+      });
+
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Error parsing image, try again.', { id: toastId });
+    } finally {
+      setIsAiProcessing(false);
+    }
+  };
+
+  const saveAiBook = async (e: React.FormEvent) => {
+     e.preventDefault();
+     if (!scannedBookDetails) return;
+     try {
+       const toastId = toast.loading('বই সেভ করা হচ্ছে...');
+       await addDoc(collection(db, "books"), {
+         ...scannedBookDetails,
+         createdAt: serverTimestamp(),
+         updatedAt: serverTimestamp()
+       });
+       toast.success('বই সফলভাবে যুক্ত করা হয়েছে!', { id: toastId });
+       setScannedBookDetails(null);
+       setShowAiScanner(false);
+     } catch (err) {
+       toast.error('বই সেভ করতে সমস্যা হয়েছে।');
+       console.error(err);
+     }
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -109,7 +273,7 @@ export default function AdminSettings() {
   const saveSettings = async () => {
     try {
       setSaving(true);
-      await setDoc(doc(db, 'settings', 'general'), { eventBanners, subadminAccess }, { merge: true });
+      await setDoc(doc(db, 'settings', 'general'), { eventBanners, subadminAccess, sysToken: aiToken, smsToken, smsSenderId }, { merge: true });
       toast.success('সেটিংস সেভ করা হয়েছে!');
     } catch (err) {
       toast.error('সেভ করতে সমস্যা হয়েছে।');
@@ -125,9 +289,153 @@ export default function AdminSettings() {
            <SettingsIcon className="text-indigo-600" />
            অ্যাডমিন সেটিংস
          </h1>
-         <p className="text-slate-500 font-bengali mt-2">ওয়েবসাইটের বিভিন্ন কনফিগারেশন এবং ইভেন্ট পরিচালনা করুন।</p>
+         <p className="text-slate-500 font-bengali mt-2">ওয়েবসাইটের বিভিন্ন কনফিগারেশন, এআই স্ক্যানার এবং ইভেন্ট পরিচালনা করুন।</p>
       </div>
       
+      {/* AI Add Book Card */}
+      <div className="mb-8 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-indigo-500/20">
+         <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+         <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div>
+               <div className="flex items-center gap-3 mb-2">
+                 <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
+                   <ScanFace className="text-white w-6 h-6" />
+                 </div>
+                 <h2 className="text-2xl font-black font-bengali tracking-wide">এআই (AI) স্ক্যানার দিয়ে বই যুক্ত করুন</h2>
+               </div>
+               <p className="text-indigo-100 font-bengali text-sm leading-relaxed max-w-xl">
+                 বইয়ের কাভার স্ক্যান করলেই আর্টিফিশিয়াল ইন্টেলিজেন্স (AI) অটোমেটিকভাবে বইয়ের লেখক, ক্যাটাগরি এবং অন্যান্য তথ্য এক্সট্র্যাক্ট করে নির্ভুলভাবে ডাটাবেসে সেভ করবে। এতে কোনো বানান ভুল হবে না।
+               </p>
+            </div>
+            <button
+               onClick={() => {
+                 setShowAiScanner(true);
+                 setScannedBookDetails(null);
+                 startCamera();
+               }}
+               className="bg-white text-indigo-600 px-8 py-3.5 rounded-2xl font-black font-bengali shadow-lg hover:bg-slate-50 transition-all hover:scale-105 active:scale-95 whitespace-nowrap flex items-center gap-2"
+            >
+               এআই স্ক্যানার চালু করুন
+            </button>
+         </div>
+      </div>
+
+      <AnimatePresence>
+         {showAiScanner && (
+           <motion.div 
+             initial={{ opacity: 0 }} 
+             animate={{ opacity: 1 }} 
+             exit={{ opacity: 0 }}
+             className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4"
+           >
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0 }} 
+                animate={{ scale: 1, opacity: 1 }} 
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              >
+                 <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-20">
+                    <h3 className="text-xl font-black font-bengali text-slate-800 flex items-center gap-2">
+                       <ScanFace className="text-indigo-600 w-6 h-6" /> 
+                       {scannedBookDetails ? 'স্ক্যানকৃত তথ্য নিশ্চিত করুন' : 'AI দিয়ে বই এন্ট্রি'}
+                    </h3>
+                    <button 
+                       onClick={() => {
+                         stopCamera();
+                         setShowAiScanner(false);
+                         setIsAiProcessing(false);
+                       }}
+                       className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500"
+                    >
+                       <X className="w-5 h-5" />
+                    </button>
+                 </div>
+
+                 <div className="p-6 overflow-y-auto font-bengali bg-slate-50 relative flex-1">
+                    {!scannedBookDetails ? (
+                       <div className="flex flex-col items-center">
+                          <div className="w-full aspect-[3/4] bg-black rounded-2xl overflow-hidden relative border-4 border-slate-200">
+                            <video 
+                              ref={videoRef} 
+                              autoPlay 
+                              playsInline 
+                              muted 
+                              className="w-full h-full object-cover"
+                            />
+                            {isAiProcessing && (
+                               <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center text-white">
+                                 <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                                 <span className="font-bold text-sm tracking-widest animate-pulse">তথ্য প্রসেস করা হচ্ছে...</span>
+                               </div>
+                            )}
+                            {/* Scanning Guide Overlay */}
+                            {!isAiProcessing && (
+                               <div className="absolute inset-0 pointer-events-none">
+                                 <div className="w-full h-full border-[10px] border-slate-900/30 rounded-2xl"></div>
+                                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3/4 h-1/2 border-2 text-white/50 border-dashed border-white/50 rounded-xl flex items-center justify-center p-4">
+                                     <span className="text-center text-sm font-bold">এখানে বইয়ের কাভার ঠিকমতো ধরুন</span>
+                                 </div>
+                               </div>
+                            )}
+                          </div>
+                          
+                          <canvas ref={canvasRef} className="hidden" />
+
+                          <button
+                             onClick={captureAndAnalyze}
+                             disabled={isAiProcessing || !stream}
+                             className="mt-6 bg-indigo-600 hover:bg-indigo-700 text-white w-full py-4 rounded-2xl font-black shadow-lg shadow-indigo-600/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          >
+                             <CameraIcon className="w-5 h-5" /> ছবি তুলুন ও তথ্য বের করুন
+                          </button>
+                       </div>
+                    ) : (
+                       <form onSubmit={saveAiBook} className="space-y-4">
+                          <div className="flex justify-center mb-6">
+                            <img src={scannedBookDetails.cover} alt="Cover" className="w-32 rounded-xl shadow-md border-2 border-slate-200" />
+                          </div>
+
+                          <div className="space-y-3">
+                             <div>
+                               <label className="text-xs font-bold text-slate-500 uppercase">বইয়ের নাম</label>
+                               <input type="text" value={scannedBookDetails.title} onChange={e=>setScannedBookDetails({...scannedBookDetails, title: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold" required />
+                             </div>
+                             <div>
+                               <label className="text-xs font-bold text-slate-500 uppercase">লেখকের নাম</label>
+                               <input type="text" value={scannedBookDetails.author} onChange={e=>setScannedBookDetails({...scannedBookDetails, author: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold" required />
+                             </div>
+                             <div className="grid grid-cols-2 gap-3">
+                               <div>
+                                 <label className="text-xs font-bold text-slate-500 uppercase">ক্যাটাগরি</label>
+                                 <input type="text" value={scannedBookDetails.category} onChange={e=>setScannedBookDetails({...scannedBookDetails, category: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold" />
+                               </div>
+                               <div>
+                                 <label className="text-xs font-bold text-slate-500 uppercase">বইয়ের কোড</label>
+                                 <input type="text" value={scannedBookDetails.bookCode} onChange={e=>setScannedBookDetails({...scannedBookDetails, bookCode: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold" />
+                               </div>
+                             </div>
+                             <div>
+                               <label className="text-xs font-bold text-slate-500 uppercase">শেল্ফ নং</label>
+                               <input type="text" value={scannedBookDetails.shelfNo} onChange={e=>setScannedBookDetails({...scannedBookDetails, shelfNo: e.target.value})} placeholder="A1, B2" className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold" />
+                             </div>
+                          </div>
+
+                          <div className="pt-4 flex gap-3 sticky bottom-0 bg-slate-50">
+                             <button type="button" onClick={() => { setScannedBookDetails(null); startCamera(); }} className="flex-1 px-4 py-3 bg-white border-2 border-slate-200 text-slate-600 rounded-xl font-bold">
+                               পুনরায় ছবি তুলুন
+                             </button>
+                             <button type="submit" className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-500/20">
+                               সেভ করুন
+                             </button>
+                          </div>
+                       </form>
+                    )}
+                 </div>
+              </motion.div>
+           </motion.div>
+         )}
+      </AnimatePresence>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
          <Link to="/dashboard/events" className="group p-6 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all">
             <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mb-6 group-hover:-translate-y-1 transition-transform">
@@ -316,6 +624,65 @@ export default function AdminSettings() {
                 </label>
             ))}
          </div>
+
+         <div className="relative z-10 mb-8 pt-8 border-t border-slate-200">
+             <div className="flex items-center gap-4 mb-4">
+                 <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center border border-indigo-100">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 14-8-4 8-4 8 4-8 4Z"/><path d="M4 14v4l8 4 8-4v-4"/></svg>
+                 </div>
+                 <div>
+                    <h2 className="text-xl font-black font-bengali text-slate-800">Gemini AI সেটআপ</h2>
+                    <p className="text-slate-500 font-bengali text-sm mt-1">ক্যামেরা দিয়ে বই বা টেক্সট স্ক্যান করার জন্য API কী দিন।</p>
+                 </div>
+             </div>
+             <div>
+                <input
+                   type="password"
+                   placeholder="Gemini API Key (AI Studio)"
+                   value={aiToken}
+                   onChange={e => setAiToken(e.target.value)}
+                   className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-mono"
+                />
+                <p className="text-xs text-slate-400 mt-2">
+                   আপনার যদি নিজস্ব কী না থাকে, তবে এই ঘর ফাঁকা রাখতে পারেন (লুকানো ডিফল্ট কী ব্যবহার হবে)।
+                </p>
+             </div>
+         </div>
+
+         <div className="relative z-10 mb-8 pt-8 border-t border-slate-200">
+             <div className="flex items-center gap-4 mb-4">
+                 <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center border border-emerald-100">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                 </div>
+                 <div>
+                    <h2 className="text-xl font-black font-bengali text-slate-800">SMS Gateway সেটআপ</h2>
+                    <p className="text-slate-500 font-bengali text-sm mt-1">BulkSMSBD API Key এবং Sender ID দিন।</p>
+                 </div>
+             </div>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <input
+                     type="password"
+                     placeholder="SMS API Key"
+                     value={smsToken}
+                     onChange={e => setSmsToken(e.target.value)}
+                     className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <input
+                     type="text"
+                     placeholder="Sender ID (e.g. 8809617...)"
+                     value={smsSenderId}
+                     onChange={e => setSmsSenderId(e.target.value)}
+                     className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm font-mono"
+                  />
+                </div>
+             </div>
+             <p className="text-xs text-slate-400 mt-2">
+                এই ঘরগুলো ফাঁকা রাখলে ডিফল্ট API কী ব্যবহার হবে, যা কাজ নাও করতে পারে।
+             </p>
+         </div>
          
          <div className="relative z-10 flex justify-end">
              <button 
@@ -331,3 +698,4 @@ export default function AdminSettings() {
     </div>
   );
 }
+

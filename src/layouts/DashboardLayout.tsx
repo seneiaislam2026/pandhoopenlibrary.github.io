@@ -321,7 +321,8 @@ export default function DashboardLayout() {
     { name: 'বইয়ের অনুরোধ', path: '/dashboard/book-requests', icon: BookOpen },
   ];
 
-  const links = user?.role === 'admin' ? adminLinks : (user?.role === 'subadmin' || user?.role === 'visitor_admin') ? dynamicSubadminLinks : readerLinks;
+  const isSuperAdmin = user?.role === 'admin' || user?.username === 'admin' || user?.email === 'seneiaislam@gmail.com' || user?.email === 'admin@library.com';
+  const links = isSuperAdmin ? adminLinks : (user?.role === 'subadmin' || user?.role === 'visitor_admin') ? dynamicSubadminLinks : readerLinks;
   const filteredLinks = links.filter(l => l.name.toLowerCase().includes(sidebarSearch.toLowerCase()));
 
   const handleLogout = () => {

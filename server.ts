@@ -11,18 +11,25 @@ async function startServer() {
   // API route for AI bot
   app.post('/api/gemini', async (req, res) => {
     try {
-      let apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY_HERE" || apiKey === "your_api_key_here" || apiKey === "undefined") {
-        apiKey = "AIzaSyC7HnIFbb2E15H15lf-MN_K463mcQoFwuA";
+      let apiKey = req.body.apiKey;
+      if (typeof apiKey === 'string') {
+        apiKey = apiKey.trim();
+      }
+      if (!apiKey || apiKey === "undefined" || apiKey === "YOUR_GEMINI_API_KEY_HERE" || apiKey === "your_api_key_here") {
+        apiKey = process.env.GEMINI_API_KEY;
+      }
+      
+      if (!apiKey) {
+        return res.status(400).json({ error: "No Gemini API key found. Please add it in General Settings." });
       }
 
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(apiKey);
       
-      const { contents, systemInstruction, tools } = req.body;
+      const { contents, systemInstruction, tools, model: requestModel } = req.body;
       
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash",
+        model: requestModel || "gemini-1.5-flash",
         systemInstruction: systemInstruction 
       });
       
@@ -71,12 +78,12 @@ async function startServer() {
         cleanNumber = '880' + cleanNumber;
       }
 
-      let apiKey = process.env.SMS_API_KEY;
+      let apiKey = req.body.apiKey || process.env.SMS_API_KEY;
       if (!apiKey || apiKey === "undefined" || apiKey.includes("YOUR_") || apiKey.trim() === "") {
         apiKey = "T445ZnbHEELavHNv3Tdw";
       }
       
-      let senderId = process.env.SMS_SENDER_ID;
+      let senderId = req.body.senderId || process.env.SMS_SENDER_ID;
       if (!senderId || senderId === "undefined" || senderId.includes("YOUR_") || senderId.trim() === "") {
         senderId = "8809617634384";
       }

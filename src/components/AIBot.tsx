@@ -274,6 +274,9 @@ const AIBot = () => {
     setIsLoading(true);
 
     try {
+      const dbDoc = await import('firebase/firestore').then(mod => mod.getDoc(mod.doc(db, 'settings', 'general')));
+      const aiToken = dbDoc.exists() ? dbDoc.data().sysToken : '';
+
       // Use local API for both dev and prod
       const apiUrl = '/api/gemini';
 
@@ -345,6 +348,8 @@ const AIBot = () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
+              apiKey: aiToken,
+              model: "gemini-1.5-flash",
               contents, 
               systemInstruction: systemPrompt,
               tools: [{ functionDeclarations: libraryTools }]

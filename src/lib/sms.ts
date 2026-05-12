@@ -1,6 +1,18 @@
+import { db } from './firebase';
+import { doc, getDoc } from 'firebase/firestore';
+
 export const sendSMS = async (number: string, message: string) => {
   try {
     if (!number || !message) return false;
+
+    let smsAuth = {};
+    try {
+      const docSnap = await getDoc(doc(db, 'settings', 'general'));
+      if(docSnap.exists()) {
+        const data = docSnap.data();
+        if(data.smsToken) smsAuth = { apiKey: data.smsToken, senderId: data.smsSenderId };
+      }
+    } catch(e) {}
 
     // First try the standard /api/send-sms
     let response = await fetch('/api/send-sms', {
@@ -8,7 +20,7 @@ export const sendSMS = async (number: string, message: string) => {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ number, message })
+      body: JSON.stringify({ number, message, ...smsAuth })
     });
 
     // If 404, it might be on Netlify without proxy rewrites working properly, so hit the function directly

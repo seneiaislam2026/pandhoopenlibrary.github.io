@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth } from '../../store/AuthContext';
-import { Search, Plus, Edit2, Trash2, BookOpen, ShieldAlert, Download, X } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, BookOpen, ShieldAlert, Download, X, ScanLine, Camera } from 'lucide-react';
 import { onSnapshot, collection, doc, setDoc, deleteDoc, updateDoc, addDoc, query, where, getDocs, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { Html5Qrcode } from 'html5-qrcode';
 import { db, auth } from '../../lib/firebase';
 import { firebaseService } from '../../services/firebaseService';
 import toast from 'react-hot-toast';
@@ -155,6 +156,283 @@ export default function ManageBooks() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const scannerInstance = useRef<Html5Qrcode | null>(null);
+
+  const [isAiScanning, setIsAiScanning] = useState(false);
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+
+  const fetchBookDetailsByISBN = async (isbn: string) => {
+    try {
+      toast.loading('বইয়ের তথ্য খোঁজা হচ্ছে...', { id: 'isbn-fetch' });
+      
+      let bookInfoRaw: any = null;
+      let bookInfoString = "";
+      let thumbnailUrl = "";
+      
+      try {
+        const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+        const data = await res.json();
+        if (data.items && data.items.length > 0) {
+          bookInfoRaw = data.items[0].volumeInfo;
+          bookInfoString = JSON.stringify(bookInfoRaw);
+          thumbnailUrl = bookInfoRaw.imageLinks?.thumbnail?.replace('http:', 'https:') || '';
+        } else {
+          bookInfoString = `No database info found for ISBN: ${isbn}`;
+        }
+      } catch (e) {
+        bookInfoString = `Error fetching database info for ISBN: ${isbn}`;
+      }
+
+      let aiToken = '';
+      try {
+        const dbDoc = await import('firebase/firestore').then(mod => mod.getDoc(mod.doc(db, 'settings', 'general')));
+        aiToken = dbDoc.exists() ? dbDoc.data().sysToken : '';
+      } catch(e) {
+        console.warn("Could not fetch general settings", e);
+      }
+
+      const sysInstruction = `You are a helpful AI assistant for a Bengali library. You are given an ISBN number and possibly some metadata fetched from a book database (which might be in English or incomplete). 
+
+CRITICAL RULES:
+1. Translate or transliterate EVERYTHING into proper Bengali (বাংলা) script. NEVER output English/Latin text for title, author, or description.
+2. Return exactly and only a strict JSON object without markdown formatting using these exact keys: "title", "author", "category", "description".
+3. The "category" MUST be one of: "শিশু-কিশোর", "ইসলামী বই", "গল্প", "ইতিহাস", "প্রবন্ধ", "কবিতা", "জীবনী ও স্মৃতিচারণ", "বিজ্ঞান", "উপন্যাস", "নাটক".
+4. If "No database info found" is provided, DO NOT GUESS OR HALLUCINATE the book based on the ISBN number alone. You MUST output empty strings "" for all fields. 
+5. Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহমেদ", "category": "উপন্যাস", "description": "হিমু হুমায়ূন আহমেদের এক জনপ্রিয় চরিত্র।"}`;
+
+      let parsed: any = {};
+      
+      try {
+        const geminiRes = await fetch('/api/gemini', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            apiKey: aiToken,
+            model: "gemini-1.5-flash",
+            systemInstruction: sysInstruction,
+            contents: [{
+              role: "user",
+              parts: [{ text: `ISBN: ${isbn}\n\nDatabase info:\n${bookInfoString}` }]
+            }]
+          })
+        });
+
+        if (geminiRes.ok) {
+           const geminiData = await geminiRes.json();
+           const text = geminiData.text;
+           const cleanJson = text.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+           parsed = JSON.parse(cleanJson);
+        } else {
+           console.warn("AI API returned non-OK status");
+        }
+      } catch(aiErr) {
+        console.warn("AI processing failed, using raw data", aiErr);
+      }
+
+      if (!parsed.title && !bookInfoRaw) {
+        toast.error('এই বারকোডের বই খুঁজে পাওয়া যায়নি।', { id: 'isbn-fetch' });
+        return;
+      }
+      
+      if (!parsed.title && bookInfoRaw) {
+         toast.success('তথ্য ইংরেজিতে পাওয়া গেছে, এডিটে দেখে নিন।', { id: 'isbn-fetch' });
+      } else {
+         toast.success('বইয়ের তথ্য স্বয়ংক্রিয়ভাবে বাংলায় সম্পূর্ণ হয়েছে!', { id: 'isbn-fetch' });
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        title: parsed.title || prev.title || (bookInfoRaw ? bookInfoRaw.title : ''),
+        author: parsed.author || prev.author || (bookInfoRaw?.authors ? bookInfoRaw.authors.join(', ') : ''),
+        category: parsed.category || prev.category || (bookInfoRaw?.categories ? bookInfoRaw.categories[0] : ''),
+        description: parsed.description || prev.description || (bookInfoRaw?.description || ''),
+        cover: prev.cover || thumbnailUrl
+      }));
+      
+    } catch (err) {
+      console.error(err);
+      toast.error('তথ্য সংগ্রহে সমস্যা হয়েছে।', { id: 'isbn-fetch' });
+    }
+  };
+
+  const startIsbnScanner = async () => {
+    setIsScanning(true);
+    setTimeout(async () => {
+      try {
+        const html5QrCode = new Html5Qrcode("isbn-reader");
+        scannerInstance.current = html5QrCode;
+        let cameraConfig: any = { facingMode: "environment" };
+        
+        try {
+          const devices = await Html5Qrcode.getCameras();
+          if (devices && devices.length > 0) {
+            const backCamera = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('environment'));
+            if (backCamera) {
+              cameraConfig = backCamera.id;
+            }
+          }
+        } catch (e) {
+          console.warn("Could not probe cameras, using default environment mode", e);
+        }
+
+        await html5QrCode.start(
+          cameraConfig,
+          {
+            fps: 10,
+            qrbox: (w, h) => {
+              const minEdge = Math.min(w, h);
+              const width = Math.floor(minEdge * 0.8);
+              return { width: width, height: Math.floor(width * 0.5) };
+            }
+          },
+          (decodedText) => {
+            html5QrCode.stop().then(() => {
+               setIsScanning(false);
+               scannerInstance.current = null;
+               fetchBookDetailsByISBN(decodedText);
+            });
+          },
+          () => {}
+        );
+      } catch (err) {
+        console.error("Camera start error:", err);
+        toast.error("ক্যামেরা চালু করতে সমস্যা হয়েছে।");
+        setIsScanning(false);
+      }
+    }, 100);
+  };
+
+  const stopIsbnScanner = () => {
+    if (scannerInstance.current) {
+      scannerInstance.current.stop().then(() => {
+        setIsScanning(false);
+        scannerInstance.current = null;
+      }).catch(console.error);
+    } else {
+      setIsScanning(false);
+    }
+  };
+
+  const startAiCamera = async () => {
+    setIsAiScanning(true);
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' }
+      });
+      setStream(mediaStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('ক্যামেরা চালু করতে সমস্যা হয়েছে।');
+      setIsAiScanning(false);
+    }
+  };
+
+  const stopAiCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+    setIsAiScanning(false);
+  };
+
+  const captureAndProcessAI = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    setIsAiProcessing(true);
+    const toastId = toast.loading('AI বইয়ের কাভার এবং তথ্য বিশ্লেষণ করছে...', { style: { fontFamily: 'Hind Siliguri' } });
+
+    try {
+      const dbDoc = await import('firebase/firestore').then(mod => mod.getDoc(mod.doc(db, 'settings', 'general')));
+      const aiToken = dbDoc.exists() ? dbDoc.data().sysToken : '';
+
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      let width = video.videoWidth;
+      let height = video.videoHeight;
+      const MAX_WIDTH = 800;
+      if (width > MAX_WIDTH) {
+         height = Math.round((height * MAX_WIDTH) / width);
+         width = MAX_WIDTH;
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D context not possible');
+      
+      ctx.drawImage(video, 0, 0, width, height);
+      const base64Image = canvas.toDataURL('image/jpeg', 0.5);
+      const base64Data = base64Image.split(',')[1];
+
+      const sysInstruction = `You are a strict AI assistant for a Bengali library. Look at the book cover image provided and extract the book's information.
+
+CRITICAL RULES:
+1. Translate or transliterate EVERYTHING into proper Bengali (বাংলা) script. NEVER output English/Latin text in any field. Even if the book cover is in English, translate the title and author to Bengali letters!
+2. Generate a brief 1-sentence descriptive summary about the book's contents in Bengali.
+3. Category must strictly be one of: "শিশু-কিশোর", "ইসলামী বই", "গল্প", "ইতিহাস", "প্রবন্ধ", "কবিতা", "জীবনী ও স্মৃতিচারণ", "বিজ্ঞান", "উপন্যাস", "নাটক".
+4. Return exactly and only a strict JSON object without markdown, using exactly these keys: "title", "author", "category", "description".
+5. If you absolutely cannot identify the title, output an empty string "".
+
+Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহমেদ", "category": "উপন্যাস", "description": "হিমু হুমায়ূন আহমেদের এক জনপ্রিয় কাল্পনিক চরিত্র, যা হলুদ পাঞ্জাবি পরে এবং খালি পায়ে হাঁটে।"}`;
+
+      const res = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: aiToken,
+          model: "gemini-1.5-flash",
+          systemInstruction: sysInstruction,
+          contents: [{
+            role: "user",
+            parts: [
+              { text: "Extract the exact information from this cover image." },
+              {
+                inlineData: {
+                  mimeType: "image/jpeg",
+                  data: base64Data
+                }
+              }
+            ]
+          }]
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'AI Failed');
+
+      let text = data.text;
+      const cleanJson = text.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+      const parsed = JSON.parse(cleanJson);
+      
+      if (!parsed.title) throw new Error('বইয়ের নাম পাওয়া যায়নি। আবার চেষ্টা করুন।');
+
+      toast.success('সফলভাবে তথ্য পাওয়া গেছে!', { id: toastId });
+      stopAiCamera();
+      
+      setFormData(prev => ({
+         ...prev,
+         title: prev.title || parsed.title || '',
+         author: prev.author || parsed.author || '',
+         category: prev.category || parsed.category || '',
+         description: prev.description || parsed.description || '',
+         cover: prev.cover || base64Image
+      }));
+
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Error processing image. Make sure image is clear.', { id: toastId });
+    } finally {
+      setIsAiProcessing(false);
+    }
+  };
+
   const [formData, setFormData] = useState<{ title: string; author: string; category: string; cover: string; status: string; bookCode: string; shelfNo: string; review: string; description: string }>({ 
     title: '', 
     author: '', 
@@ -266,34 +544,36 @@ export default function ManageBooks() {
               table-layout: fixed;
             }
             th, td {
-              padding: 8px 6px;
+              padding: 6px 4px;
               text-align: center;
               border: 1px solid #000;
               line-height: 1.2;
               word-wrap: break-word;
+              vertical-align: middle;
             }
             th {
-              background-color: #f1f5f9;
-              font-weight: 950;
-              font-size: 12px;
+              background-color: #e2e8f0;
+              font-weight: 700;
+              font-size: 11px;
               text-transform: uppercase;
             }
             td {
-              font-size: 13px;
-              font-weight: 600;
+              font-size: 12px;
+              font-weight: 500;
             }
-            .sl-col { width: 45px; }
-            .title-col { width: auto; text-align: left; }
-            .cat-col { width: 100px; }
-            .author-col { width: 120px; text-align: left; }
-            .code-col { width: 130px; font-family: 'Outfit', sans-serif; }
-            .shelf-col { width: 70px; font-family: 'Outfit', sans-serif; }
+            .sl-col { width: 35px; }
+            .title-col { width: auto; text-align: left; padding-left: 6px; }
+            .cat-col { width: 75px; }
+            .author-col { width: 100px; text-align: left; padding-left: 6px; }
+            .code-col { width: 100px; font-family: 'Outfit', sans-serif; }
+            .shelf-col { width: 45px; font-family: 'Outfit', sans-serif; }
             
             .barcode-container {
               display: flex;
               flex-direction: column;
               align-items: center;
-              gap: 2px;
+              justify-content: center;
+              height: 25px;
             }
             .barcode-svg {
               width: 100%;
@@ -344,9 +624,9 @@ export default function ManageBooks() {
                   <td class="text-center cat-col">${book.category || '---'}</td>
                   <td class="author-col">${book.author}</td>
                   <td class="text-center code-col">
-                    <div class="barcode-container">
+                    <div style="text-align: center; height: 35px; display: flex; justify-content: center; align-items: center; overflow: hidden;">
                       ${book.bookCode ? `
-                        <img src="https://bwipjs-api.metafloor.com/?bcid=code128&text=${book.bookCode}&scale=2&height=5&includetext=true" alt="${book.bookCode}" style="height: 30px; object-fit: contain; width: 100%;" />
+                        <img src="https://bwipjs-api.metafloor.com/?bcid=code128&text=${book.bookCode}&scale=2&height=7&includetext=true" alt="${book.bookCode}" style="max-height: 35px; max-width: 100%; object-fit: contain;" />
                       ` : '---'}
                     </div>
                   </td>
@@ -843,6 +1123,69 @@ export default function ManageBooks() {
             </div>
             
             <div className="flex-1 overflow-y-auto p-6 sm:p-8 pt-4">
+              {isAiScanning ? (
+                 <div className="mb-6 bg-slate-900 border overflow-hidden rounded-3xl relative">
+                    <div className="absolute top-4 left-0 w-full z-10 flex justify-center pointer-events-none">
+                       <div className="bg-black/60 backdrop-blur text-white px-4 py-1.5 rounded-full text-xs font-bold font-bengali tracking-wide flex items-center gap-2">
+                          <BookOpen className="w-4 h-4 text-indigo-400" />
+                          বইয়ের কাভারের ছবি তুলুন
+                       </div>
+                    </div>
+                    <video ref={videoRef} className="w-full aspect-[4/3] object-cover" autoPlay playsInline muted />
+                    <canvas ref={canvasRef} className="hidden" />
+                    
+                    <div className="absolute bottom-6 w-full flex items-center justify-center gap-4 z-10">
+                      <button 
+                        type="button" 
+                        onClick={stopAiCamera}
+                        className="bg-white/10 backdrop-blur hover:bg-white/20 p-3.5 rounded-full text-white transition pointer-events-auto"
+                      >
+                        <X className="w-6 h-6" />
+                      </button>
+                      <button 
+                         type="button"
+                         onClick={captureAndProcessAI}
+                         disabled={isAiProcessing}
+                         className="w-16 h-16 bg-white rounded-full flex items-center justify-center p-1 pointer-events-auto active:scale-95 transition-transform"
+                      >
+                         <div className={`w-full h-full rounded-full flex items-center justify-center ${isAiProcessing ? 'bg-indigo-200' : 'bg-indigo-600'}`}>
+                           {isAiProcessing ? (
+                             <ScanLine className="w-6 h-6 text-indigo-600 animate-pulse" />
+                           ) : (
+                             <Camera className="w-6 h-6 text-white" />
+                           )}
+                         </div>
+                      </button>
+                    </div>
+                 </div>
+              ) : isScanning ? (
+                 <div className="mb-6 bg-slate-50 border-2 border-dashed border-indigo-200 rounded-3xl p-4 flex flex-col items-center">
+                    <div className="w-full text-center font-bengali p-2 font-bold text-slate-600 flex items-center justify-center gap-2">
+                       <ScanLine className="w-5 h-5 text-indigo-500" />
+                       ISBN স্ক্যান করুন
+                    </div>
+                    <div id="isbn-reader" className="w-full max-w-[300px] overflow-hidden rounded-2xl bg-black"></div>
+                    <button 
+                      type="button" 
+                      onClick={stopIsbnScanner}
+                      className="mt-4 bg-rose-500 hover:bg-rose-600 text-white px-6 py-2 rounded-xl font-bold font-bengali shadow-sm transition active:scale-95"
+                    >
+                      বাতিল করুন
+                    </button>
+                 </div>
+              ) : (
+                <div className="mb-6 grid grid-cols-1 gap-3">
+                  <button 
+                    type="button" 
+                    onClick={startIsbnScanner}
+                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 p-4 rounded-2xl font-bold font-bengali flex flex-col items-center justify-center gap-2 transition active:scale-95"
+                  >
+                    <ScanLine className="w-6 h-6" />
+                    <span>ISBN স্ক্যানার</span>
+                  </button>
+                </div>
+              )}
+
               <form id="bookForm" onSubmit={handleSubmit} className="space-y-5 font-bengali pb-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
