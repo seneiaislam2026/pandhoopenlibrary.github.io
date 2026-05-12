@@ -243,8 +243,8 @@ CRITICAL RULES:
       }
 
       if (!parsed.title && !bookInfoRaw) {
-        toast.error('এই বারকোডের বই খুঁজে পাওয়া যায়নি।', { id: 'isbn-fetch' });
-        return;
+        toast.error('এই বারকোডের তথ্য অনলাইনে পাওয়া যায়নি। দয়া করে ম্যানুয়ালি টাইপ করুন।', { id: 'isbn-fetch' });
+        // Don't return, still set the barcode so user can save it
       }
       
       if (!parsed.title && bookInfoRaw) {
@@ -1188,12 +1188,12 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
                     </div>
                  </div>
               ) : isScanning ? (
-                 <div className="mb-6 bg-slate-50 border-2 border-dashed border-indigo-200 rounded-3xl p-4 flex flex-col items-center">
+                 <div className="mb-6 bg-slate-50 border-2 border-indigo-200 rounded-3xl p-4 flex flex-col items-center">
                     <div className="w-full text-center font-bengali p-2 font-bold text-slate-600 flex items-center justify-center gap-2">
                        <ScanLine className="w-5 h-5 text-indigo-500" />
-                       ISBN স্ক্যান করুন
+                       বারকোড স্ক্যান করুন
                     </div>
-                    <div id="isbn-reader" className="w-full max-w-[300px] overflow-hidden rounded-2xl bg-black"></div>
+                    <div id="isbn-reader" className="w-full max-w-[280px] min-h-[180px] overflow-hidden rounded-2xl bg-black"></div>
                     <button 
                       type="button" 
                       onClick={stopIsbnScanner}
@@ -1203,14 +1203,17 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
                     </button>
                  </div>
               ) : (
-                <div className="mb-6 grid grid-cols-1 gap-3">
+                <div className="mb-6">
                   <button 
                     type="button" 
                     onClick={startIsbnScanner}
-                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 p-4 rounded-2xl font-bold font-bengali flex flex-col items-center justify-center gap-2 transition active:scale-95"
+                    className="w-full bg-indigo-50 border-2 border-dashed border-indigo-200 hover:bg-indigo-100 text-indigo-700 p-6 rounded-2xl font-bold font-bengali flex flex-col items-center justify-center gap-3 transition-all active:scale-95 group"
                   >
-                    <ScanLine className="w-6 h-6" />
-                    <span>ISBN স্ক্যানার</span>
+                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                      <ScanLine className="w-6 h-6" />
+                    </div>
+                    <span className="text-lg">বারকোড স্ক্যান করুন</span>
+                    <p className="text-[10px] text-indigo-400 font-medium">ক্যামেরা দিয়ে বইয়ের বারকোড স্ক্যান করতে এখানে ক্লিক করুন</p>
                   </button>
                 </div>
               )}

@@ -364,10 +364,10 @@ export default function BarcodeScanner() {
       <div className="space-y-6">
         {/* Scanner Section - Keep it in DOM but hidden when not active */}
         <div className={cn(
-          "bg-white p-4 max-w-sm mx-auto rounded-[2rem] shadow-xl border border-slate-100 overflow-hidden text-center",
+          "bg-white p-2 max-w-sm mx-auto rounded-[2rem] shadow-xl border border-slate-100 overflow-hidden text-center",
           (scanResult || !isScannerActive) && "hidden"
         )}>
-          <div id="reader" className="w-full min-h-[300px] flex items-center justify-center rounded-2xl overflow-hidden border-2 border-indigo-100 bg-slate-50 relative">
+          <div id="reader" className="w-full min-h-[220px] max-h-[250px] flex items-center justify-center rounded-2xl overflow-hidden border-2 border-indigo-100 bg-slate-50 relative">
              <button 
                onClick={() => setIsScannerActive(false)}
                className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center z-50 hover:bg-rose-500 transition-colors"
