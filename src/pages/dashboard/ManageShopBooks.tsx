@@ -146,8 +146,8 @@ export default function ManageShopBooks() {
               <tr key={book.id} className="hover:bg-slate-50/50 transition">
                 <td className="p-6">
                   <div className="flex gap-4 items-center">
-                    <div className="w-12 h-16 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 shadow-sm flex-shrink-0">
-                      {book.cover ? <img src={book.cover} referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <BookOpen className="w-6 h-6 m-auto mt-5 text-slate-300" />}
+                    <div className="w-12 h-16 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 shadow-sm flex-shrink-0 p-1">
+                      {book.cover ? <img src={book.cover} referrerPolicy="no-referrer" className="w-full h-full object-contain" /> : <BookOpen className="w-6 h-6 m-auto mt-5 text-slate-300" />}
                     </div>
                     <div>
                       <div className="font-black text-slate-900 leading-tight">{book.title}</div>
@@ -244,8 +244,8 @@ export default function ManageShopBooks() {
                   <button type="button" onClick={() => setCoverInputType('link')} className={`flex-1 py-3 px-4 rounded-xl text-xs font-black transition-all ${coverInputType === 'link' ? 'bg-white shadow-xl text-rose-600' : 'text-slate-400'}`}>লিঙ্ক</button>
                 </div>
                 <div className="flex gap-6 items-start">
-                  <div className="w-24 h-36 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex-shrink-0 flex items-center justify-center overflow-hidden">
-                    {formData.cover ? <img src={formData.cover} referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <BookOpen className="w-8 h-8 text-slate-200" />}
+                  <div className="w-24 h-36 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex-shrink-0 flex items-center justify-center overflow-hidden p-1">
+                    {formData.cover ? <img src={formData.cover} referrerPolicy="no-referrer" className="w-full h-full object-contain" /> : <BookOpen className="w-8 h-8 text-slate-200" />}
                   </div>
                   <div className="flex-1 space-y-4">
                     {coverInputType === 'upload' ? (

@@ -964,7 +964,7 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
             onClick={() => handleBookClick(book)}
             className="bg-white rounded-2xl border border-slate-200 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col h-full cursor-pointer relative overflow-hidden"
           >
-            <div className="relative h-[160px] sm:h-[200px] w-full shrink-0 bg-slate-50 border-b border-slate-100">
+            <div className="relative h-[220px] sm:h-[280px] w-full shrink-0 bg-slate-100 border-b border-slate-100 p-2">
               {book.cover ? (
                 <img 
                   src={book.cover} 
@@ -972,7 +972,7 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
                   loading="lazy" 
                   decoding="async"
                   referrerPolicy="no-referrer" 
-                  className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500" 
+                  className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500" 
                 />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center p-4 text-slate-200">
@@ -1348,14 +1348,14 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
               </button>
             </div>
             
-            <div className="h-64 sm:h-72 w-full bg-slate-100 relative shrink-0">
+            <div className="h-80 sm:h-96 w-full bg-slate-900 relative shrink-0 p-4">
               {detailsModalBook.cover ? (
                 <img 
                   src={detailsModalBook.cover} 
                   alt={detailsModalBook.title} 
                   loading="lazy" 
                   referrerPolicy="no-referrer" 
-                  className="w-full h-full object-cover object-top" 
+                  className="w-full h-full object-contain" 
                 />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center p-4 text-slate-300 bg-slate-100">

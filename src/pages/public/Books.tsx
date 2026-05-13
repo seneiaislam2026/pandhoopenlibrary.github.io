@@ -253,7 +253,7 @@ export default function Books() {
                 className="bg-white rounded-2xl border border-slate-200 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col h-full cursor-pointer relative overflow-hidden"
                 onClick={() => setSelectedBook(book)}
               >
-                <div className="relative h-[160px] sm:h-[200px] w-full shrink-0 bg-slate-50 border-b border-slate-100">
+                <div className="relative h-[220px] sm:h-[280px] w-full shrink-0 bg-slate-100 border-b border-slate-100 p-2">
                   {book.cover ? (
                     <img 
                       src={book.cover} 
@@ -261,7 +261,7 @@ export default function Books() {
                       loading="lazy" 
                       decoding="async"
                       referrerPolicy="no-referrer" 
-                      className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500" 
+                      className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500" 
                     />
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center p-4 text-slate-200">
@@ -349,10 +349,10 @@ export default function Books() {
                 <X size={20} />
               </button>
 
-              <div className="w-full md:w-2/5 bg-slate-50 p-6 md:p-12 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-slate-100 shrink-0">
-                <div className="w-1/2 sm:w-2/5 md:w-full max-w-[160px] md:max-w-[280px] aspect-[3/4] rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl shadow-indigo-500/20">
+              <div className="w-full md:w-2/5 bg-slate-900 p-6 md:p-12 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-slate-100 shrink-0">
+                <div className="w-1/2 sm:w-2/5 md:w-full max-w-[160px] md:max-w-[280px] aspect-[3/4] rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl shadow-indigo-500/10">
                   {selectedBook.cover ? (
-                    <img src={selectedBook.cover} alt={selectedBook.title} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                    <img src={selectedBook.cover} alt={selectedBook.title} referrerPolicy="no-referrer" className="w-full h-full object-contain" />
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center bg-white border border-slate-100">
                       <BookOpen size={64} className="text-slate-100" />

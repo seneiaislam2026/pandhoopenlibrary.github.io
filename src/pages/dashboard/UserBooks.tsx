@@ -148,9 +148,9 @@ export default function UserBooks() {
                       return (
                          <div key={i.id} className={`bg-white p-6 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border ${isOverdue ? 'border-rose-100' : 'border-slate-100'} hover:shadow-lg transition-shadow`}>
                             <div className="flex gap-5">
-                               <div className="w-20 rounded-xl overflow-hidden bg-slate-100 hidden sm:block shrink-0 shadow-sm border border-slate-200">
+                               <div className="w-20 rounded-xl overflow-hidden bg-slate-100 hidden sm:block shrink-0 shadow-sm border border-slate-200 p-1">
                                    {book?.cover ? (
-                                      <img src={book.cover} alt="Cover" className="w-full h-full object-cover" />
+                                      <img src={book.cover} alt="Cover" className="w-full h-full object-contain" />
                                    ) : (
                                       <div className="w-full h-full aspect-[3/4] flex items-center justify-center bg-slate-100">
                                          <BookOpen className="text-slate-300 w-8 h-8" />
