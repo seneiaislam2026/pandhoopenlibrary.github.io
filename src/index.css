@@ -9,6 +9,10 @@
   --font-mono: "Outfit", ui-monospace, monospace;
 }
 
+body, .font-bengali {
+  line-height: 1.6; /* Better vertical room for Hind Siliguri ascenders */
+}
+
 @keyframes shimmer {
   100% {
     transform: translateX(100%);

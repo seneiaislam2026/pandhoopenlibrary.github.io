@@ -573,7 +573,8 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
               padding: 6px 4px;
               text-align: center;
               border: 1px solid #000;
-              line-height: 1.2;
+              line-height: normal; /* Fix for Bengali numeral 1 clipping */
+              padding-top: 8px; /* Give a little extra room for ascenders */
               word-wrap: break-word;
               vertical-align: middle;
             }
