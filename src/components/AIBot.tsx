@@ -200,8 +200,8 @@ const AIBot = () => {
   useEffect(() => {
     if (messages.length === 0) {
       const greeting = isAdmin 
-        ? `আসসালামু আলাইকুম অ্যাডমিন! আমি আপনার লাইব্রেরি ম্যানেজার AI। আমি আপনাকে লাইব্রেরি স্ট্যাটাস চেক করতে, হিসাব নিকাশ দেখতে বা সিস্টেম পরিচালনা করতে সাহায্য করতে পারি।`
-        : `আসসালামু আলাইকুম! আমি আপনার লাইব্রেরি অ্যাসিস্ট্যান্ট AI। আমি আপনাকে বই খুঁজে পেতে বা লাইব্রেরি সম্পর্কে জানতে সাহায্য করতে পারি।`;
+        ? `আসসালামু আলাইকুম অ্যাডমিন! আমি আপনার লাইব্রেরি ম্যানেজার Gemini। আমি আপনাকে লাইব্রেরি স্ট্যাটাস চেক করতে, হিসাব নিকাশ দেখতে বা সিস্টেম পরিচালনা করতে সাহায্য করতে পারি।`
+        : `আসসালামু আলাইকুম! আমি আপনার লাইব্রেরি অ্যাসিস্ট্যান্ট Gemini। আমি আপনাকে বই খুঁজে পেতে বা লাইব্রেরি সম্পর্কে জানতে সাহায্য করতে পারি।`;
       
       setMessages([{
         id: '1',
@@ -454,7 +454,7 @@ const AIBot = () => {
                   <Bot className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm">লাইব্রেরি অ্যাসিস্ট্যান্ট AI {isAdmin ? '(Admin)' : ''}</h3>
+                  <h3 className="font-bold text-sm">লাইব্রেরি অ্যাসিস্ট্যান্ট Gemini {isAdmin ? '(Admin)' : ''}</h3>
                   <div className="flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
                     <span className="text-[10px] text-indigo-100 font-medium">Online</span>
@@ -534,7 +534,7 @@ const AIBot = () => {
                           <motion.div animate={{ y: [0, -5, 0] }} transition={{ duration: 0.6, repeat: Infinity, delay: 0.2 }} className="w-1.5 h-1.5 bg-indigo-400 rounded-full" />
                           <motion.div animate={{ y: [0, -5, 0] }} transition={{ duration: 0.6, repeat: Infinity, delay: 0.4 }} className="w-1.5 h-1.5 bg-indigo-400 rounded-full" />
                         </div>
-                        <span className="text-xs text-slate-400 italic font-medium">বইবন্ধু লিখছে...</span>
+                        <span className="text-xs text-slate-400 italic font-medium">Gemini লিখছে...</span>
                       </div>
                     </div>
                   </motion.div>

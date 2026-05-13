@@ -49,6 +49,15 @@ export default function ManageCategories() {
       (b.bookCode || '').toLowerCase().includes(term);
     const matchesCategory = categoryFilter === '' || b.category === categoryFilter;
     return matchesSearch && matchesCategory;
+  }).sort((a, b) => {
+    // Books without category or with 'সাধারণ'/'General' should come first
+    const aNoCat = !a.category || a.category === '' || a.category === 'সাধারণ' || a.category === 'General';
+    const bNoCat = !b.category || b.category === '' || b.category === 'সাধারণ' || b.category === 'General';
+
+    if (aNoCat && !bNoCat) return -1;
+    if (!aNoCat && bNoCat) return 1;
+    
+    return a.title.localeCompare(b.title);
   });
 
   const toggleSelect = (id: string) => {

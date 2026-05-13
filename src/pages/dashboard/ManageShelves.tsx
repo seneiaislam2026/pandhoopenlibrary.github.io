@@ -50,6 +50,19 @@ export default function ManageShelves() {
       (b.bookCode || '').toLowerCase().includes(term);
     const matchesCategory = categoryFilter === '' || b.category === categoryFilter;
     return matchesSearch && matchesCategory;
+  }).sort((a, b) => {
+    // Priority 1: No category assigned or assigned to "সাধারণ" category
+    const aNoCategory = !a.category || a.category === 'সাধারণ' || a.category === 'অন্যান্য';
+    const bNoCategory = !b.category || b.category === 'সাধারণ' || b.category === 'অন্যান্য';
+
+    // Priority 2: No shelf assigned
+    const aNoShelf = !a.shelfNo || a.shelfNo === '' || a.shelfNo === '--' || a.shelfNo === 'N/A';
+    const bNoShelf = !b.shelfNo || b.shelfNo === '' || b.shelfNo === '--' || b.shelfNo === 'N/A';
+
+    if ((aNoCategory || aNoShelf) && !(bNoCategory || bNoShelf)) return -1;
+    if (!(aNoCategory || aNoShelf) && (bNoCategory || bNoShelf)) return 1;
+    
+    return a.title.localeCompare(b.title);
   });
 
   const toggleSelect = (id: string) => {

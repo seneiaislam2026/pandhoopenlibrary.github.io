@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../store/AuthContext';
-import { BookmarkMinus, CheckCircle2, Trash2, ShieldAlert, FileDown, BookOpen, ScanFace, Camera as CameraIcon, X } from 'lucide-react';
-import { onSnapshot, collection, doc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { BookmarkMinus, CheckCircle2, Trash2, ShieldAlert, FileDown, BookOpen, ScanFace, Camera as CameraIcon, X, ScanLine } from 'lucide-react';
+import { onSnapshot, collection, doc, updateDoc, deleteDoc, setDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { Html5Qrcode } from 'html5-qrcode';
 import { motion, AnimatePresence } from 'motion/react';
 import Select from 'react-select';
 import toast from 'react-hot-toast';
@@ -34,6 +35,71 @@ export default function ManageIssues() {
   }, [location]);
 
   const [formData, setFormData] = useState({ bookId: '', userId: '', expectedReturnDate: '' });
+  const [barcodeInput, setBarcodeInput] = useState('');
+  const [isBarcodeScanning, setIsBarcodeScanning] = useState(false);
+  const barcodeScannerRef = useRef<Html5Qrcode | null>(null);
+
+  const lookupBookByBarcode = (code: string) => {
+    const term = code.trim().toLowerCase();
+    if (!term) return;
+
+    const matchedBook = books.find(b => 
+      (b.barcode && b.barcode.trim().toLowerCase() === term) || 
+      (b.bookCode && b.bookCode.trim().toLowerCase() === term)
+    );
+
+    if (matchedBook) {
+      if (matchedBook.status !== 'Available' && matchedBook.status !== 'AVAILABLE') {
+        toast.error(`বইটি বর্তমানে ${matchedBook.status === 'Issued' ? 'ইস্যুকৃত' : 'বন্ধ'} অবস্থায় আছে।`);
+        return;
+      }
+      setFormData(prev => ({ ...prev, bookId: matchedBook.id }));
+      toast.success(`বইটি পাওয়া গেছে: ${matchedBook.title}`);
+      setBarcodeInput('');
+    } else {
+      toast.error('এই বারকোডের কোনো বই পাওয়া যায়নি।');
+    }
+  };
+
+  const startBarcodeScanner = async () => {
+    setIsBarcodeScanning(true);
+    setTimeout(async () => {
+      try {
+        const html5QrCode = new Html5Qrcode("barcode-reader-issue");
+        barcodeScannerRef.current = html5QrCode;
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          {
+            fps: 10,
+            qrbox: (w, h) => ({ width: Math.floor(Math.min(w, h) * 0.8), height: Math.floor(Math.min(w, h) * 0.8) })
+          },
+          (decodedText) => {
+            html5QrCode.stop().then(() => {
+              setIsBarcodeScanning(false);
+              barcodeScannerRef.current = null;
+              lookupBookByBarcode(decodedText);
+            });
+          },
+          () => {}
+        );
+      } catch (err) {
+        console.error("Scanner error:", err);
+        toast.error("ক্যামেরা চালু করতে সমস্যা হয়েছে।");
+        setIsBarcodeScanning(false);
+      }
+    }, 100);
+  };
+
+  const stopBarcodeScanner = () => {
+    if (barcodeScannerRef.current) {
+      barcodeScannerRef.current.stop().then(() => {
+        setIsBarcodeScanning(false);
+        barcodeScannerRef.current = null;
+      }).catch(console.error);
+    } else {
+      setIsBarcodeScanning(false);
+    }
+  };
 
   // AI Scanner State
   const [showAiScanner, setShowAiScanner] = useState(false);
@@ -99,7 +165,7 @@ export default function ManageIssues() {
     const base64Image = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
     
     setIsAiProcessing(true);
-    const toastId = toast.loading('AI বইটিকে শনাক্ত করছে...', { duration: 15000 });
+    const toastId = toast.loading('Gemini বইটিকে শনাক্ত করছে...', { duration: 15000 });
     
     try {
       const dbDoc = await import('firebase/firestore').then(mod => mod.getDoc(mod.doc(db, 'settings', 'general')));
@@ -990,7 +1056,7 @@ Return exactly and only a strict JSON object: {"titleBn": "Exact title in Bengal
                       <CameraIcon size={28} className="text-slate-900" />
                     </button>
                     <p className="text-center text-slate-300 text-sm font-medium font-bengali">
-                      {isAiProcessing ? "AI স্ক্যান করছে..." : "বইয়ের কাভার স্ক্যান করুন"}
+                      {isAiProcessing ? "Gemini স্ক্যান করছে..." : "বইয়ের কাভার স্ক্যান করুন"}
                     </p>
                   </div>
                 </div>
@@ -1002,6 +1068,58 @@ Return exactly and only a strict JSON object: {"titleBn": "Exact title in Bengal
               <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center"><BookOpen className="w-7 h-7" /></div>
               <h3 className="text-2xl font-black text-slate-900 tracking-tight font-bengali">নতুন বই ইস্যু</h3>
             </div>
+            
+            <div className="px-8 sm:px-10 py-4 bg-slate-50 border-b border-slate-100">
+               <div className="flex flex-col gap-3">
+                  <div className="relative">
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 font-bengali">বারকোড স্ক্যান করুন (মেশিন দিয়ে)</label>
+                    <div className="relative group">
+                      <input 
+                        type="text" 
+                        value={barcodeInput}
+                        onChange={e => setBarcodeInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            lookupBookByBarcode(barcodeInput);
+                          }
+                        }}
+                        placeholder="বারকোড মেশিন দিয়ে স্ক্যান করুন..."
+                        className="w-full bg-white border-2 border-slate-200 px-10 py-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm transition-all"
+                      />
+                      <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="h-[1px] flex-1 bg-slate-200"></div>
+                    <span className="text-[10px] font-bold text-slate-400 font-bengali uppercase">অথবা</span>
+                    <div className="h-[1px] flex-1 bg-slate-200"></div>
+                  </div>
+
+                  {isBarcodeScanning ? (
+                    <div className="bg-slate-900 rounded-2xl overflow-hidden p-2">
+                       <div id="barcode-reader-issue" className="w-full aspect-square bg-black rounded-xl overflow-hidden"></div>
+                       <button 
+                         type="button" 
+                         onClick={stopBarcodeScanner}
+                         className="w-full mt-2 bg-rose-500 text-white py-2 rounded-lg font-bold font-bengali text-xs"
+                       >
+                         স্ক্যান বন্ধ করুন
+                       </button>
+                    </div>
+                  ) : (
+                    <button 
+                      type="button" 
+                      onClick={startBarcodeScanner}
+                      className="w-full bg-white border-2 border-indigo-100 hover:bg-slate-50 text-indigo-600 p-3 rounded-xl font-bold font-bengali flex items-center justify-center gap-2 transition-all active:scale-95 text-sm"
+                    >
+                      <CameraIcon className="w-5 h-5" /> মোবাইলের ক্যামেরা দিয়ে স্ক্যান
+                    </button>
+                  )}
+               </div>
+            </div>
+
             <form onSubmit={handleIssue} className="p-8 sm:p-10 pt-4 sm:pt-6 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1.5">
@@ -1025,7 +1143,7 @@ Return exactly and only a strict JSON object: {"titleBn": "Exact title in Bengal
                       }}
                       className="bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 text-indigo-700 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition"
                     >
-                      <ScanFace size={18} /> এআই স্ক্যানার দিয়ে বইটি খুঁজুন
+                      <ScanFace size={18} /> Gemini স্ক্যানার দিয়ে বইটি খুঁজুন
                     </button>
                   </div>
                 </div>

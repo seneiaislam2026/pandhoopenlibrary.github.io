@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarHeart, Users, FileText, Settings as SettingsIcon, Image as ImageIcon, CheckCircle, UploadCloud, Shield, Trash2, Bell, MessageSquare, ShieldAlert, UserX, Clock, LayoutGrid, Tags, ScanFace, X, Camera as CameraIcon, Package } from 'lucide-react';
+import { CalendarHeart, Users, FileText, Settings as SettingsIcon, Image as ImageIcon, CheckCircle, UploadCloud, Shield, Trash2, Bell, MessageSquare, ShieldAlert, UserX, Clock, LayoutGrid, Tags, ScanFace, X, Camera as CameraIcon, Package, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp, getDocs, query, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import toast from 'react-hot-toast';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const availableSubadminRoutes = [
   { name: 'সদস্য ব্যবস্থাপনা (Users)', path: '/dashboard/users' },
@@ -34,6 +36,8 @@ export default function AdminSettings() {
   const [smsSenderId, setSmsSenderId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [exportingPdf, setExportingPdf] = useState<string | null>(null);
 
   // AI Scanner State
   const [showAiScanner, setShowAiScanner] = useState(false);
@@ -65,6 +69,22 @@ export default function AdminSettings() {
       }
     };
     fetchSettings();
+
+    const fetchCategories = async () => {
+      try {
+        const booksRef = collection(db, 'books');
+        const querySnapshot = await getDocs(booksRef);
+        const cats = new Set<string>();
+        querySnapshot.forEach(doc => {
+          const cat = doc.data().category;
+          if (cat) cats.add(cat);
+        });
+        setCategories(Array.from(cats).sort());
+      } catch (err) {
+        console.error("Error fetching categories for export:", err);
+      }
+    };
+    fetchCategories();
   }, []);
 
   const startCamera = async () => {
@@ -124,7 +144,7 @@ export default function AdminSettings() {
     if (!videoRef.current || !canvasRef.current) return;
     
     setIsAiProcessing(true);
-    const toastId = toast.loading('AI বইয়ের কাভার থেকে তথ্য পড়ছে...', { style: { fontFamily: 'Hind Siliguri' } });
+    const toastId = toast.loading('Gemini বইয়ের কাভার থেকে তথ্য পড়ছে...', { style: { fontFamily: 'Hind Siliguri' } });
 
     try {
       const video = videoRef.current;
@@ -213,7 +233,7 @@ export default function AdminSettings() {
        });
        toast.success('বই সফলভাবে যুক্ত করা হয়েছে!', { id: toastId });
        setScannedBookDetails(null);
-       setShowAiScanner(false);
+       startCamera();
      } catch (err) {
        toast.error('বই সেভ করতে সমস্যা হয়েছে।');
        console.error(err);
@@ -282,6 +302,77 @@ export default function AdminSettings() {
     }
   };
 
+  const downloadBookListPDF = async (category: string | 'all') => {
+    try {
+      setExportingPdf(category);
+      const toastId = toast.loading(`${category === 'all' ? 'সব' : category} বইয়ের তালিকা তৈরি হচ্ছে...`);
+      
+      const booksRef = collection(db, 'books');
+      let q;
+      if (category === 'all') {
+        q = query(booksRef, orderBy('category'), orderBy('title'));
+      } else {
+        q = query(booksRef, where('category', '==', category), orderBy('title'));
+      }
+      
+      const querySnapshot = await getDocs(q);
+      const booksData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...(doc.data() as any)
+      })) as any[];
+
+      if (booksData.length === 0) {
+        toast.error('কোনো বই পাওয়া যায়নি।', { id: toastId });
+        setExportingPdf(null);
+        return;
+      }
+
+      const doc = new jsPDF();
+      
+      // Add Bengali font support if possible, or use standard
+      // Since standard jsPDF doesn't support Bengali well without custom fonts, 
+      // we'll try to provide a clean layout. 
+      // Note: For real Bengali support, we'd need to embed a .ttf font base64.
+      // For now, we'll use standard headers but attempt to show the data.
+
+      doc.setFontSize(18);
+      doc.text(`Book List - ${category === 'all' ? 'All Categories' : category}`, 14, 20);
+      doc.setFontSize(10);
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 28);
+
+      const tableColumn = ["Book Code", "Title", "Author", "Category", "Shelf"];
+      const tableRows: any[] = [];
+
+      booksData.forEach(book => {
+        const bookRows = [
+          book.bookCode || 'N/A',
+          book.title || 'N/A',
+          book.author || 'N/A',
+          book.category || 'N/A',
+          book.shelfNo || 'N/A',
+        ];
+        tableRows.push(bookRows);
+      });
+
+      (doc as any).autoTable({
+        head: [tableColumn],
+        body: tableRows,
+        startY: 35,
+        theme: 'striped',
+        headStyles: { fillColor: [79, 70, 229] }, // indigo-600
+        styles: { fontSize: 9 }, // Small font for better fitting
+      });
+
+      doc.save(`BookList_${category.replace(/\s+/g, '_')}_${new Date().getTime()}.pdf`);
+      toast.success('পিডিএফ ডাউনলোড সফল হয়েছে!', { id: toastId });
+    } catch (err) {
+      console.error(err);
+      toast.error('পিডিএফ তৈরি করতে সমস্যা হয়েছে।');
+    } finally {
+      setExportingPdf(null);
+    }
+  };
+
   return (
     <div className="p-6">
       <div className="mb-8">
@@ -289,7 +380,7 @@ export default function AdminSettings() {
            <SettingsIcon className="text-indigo-600" />
            অ্যাডমিন সেটিংস
          </h1>
-         <p className="text-slate-500 font-bengali mt-2">ওয়েবসাইটের বিভিন্ন কনফিগারেশন, এআই স্ক্যানার এবং ইভেন্ট পরিচালনা করুন।</p>
+         <p className="text-slate-500 font-bengali mt-2">ওয়েবসাইটের বিভিন্ন কনফিগারেশন, Gemini স্ক্যানার এবং ইভেন্ট পরিচালনা করুন।</p>
       </div>
       
       {/* AI Add Book Card */}
@@ -301,10 +392,10 @@ export default function AdminSettings() {
                  <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
                    <ScanFace className="text-white w-6 h-6" />
                  </div>
-                 <h2 className="text-2xl font-black font-bengali tracking-wide">এআই (AI) স্ক্যানার দিয়ে বই যুক্ত করুন</h2>
+                 <h2 className="text-2xl font-black font-bengali tracking-wide">Gemini (AI) স্ক্যানার দিয়ে বই যুক্ত করুন</h2>
                </div>
                <p className="text-indigo-100 font-bengali text-sm leading-relaxed max-w-xl">
-                 বইয়ের কাভার স্ক্যান করলেই আর্টিফিশিয়াল ইন্টেলিজেন্স (AI) অটোমেটিকভাবে বইয়ের লেখক, ক্যাটাগরি এবং অন্যান্য তথ্য এক্সট্র্যাক্ট করে নির্ভুলভাবে ডাটাবেসে সেভ করবে। এতে কোনো বানান ভুল হবে না।
+                 বইয়ের কাভার স্ক্যান করলেই Gemini (Artificial Intelligence) অটোমেটিকভাবে বইয়ের লেখক, ক্যাটাগরি এবং অন্যান্য তথ্য এক্সট্র্যাক্ট করে নির্ভুলভাবে ডাটাবেসে সেভ করবে। এতে কোনো বানান ভুল হবে না।
                </p>
             </div>
             <button
@@ -315,7 +406,7 @@ export default function AdminSettings() {
                }}
                className="bg-white text-indigo-600 px-8 py-3.5 rounded-2xl font-black font-bengali shadow-lg hover:bg-slate-50 transition-all hover:scale-105 active:scale-95 whitespace-nowrap flex items-center gap-2"
             >
-               এআই স্ক্যানার চালু করুন
+               Gemini স্ক্যানার চালু করুন
             </button>
          </div>
       </div>
@@ -337,7 +428,7 @@ export default function AdminSettings() {
                  <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-20">
                     <h3 className="text-xl font-black font-bengali text-slate-800 flex items-center gap-2">
                        <ScanFace className="text-indigo-600 w-6 h-6" /> 
-                       {scannedBookDetails ? 'স্ক্যানকৃত তথ্য নিশ্চিত করুন' : 'AI দিয়ে বই এন্ট্রি'}
+                       {scannedBookDetails ? 'স্ক্যানকৃত তথ্য নিশ্চিত করুন' : 'Gemini দিয়ে বই এন্ট্রি'}
                     </h3>
                     <button 
                        onClick={() => {
@@ -714,6 +805,81 @@ export default function AdminSettings() {
                 {saving ? 'সেভ করা হচ্ছে...' : 'সেটিং সেভ করুন'}
                 {!saving && <CheckCircle className="w-5 h-5" />}
              </button>
+         </div>
+      </div>
+
+      {/* PDF Export Section */}
+      <div className="mt-8 bg-white rounded-3xl border border-slate-200 shadow-sm p-8 relative overflow-hidden">
+         <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-[80px] -mr-32 -mt-32"></div>
+         
+         <div className="relative z-10 flex items-center gap-4 mb-8">
+            <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center border border-amber-100 shadow-sm">
+               <FileText size={24} />
+            </div>
+            <div>
+               <h2 className="text-2xl font-black font-bengali text-slate-800">বইয়ের তালিকা পিডিএফ (PDF) ডাউনলোড</h2>
+               <p className="text-slate-500 font-bengali text-sm mt-1">ক্যাটাগরি অনুযায়ী বা সব বইয়ের তালিকা পিডিএফ ফাইল হিসেবে সেভ করুন।</p>
+            </div>
+         </div>
+
+         <div className="relative z-10 space-y-6">
+            {/* All Books Export */}
+            <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+               <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-indigo-600 text-white rounded-lg flex items-center justify-center shadow-md">
+                     <LayoutGrid size={20} />
+                  </div>
+                  <div>
+                     <h3 className="font-black font-bengali text-slate-800">সকল বইয়ের তালিকা</h3>
+                     <p className="text-xs text-slate-500 font-bengali">পাঠাগারের সকল বই একসাথ পিডিএফ ফরম্যাটে ডাউনলোড করুন।</p>
+                  </div>
+               </div>
+               <button 
+                  onClick={() => downloadBookListPDF('all')}
+                  disabled={exportingPdf !== null}
+                  className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-black font-bengali flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 transition active:scale-95 disabled:opacity-50"
+               >
+                  {exportingPdf === 'all' ? (
+                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                     <Download size={18} />
+                  )}
+                  ডাউনলোড করুন
+               </button>
+            </div>
+
+            {/* Categories Export Grid */}
+            <div>
+               <h4 className="font-black font-bengali text-slate-700 mb-4 flex items-center gap-2">
+                  <Tags size={18} className="text-amber-500" />
+                  ক্যাটাগরি ভিত্তিক ডাউনলোড
+               </h4>
+               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {categories.length > 0 ? categories.map((cat, idx) => (
+                     <div key={idx} className="p-4 bg-white border border-slate-200 rounded-2xl hover:border-amber-200 hover:shadow-md transition-all flex items-center justify-between gap-3">
+                        <div className="overflow-hidden">
+                           <p className="font-bold font-bengali text-slate-800 text-sm truncate" title={cat}>{cat}</p>
+                        </div>
+                        <button 
+                          onClick={() => downloadBookListPDF(cat)}
+                          disabled={exportingPdf !== null}
+                          className="p-2 bg-amber-50 text-amber-600 hover:bg-amber-600 hover:text-white rounded-lg transition-colors flex-shrink-0"
+                          title="ডাউনলোড পিডিএফ"
+                        >
+                           {exportingPdf === cat ? (
+                              <div className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin"></div>
+                           ) : (
+                              <Download size={16} />
+                           )}
+                        </button>
+                     </div>
+                  )) : (
+                     <div className="col-span-full py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        <p className="text-slate-400 font-bengali text-sm italic">কোনো ক্যাটাগরি পাওয়া যায়নি</p>
+                     </div>
+                  )}
+               </div>
+            </div>
          </div>
       </div>
     </div>
