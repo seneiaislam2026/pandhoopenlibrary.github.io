@@ -156,9 +156,6 @@ export default function ManageBooks() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
-  const scannerInstance = useRef<Html5Qrcode | null>(null);
-
   const [isAiScanning, setIsAiScanning] = useState(false);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -221,7 +218,7 @@ CRITICAL RULES:
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             apiKey: aiToken,
-            model: "gemini-1.5-flash",
+            model: "gemini-3-flash-preview",
             systemInstruction: sysInstruction,
             contents: [{
               role: "user",
@@ -245,9 +242,7 @@ CRITICAL RULES:
       if (!parsed.title && !bookInfoRaw) {
         toast.error('এই বারকোডের তথ্য অনলাইনে পাওয়া যায়নি। দয়া করে ম্যানুয়ালি টাইপ করুন।', { id: 'isbn-fetch' });
         // Don't return, still set the barcode so user can save it
-      }
-      
-      if (!parsed.title && bookInfoRaw) {
+      } else if (!parsed.title && bookInfoRaw) {
          toast.success('তথ্য ইংরেজিতে পাওয়া গেছে, এডিটে দেখে নিন।', { id: 'isbn-fetch' });
       } else {
          toast.success('বইয়ের তথ্য স্বয়ংক্রিয়ভাবে বাংলায় সম্পূর্ণ হয়েছে!', { id: 'isbn-fetch' });
@@ -266,68 +261,6 @@ CRITICAL RULES:
     } catch (err) {
       console.error(err);
       toast.error('তথ্য সংগ্রহে সমস্যা হয়েছে।', { id: 'isbn-fetch' });
-    }
-  };
-
-  const startIsbnScanner = async () => {
-    setIsScanning(true);
-    setTimeout(async () => {
-      try {
-        const html5QrCode = new Html5Qrcode("isbn-reader", {
-          formatsToSupport: [ 
-            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 
-          ]
-        } as any);
-        scannerInstance.current = html5QrCode;
-        let cameraConfig: any = { facingMode: "environment" };
-        
-        try {
-          const devices = await Html5Qrcode.getCameras();
-          if (devices && devices.length > 0) {
-            const backCamera = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('environment'));
-            if (backCamera) {
-              cameraConfig = backCamera.id;
-            }
-          }
-        } catch (e) {
-          console.warn("Could not probe cameras, using default environment mode", e);
-        }
-
-        await html5QrCode.start(
-          cameraConfig,
-          {
-            fps: 10,
-            qrbox: (w, h) => {
-              const minEdge = Math.min(w, h);
-              const width = Math.floor(minEdge * 0.85);
-              return { width: width, height: width };
-            }
-          },
-          (decodedText) => {
-            html5QrCode.stop().then(() => {
-               setIsScanning(false);
-               scannerInstance.current = null;
-               fetchBookDetailsByISBN(decodedText);
-            });
-          },
-          () => {}
-        );
-      } catch (err) {
-        console.error("Camera start error:", err);
-        toast.error("ক্যামেরা চালু করতে সমস্যা হয়েছে।");
-        setIsScanning(false);
-      }
-    }, 100);
-  };
-
-  const stopIsbnScanner = () => {
-    if (scannerInstance.current) {
-      scannerInstance.current.stop().then(() => {
-        setIsScanning(false);
-        scannerInstance.current = null;
-      }).catch(console.error);
-    } else {
-      setIsScanning(false);
     }
   };
 
@@ -401,7 +334,7 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           apiKey: aiToken,
-          model: "gemini-1.5-flash",
+          model: "gemini-3-flash-preview",
           systemInstruction: sysInstruction,
           contents: [{
             role: "user",
@@ -734,7 +667,7 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
               description: '',
               barcode: ''
             }));
-            setShowModal(false);
+            // setShowModal(false); // Modal stays open for multiple additions as requested
         }
     } catch (error: any) {
         if (error.message?.includes('permission-denied') || error.code === 'permission-denied') {
@@ -1188,36 +1121,7 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
                       </button>
                     </div>
                  </div>
-              ) : isScanning ? (
-                 <div className="mb-6 bg-slate-50 border-2 border-indigo-200 rounded-3xl p-4 flex flex-col items-center">
-                    <div className="w-full text-center font-bengali p-2 font-bold text-slate-600 flex items-center justify-center gap-2">
-                       <ScanLine className="w-5 h-5 text-indigo-500" />
-                       বারকোড স্ক্যান করুন
-                    </div>
-                    <div id="isbn-reader" className="w-full max-w-[280px] min-h-[300px] overflow-hidden rounded-2xl bg-black"></div>
-                    <button 
-                      type="button" 
-                      onClick={stopIsbnScanner}
-                      className="mt-4 bg-rose-500 hover:bg-rose-600 text-white px-6 py-2 rounded-xl font-bold font-bengali shadow-sm transition active:scale-95"
-                    >
-                      বাতিল করুন
-                    </button>
-                 </div>
-              ) : (
-                <div className="mb-6">
-                  <button 
-                    type="button" 
-                    onClick={startIsbnScanner}
-                    className="w-full bg-indigo-50 border-2 border-dashed border-indigo-200 hover:bg-indigo-100 text-indigo-700 p-6 rounded-2xl font-bold font-bengali flex flex-col items-center justify-center gap-3 transition-all active:scale-95 group"
-                  >
-                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
-                      <ScanLine className="w-6 h-6" />
-                    </div>
-                    <span className="text-lg">বারকোড স্ক্যান করুন</span>
-                    <p className="text-[10px] text-indigo-400 font-medium">ক্যামেরা দিয়ে বইয়ের বারকোড স্ক্যান করতে এখানে ক্লিক করুন</p>
-                  </button>
-                </div>
-              )}
+              ) : null}
 
               <form id="bookForm" onSubmit={handleSubmit} className="space-y-5 font-bengali pb-4">
                 <div className="grid grid-cols-2 gap-4 text-slate-800">

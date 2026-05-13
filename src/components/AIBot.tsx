@@ -349,7 +349,7 @@ const AIBot = () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
               apiKey: aiToken,
-              model: "gemini-1.5-flash",
+              model: "gemini-3-flash-preview",
               contents, 
               systemInstruction: systemPrompt,
               tools: [{ functionDeclarations: libraryTools }]

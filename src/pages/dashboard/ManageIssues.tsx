@@ -114,7 +114,7 @@ Return exactly and only a strict JSON object: {"titleBn": "Exact title in Bengal
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           apiKey: aiToken,
-          model: "gemini-1.5-flash",
+          model: "gemini-3-flash-preview",
           systemInstruction: sysInstruction,
           contents: [{
             role: "user",
