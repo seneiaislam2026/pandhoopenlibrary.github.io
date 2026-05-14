@@ -758,8 +758,13 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
     const isAvailable = String(b.status).toLowerCase() === 'available';
 
     let statusMatch = true;
-    if (statusFilter === 'issued') statusMatch = isIssued;
-    if (statusFilter === 'not available') statusMatch = isNotAvailable;
+    if (statusFilter === 'issued') {
+      statusMatch = isActuallyAdmin ? isIssued : userIssuedBookIds.includes(b.id);
+    } else if (statusFilter === 'not available') {
+      statusMatch = isNotAvailable;
+    } else if (statusFilter === 'past_issues') {
+      statusMatch = !isActuallyAdmin && userPastIssuedBookIds.includes(b.id);
+    }
     
     return searchMatch && categoryMatch && statusMatch;
   }).sort((a, b) => {
@@ -798,6 +803,8 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
 
   const [userIssueCount, setUserIssueCount] = useState(0);
   const [userPastIssueCount, setUserPastIssueCount] = useState(0);
+  const [userIssuedBookIds, setUserIssuedBookIds] = useState<string[]>([]);
+  const [userPastIssuedBookIds, setUserPastIssuedBookIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (user && !isActuallyAdmin) {
@@ -806,10 +813,12 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
           const qCurrent = query(collection(db, 'issues'), where('userId', '==', user.id), where('status', 'in', ['Issued', 'ISSUED']));
           const snapCurrent = await getDocs(qCurrent);
           setUserIssueCount(snapCurrent.size);
+          setUserIssuedBookIds(snapCurrent.docs.map(d => d.data().bookId));
 
           const qPast = query(collection(db, 'issues'), where('userId', '==', user.id), where('status', 'in', ['Returned', 'RETURNED']));
           const snapPast = await getDocs(qPast);
           setUserPastIssueCount(snapPast.size);
+          setUserPastIssuedBookIds(snapPast.docs.map(d => d.data().bookId));
         } catch (error) {
           console.error(error);
         }
@@ -938,7 +947,10 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{isActuallyAdmin ? 'ইস্যু করা' : 'বর্তমানে পঠিত বই'}</p>
               <p className="text-2xl font-black text-indigo-400">{isActuallyAdmin ? books.filter(b => String(b.status).toLowerCase() === 'issued').length : userIssueCount}</p>
             </div>
-            <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4">
+            <div 
+              onClick={() => setStatusFilter(isActuallyAdmin ? 'not available' : 'past_issues')}
+              className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4 cursor-pointer hover:bg-white/10 transition-colors"
+            >
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{isActuallyAdmin ? 'বর্তমানে নেই' : 'পূর্বের পঠিত বই'}</p>
               <p className="text-2xl font-black text-rose-400">{isActuallyAdmin ? books.filter(b => String(b.status).toLowerCase() === 'not available' || String(b.status).toLowerCase() === 'not_available').length : userPastIssueCount}</p>
             </div>
