@@ -20,9 +20,11 @@ const availableSubadminRoutes = [
   { name: 'নোটিশ', path: '/dashboard/notices' },
   { name: 'মেসেজসমূহ', path: '/dashboard/messages' },
   { name: 'বইয়ের অনুরোধ (Requests)', path: '/dashboard/book-requests' },
+  { name: 'বারকোড স্ক্যানার (Scanner)', path: '/dashboard/barcode-scanner' },
   { name: 'প্রি-বুকিং', path: '/dashboard/pre-bookings' },
   { name: 'শপ বই ব্যবস্থাপনা', path: '/dashboard/shop-books' },
   { name: 'বই বিক্রয় অর্ডার', path: '/dashboard/shop-orders' },
+  { name: 'বই কিনুন (Shop)', path: '/buy-books' },
   { name: 'স্টিকার ও QR', path: '/dashboard/stickers' },
   { name: 'বুক রিভিও', path: '/dashboard/manageblog' },
   { name: 'ইভেন্ট পরিচালনা', path: '/dashboard/events' }

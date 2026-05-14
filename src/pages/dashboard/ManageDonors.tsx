@@ -1069,19 +1069,19 @@ export default function ManageDonors() {
       {/* দাতা সদস্য ব্যবস্থাপনা Dashboard */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
         {/* Main Stats Card */}
-        <div className="lg:col-span-8 bg-slate-900 rounded-[2.5rem] p-8 sm:p-10 text-white relative overflow-hidden flex flex-col justify-between shadow-2xl">
+        <div className="lg:col-span-8 bg-slate-900 rounded-[2.5rem] p-6 sm:p-8 text-white relative overflow-hidden flex flex-col justify-between shadow-2xl">
           <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-[100px] -mr-32 -mt-32"></div>
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-[100px] -ml-32 -mb-32"></div>
           
-          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="relative z-10 flex flex-col xl:flex-row xl:items-end justify-between gap-6">
             <div>
-              <h2 className="text-4xl font-black tracking-tighter mb-2 font-bengali">দাতা সদস্য ব্যবস্থাপনা</h2>
-              <p className="text-slate-400 font-bold font-bengali">পাঠাগারের পৃষ্ঠপোষক ও দাতা সদস্যদের কার্যক্রম নিয়ন্ত্রণ কেন্দ্র।</p>
+              <h2 className="text-3xl sm:text-5xl font-black tracking-tighter mb-1 font-bengali">দাতা সদস্য ব্যবস্থাপনা</h2>
+              <p className="text-slate-400 font-bold font-bengali text-xs md:text-sm">পাঠাগারের পৃষ্ঠপোষক ও দাতা সদস্যদের কার্যক্রম নিয়ন্ত্রণ কেন্দ্র।</p>
             </div>
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setShowPaymentForm(true)}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-xl shadow-indigo-900/20 transition-all active:scale-95 font-bengali"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 shadow-xl shadow-indigo-900/20 transition-all active:scale-95 font-bengali"
                 >
                   <DollarSign className="w-4 h-4 text-indigo-200" /> 
                   পেমেন্ট আপডেট
@@ -1089,7 +1089,7 @@ export default function ManageDonors() {
                 {isAdminRole && (
                   <button
                     onClick={() => { setShowAddDonor(true); setEditingDonor(null); setDonorForm({ name: '', phone: '', address: '', serial: '', monthlyDonation: '200' }); }}
-                    className="bg-white/10 hover:bg-white/20 text-white px-5 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 font-bengali border border-white/10"
+                    className="bg-white/10 hover:bg-white/20 text-white px-5 py-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 font-bengali border border-white/10"
                   >
                     <Plus className="w-4 h-4 text-emerald-400" />
                     নতুন সদস্য যোগ করুন
@@ -1098,7 +1098,7 @@ export default function ManageDonors() {
               </div>
           </div>
 
-          <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-4 mt-10">
+          <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-3 mt-8">
             {React.useMemo(() => {
               let paidDonors = 0;
               let unpaidDonors = 0;

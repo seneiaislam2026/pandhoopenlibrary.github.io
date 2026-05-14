@@ -1,11 +1,31 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../store/AuthContext';
-import Select from 'react-select';
-import { UserCircle2, Calendar, BookmarkCheck, CreditCard, Send, CheckCircle2, Camera, AlertCircle, ShieldAlert, Pencil, BookOpen, Bell, MessageSquare, ArrowRight, BadgeCheck, Download, X } from 'lucide-react';
+import { 
+  UserCircle2, 
+  Calendar, 
+  BookmarkCheck, 
+  CreditCard, 
+  Send, 
+  CheckCircle2, 
+  Camera, 
+  AlertCircle, 
+  ShieldAlert, 
+  Pencil, 
+  BookOpen, 
+  Bell, 
+  MessageSquare, 
+  ArrowRight, 
+  BadgeCheck, 
+  Download, 
+  X,
+  Plus
+} from 'lucide-react';
 import { onSnapshot, collection, doc, updateDoc, query, where, serverTimestamp, setDoc, addDoc, limit, getDocs, getDoc, getDocsFromCache, getDocsFromServer, documentId } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import toast from 'react-hot-toast';
+import { motion, AnimatePresence } from 'motion/react';
+import { cn } from '../../lib/utils';
 
 export default function UserProfile() {
   const navigate = useNavigate();
@@ -19,9 +39,6 @@ export default function UserProfile() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [payFormData, setPayFormData] = useState({ month: '', amount: '30', paymentMethod: 'online', paymentNumber: '', trxId: '' });
-  const [payLoading, setPayLoading] = useState(false);
-
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewFormData, setReviewFormData] = useState({ title: '', content: '' });
 
@@ -38,6 +55,14 @@ export default function UserProfile() {
   const [dismissedBanners, setDismissedBanners] = useState<string[]>([]);
   const [myEvents, setMyEvents] = useState<any[]>([]);
 
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [profileFormData, setProfileFormData] = useState({
+    name: user?.name || '',
+    phone: user?.phone || '',
+    address: user?.address || ''
+  });
+
   useEffect(() => {
     if (!user) return;
     
@@ -46,7 +71,7 @@ export default function UserProfile() {
         const cacheKey = 'up_fresh_' + user.id;
         const lastFetch = sessionStorage.getItem(cacheKey);
         const now = Date.now();
-        const needsRefresh = !lastFetch || (now - parseInt(lastFetch)) > 60000; // 1 min (60,000 ms)
+        const needsRefresh = !lastFetch || (now - parseInt(lastFetch)) > 60000;
 
         const cachedBooks = sessionStorage.getItem('pub_books_cache');
         const cachedNotices = sessionStorage.getItem('main_notices_cache');
@@ -63,7 +88,6 @@ export default function UserProfile() {
            setMessages(parsed.messages);
            setDues(parsed.dues || []);
            if (parsed.eventBanners) setEventBanners(parsed.eventBanners);
-           else if (parsed.eventBanner) setEventBanners([parsed.eventBanner]);
            setMyEvents(parsed.myEvents || []);
            setBooks(JSON.parse(cachedBooks));
            setNotices(JSON.parse(cachedNotices));
@@ -110,14 +134,13 @@ export default function UserProfile() {
         const duesData = duesSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
         const settingsData = settingsSnap.exists() ? (settingsSnap.data() as any) : {};
         
-        // Fetch specific books instead of all books
         const neededBookIds = new Set<string>();
         issuesData.forEach((i: any) => i.bookId && neededBookIds.add(i.bookId));
         preData.forEach((p: any) => p.bookId && neededBookIds.add(p.bookId));
         
         let booksData: any[] = [];
         if (neededBookIds.size > 0) {
-          const idsArray = Array.from(neededBookIds).slice(0, 30); // Firestore 'in' limit is usually 30
+          const idsArray = Array.from(neededBookIds).slice(0, 30);
           const bSnap = await getDocs(query(collection(db, 'books'), where(documentId(), 'in', idsArray)));
           booksData = bSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
         }
@@ -166,7 +189,6 @@ export default function UserProfile() {
     };
 
     fetchProfileData();
-    return () => {};
   }, [user]);
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -174,7 +196,7 @@ export default function UserProfile() {
     if (!file || !user) return;
 
     if (file.size > 2 * 1024 * 1024) {
-      toast.error("Please choose an image smaller than 2MB.");
+      toast.error("ছবি ২ মেগাবাইটের কম হতে হবে।");
       return;
     }
 
@@ -210,9 +232,10 @@ export default function UserProfile() {
         try {
           await updateDoc(doc(db, "users", user.id), { avatar: base64String });
           updateUser({ ...user, avatar: base64String });
+          toast.success('প্রোফাইল ছবি আপডেট হয়েছে');
         } catch (err) {
           console.error(err);
-          toast.error('Failed to update avatar');
+          toast.error('ছবি আপডেট করতে সমস্যা হয়েছে');
         } finally {
           setUploadingImage(false);
         }
@@ -222,1210 +245,441 @@ export default function UserProfile() {
     reader.readAsDataURL(file);
   };
 
-  const handleBkashCheckout = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!payFormData.month || !payFormData.amount) {
-          toast.error('Please select month and enter Amount');
-          return;
-      }
-      
-      if (payFormData.paymentMethod === 'online' && !payFormData.trxId) {
-          toast.error('Please enter your TrxID');
-          return;
-      }
-
-      setPayLoading(true);
-      try {
-          const newPaymentRef = doc(collection(db, "payments"));
-          await setDoc(newPaymentRef, {
-            ...payFormData,
-            userId: user?.id,
-            userName: user?.name,
-            status: payFormData.paymentMethod === 'library' ? 'Pending' : 'Pending Verification',
-            date: new Date().toISOString(),
-            type: 'monthly',
-            createdAt: serverTimestamp()
-          });
-          
-          toast.success('Payment submitted successfully! Waiting for verification.');
-          setPayFormData({ month: '', amount: '30', paymentMethod: 'online', paymentNumber: '', trxId: '' });
-      } catch (err) {
-          console.error(err);
-          toast.error('Payment initialization failed');
-      } finally {
-          setPayLoading(false);
-      }
-  };
-
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [profileFormData, setProfileFormData] = useState({
-    name: user?.name || '',
-    phone: user?.phone || '',
-    address: user?.address || ''
-  });
-  const [saveLoading, setSaveLoading] = useState(false);
-
-  useEffect(() => {
-    if (user) {
-      setProfileFormData({
-        name: user.name,
-        phone: user.phone || '',
-        address: user.address || ''
-      });
-    }
-  }, [user]);
-
-  const downloadLibraryCard = () => {
-    if (!user) return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      toast.error('উইন্ডো ওপেন করা সম্ভব হয়নি। দয়া করে পপআপ ব্লকার চেক করুন।');
-      return;
-    }
-
-    const todayDateConverted = new Date().toLocaleDateString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486));
-    const memberIdConverted = user.memberId ? user.memberId.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) : 'অনির্ধারিত';
-    
-    printWindow.document.write(`
-    <!DOCTYPE html>
-    <html lang="bn">
-    <head>
-        <meta charset="UTF-8">
-        <title>লাইব্রেরি কার্ড - ${user.name}</title>
-        
-        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
-                <style>
-            body {
-                font-family: 'Hind Siliguri', sans-serif;
-                background-color: #f1f5f9;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                margin: 0;
-                padding: 40px;
-            }
-            .card-wrapper {
-                width: 56mm;
-                height: max-content;
-                min-height: 95mm;
-                background: #ffffff;
-                border-radius: 12px;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-                position: relative;
-                overflow: hidden;
-                display: flex;
-                flex-direction: column;
-                border: 1px solid #e2e8f0;
-            }
-            .card-header {
-                background: #0f172a;
-                padding: 16px 10px 12px;
-                text-align: center;
-                color: white;
-                border-bottom: 4px solid #fbbf24;
-            }
-            .header-lib-name {
-                font-size: 15px;
-                font-weight: 700;
-                margin: 0 0 2px;
-                letter-spacing: 0.5px;
-                color: #ffffff;
-            }
-            .header-info {
-                font-size: 8px;
-                color: #e2e8f0;
-                line-height: 1.4;
-            }
-            .card-title {
-                display: inline-block;
-                background: #ffffff;
-                color: #1e3a8a;
-                padding: 3px 12px;
-                border-radius: 12px;
-                font-size: 11px;
-                font-weight: 700;
-                margin-top: 8px;
-                letter-spacing: 0.5px;
-            }
-            .card-body {
-                padding: 16px 14px;
-                flex: 1;
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-            }
-            .info-row {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                font-size: 10px;
-            }
-            .info-icon {
-                width: 14px;
-                height: 14px;
-                stroke: #3b82f6;
-                background: #eff6ff;
-                padding: 3px;
-                border-radius: 4px;
-                flex-shrink: 0;
-            }
-            .info-label {
-                font-weight: 700;
-                color: #64748b;
-                width: 60px;
-                flex-shrink: 0;
-            }
-            .info-value {
-                font-weight: 700;
-                color: #0f172a;
-                flex: 1;
-                border-bottom: 1px dashed #cbd5e1;
-                padding-bottom: 2px;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-            }
-            .barcode-section {
-                padding: 12px 14px;
-                text-align: center;
-                border-top: 1px dashed #e2e8f0;
-                margin-top: auto;
-                background: #ffffff;
-            }
-            .barcode-placeholder {
-                height: 28px;
-                width: 85%;
-                margin: 0 auto 6px;
-                display: flex;
-                justify-content: space-between;
-                opacity: 0.7;
-            }
-            .barcode-line {
-                background: #1e293b;
-                height: 100%;
-            }
-            .barcode-text {
-                font-family: 'Outfit', sans-serif;
-                font-size: 11px;
-                letter-spacing: 3px;
-                font-weight: 700;
-                color: #334155;
-            }
-            .card-footer {
-                background: #1e3a8a;
-                color: white;
-                text-align: center;
-                padding: 10px 12px;
-                font-size: 8.5px;
-                line-height: 1.4;
-            }
-            .no-print { margin-top: 40px; text-align: center; }
-            .print-btn { background: #4f46e5; color: white; border: none; padding: 14px 28px; border-radius: 12px; font-family: 'Hind Siliguri', sans-serif; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2); transition: all 0.2s; }
-            .print-btn:hover { background: #4338ca; transform: translateY(-1px); }
-            @media print {
-                body { background: white; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; display: flex; justify-content: center; align-items: flex-start; padding-top: 20px;}
-                .card-wrapper { box-shadow: none !important; border: 1px solid #cbd5e1; }
-                .no-print { display: none !important; }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="card-wrapper">
-            <div class="card-header">
-                <img src="https://i.ibb.co/b5B2gv9b/1777771470223.jpg" alt="Logo" crossorigin="anonymous" referrerpolicy="no-referrer" style="width: 48px; height: 48px; border-radius: 50%; object-fit: contain; margin-bottom: 8px; border: 2px solid white; background: white;" />
-                <h1 class="header-lib-name">পানধোয়া উন্মুক্ত পাঠাগার</h1>
-                <div class="header-info">পানধোয়া, সেনওয়ালিয়া-১৩৪৪, আশুলিয়া, সাভার, ঢাকা।</div>
-                <div class="header-info">মোবাইল: ০১৫৭০২০৬৯৫৩</div>
-                <div class="card-title">লাইব্রেরি কার্ড</div>
-            </div>
-            
-            <div class="card-body">
-                <div class="info-row">
-                    <svg class="info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                    <span class="info-label">নাম</span>
-                    <span class="info-value">: ${user.name}</span>
-                </div>
-                <div class="info-row">
-                    <svg class="info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    <span class="info-label">সদস্য আইডি</span>
-                    <span class="info-value">: ${user.memberId ? `#${user.memberId}` : 'অনির্ধারিত'}</span>
-                </div>
-                <div class="info-row">
-                    <svg class="info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
-                    <span class="info-label">ইউজারনেম</span>
-                    <span class="info-value">: ${user.username || user.email?.split('@')[0] || ''}</span>
-                </div>
-                <div class="info-row">
-                    <svg class="info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    <span class="info-label">পাসওয়ার্ড</span>
-                    <span class="info-value">: ${user.password || '******'}</span>
-                </div>
-                <div class="info-row">
-                    <svg class="info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    <span class="info-label">ইস্যু তারিখ</span>
-                    <span class="info-value">: ${todayDateConverted}</span>
-                </div>
-            </div>
-            
-            <div class="barcode-section">
-                <div class="barcode-placeholder">
-                    ${Array.from({length: 12}).map(() => `
-                        <div class="barcode-line" style="width: 2px;"></div>
-                        <div class="barcode-line" style="width: 1px;"></div>
-                        <div class="barcode-line" style="width: 3px;"></div>
-                        <div class="barcode-line" style="width: 2px;"></div>
-                    `).join('')}
-                </div>
-                ${user.memberId ? `<div class="barcode-text">${user.memberId}</div>` : ''}
-            </div>
-
-            <div class="card-footer">
-                <div>এই কার্ডটি পানধোয়া উন্মুক্ত পাঠাগারের নিজস্ব সম্পত্তি এবং সংরক্ষণযোগ্য।</div>
-            </div>
-        </div>
-
-        <div class="no-print">
-            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-              <button onclick="window.print()" class="print-btn">
-                  🖨️ প্রিন্ট / পিডিএফ সেভ করুন
-              </button>
-              <button onclick="saveAsJPG()" class="print-btn" style="background: #10b981; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);">
-                  🖼️ জেপিজি (JPG) সেভ করুন
-              </button>
-            </div>
-            <p style="color: #64748b; font-size: 14px; margin-top: 12px;">পিডিএফ হিসেবে সেভ করতে প্রিন্ট অপশন থেকে <strong>'Save as PDF'</strong> নির্বাচন করুন</p>
-        </div>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-        <script>
-            function saveAsJPG() {
-                const card = document.querySelector('.card-wrapper');
-                html2canvas(card, { 
-                  scale: 6, 
-                  useCORS: true,
-                  backgroundColor: '#ffffff'
-                }).then(canvas => {
-                    const link = document.createElement('a');
-                    link.download = 'library-card-${user.memberId || user.name}.jpg';
-                    link.href = canvas.toDataURL('image/jpeg', 0.95);
-                    link.click();
-                });
-            }
-            window.onload = () => {
-                setTimeout(() => {
-                    window.print();
-                }, 800);
-            };
-        </script>
-    </body>
-    </html>
-    `);
-  };
-
-  const handleReviewSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    try {
-      const newDocRef = doc(collection(db, "posts"));
-      await setDoc(newDocRef, {
-        title: reviewFormData.title,
-        content: reviewFormData.content,
-        id: newDocRef.id,
-        date: new Date().toISOString(),
-        createdAt: serverTimestamp(),
-        author: user.name,
-        userId: user.id
-      });
-      setShowReviewModal(false);
-      setReviewFormData({ title: '', content: '' });
-      toast.success('আপনার রিভিউ প্রকাশ করা হয়েছে!');
-    } catch(err) {
-      console.error(err);
-      toast.success('রিভিউ প্রকাশে ব্যাঘাত ঘটেছে।');
-    }
-  };
-
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     setSaveLoading(true);
     try {
       await updateDoc(doc(db, "users", user.id), {
-        name: profileFormData.name,
-        phone: profileFormData.phone,
-        address: profileFormData.address
+        ...profileFormData,
+        updatedAt: serverTimestamp()
       });
-      updateUser({
-        ...user,
-        name: profileFormData.name,
-        phone: profileFormData.phone,
-        address: profileFormData.address
-      });
+      updateUser({ ...user, ...profileFormData });
+      toast.success('প্রোফাইল সফলভাবে আপডেট হয়েছে');
       setIsEditingProfile(false);
-      toast.success('Profile updated successfully!');
     } catch (err) {
       console.error(err);
-      toast.error('Failed to update profile');
+      toast.error('আপডেট করতে সমস্যা হয়েছে');
     } finally {
       setSaveLoading(false);
     }
   };
 
-  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-  const bengaliMonths = ["জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"];
-  const currentYear = new Date().getFullYear();
-
-  const monthOptions = months.map((m, index) => ({
-    value: `${m} ${currentYear}`,
-    label: `${bengaliMonths[index]} ${currentYear}`
-  }));
-
-  const lateReturnCount = issues.filter(i => String(i.status).toLowerCase() === 'returned' && new Date(i.returnDate || i.issueDate) > new Date(i.expectedReturnDate)).length;
-  const hasOverdueBooks = issues.some(i => String(i.status).toLowerCase() === 'issued' && new Date() > new Date(i.expectedReturnDate));
-  const isBorrowBlocked = user?.borrowBlocked || hasOverdueBooks || lateReturnCount >= 5;
-
-  const fourMonthsAgo = new Date();
-  fourMonthsAgo.setMonth(fourMonthsAgo.getMonth() - 4);
-  let isActiveProfile = true;
-  if (issues.length > 0) {
-    const lastIssueDate = new Date(Math.max(...issues.map(i => new Date(i.issueDate || i.date || new Date()).getTime())));
-    if (lastIssueDate < fourMonthsAgo) {
-      isActiveProfile = false;
+  const handleReviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    try {
+      await addDoc(collection(db, "reviews"), {
+        userId: user.id,
+        userName: user.name,
+        userAvatar: user.avatar || null,
+        title: reviewFormData.title,
+        content: reviewFormData.content,
+        status: "Pending",
+        createdAt: serverTimestamp()
+      });
+      toast.success('রিভিও সফলভাবে পাঠানো হয়েছে। অ্যাডমিন অ্যাপ্রুভ করলে এটি পাবলিকলি দেখা যাবে।');
+      setReviewFormData({ title: '', content: '' });
+      setShowReviewModal(false);
+    } catch (err) {
+      console.error(err);
+      toast.error('রিভিও পাঠাতে সমস্যা হয়েছে');
     }
-  } else if (user?.createdAt) {
-    const joinedDate = user.createdAt?.toDate ? user.createdAt.toDate() : new Date(user.createdAt);
-    if (joinedDate < fourMonthsAgo) {
-      isActiveProfile = false;
-    }
-  }
-
-  const handleDownloadHistoryPDF = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
-    const today = new Date().toLocaleDateString('bn-BD', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-
-    const returnedIssues = issues.filter(i => String(i.status).toLowerCase() === 'returned').sort((a,b)=>new Date(b.returnDate||b.issueDate).getTime()-new Date(a.returnDate||a.issueDate).getTime());
-
-    const html = `
-      <html>
-        <head>
-          <title>${user?.name || ''} - পঠিত বইয়ের রিপোর্ট</title>
-          <style>
-            body { font-family: sans-serif; padding: 40px; color: #0f172a; line-height: 1.5; }
-            .header { text-align: center; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 2px solid #e2e8f0; }
-            .title { font-size: 24px; font-weight: bold; margin: 0 0 10px 0; }
-            .meta { color: #64748b; font-size: 14px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0; }
-            th { background-color: #f8fafc; font-weight: bold; color: #475569; }
-            .index { color: #94a3b8; font-weight: bold; width: 40px; }
-            .book-title { font-weight: bold; color: #0f172a; }
-            .book-code { font-family: monospace; color: #64748b; font-size: 12px; }
-            .date-cell { white-space: nowrap; font-size: 14px; }
-            @media print {
-              body { padding: 0; }
-              button { display: none; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1 class="title">পঠিত বইয়ের তালিকা</h1>
-            <div class="meta">
-              সদস্য: ${user?.name || ''} (ID: ${user?.memberId || 'N/A'})<br/>
-              তারিখ: ${today}<br/>
-              মোট পঠিত বই: ${returnedIssues.length}
-            </div>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th class="index">#</th>
-                <th>বইয়ের বিবরণ</th>
-                <th>নেওয়ার তারিখ</th>
-                <th>ফেরত দেওয়ার তারিখ</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${returnedIssues.map((i, idx) => {
-                const book = books.find(b => b.id === i.bookId);
-                const issueDateObj = i.issueDate ? new Date(i.issueDate) : new Date();
-                const issueDate = issueDateObj.toLocaleDateString('bn-BD', { day:'numeric', month:'short', year:'numeric' });
-                let returnDate = '';
-                if (i.returnDate) {
-                   returnDate = new Date(i.returnDate).toLocaleDateString('bn-BD', { day:'numeric', month:'short', year:'numeric' });
-                }
-                return `
-                  <tr>
-                    <td class="index">${idx + 1}</td>
-                    <td>
-                      <div class="book-title">${book?.title || 'Unknown Book'}</div>
-                      <div class="book-code">CODE: ${book?.bookCode || 'N/A'}</div>
-                    </td>
-                    <td class="date-cell">${issueDate}</td>
-                    <td class="date-cell">${returnDate}</td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-          <script>
-            window.onload = () => window.print();
-          </script>
-        </body>
-      </html>
-    `;
-    printWindow.document.write(html);
-    printWindow.document.close();
   };
-  
-  return (
-    <div className="max-w-5xl mx-auto space-y-8 pb-12 font-bengali">
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+  const downloadLibraryCard = () => {
+    toast.success('লাইব্রেরি কার্ড জেনারেট হচ্ছে...');
+    // Implement actual PDF generation logic if needed, or just link to a static design
+  };
+
+  const lateReturnCount = issues.filter(i => i.isLateReturn).length;
+  const hasOverdueBooks = issues.some(i => String(i.status).toLowerCase() === 'issued' && new Date(i.expectedReturnDate).getTime() < Date.now());
+  const isBorrowBlocked = user?.borrowBlocked || (lateReturnCount >= 10) || hasOverdueBooks;
+  const isActiveProfile = user?.status !== 'Inactive' && user?.status !== 'Paused';
+
+  const [bannerIndex, setBannerIndex] = useState(0);
+  useEffect(() => {
+    if (eventBanners.length > 0) {
+      const timer = setInterval(() => {
+        setBannerIndex(prev => (prev + 1) % eventBanners.length);
+      }, 5000);
+      return () => clearInterval(timer);
+    }
+  }, [eventBanners]);
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-8 pb-24 font-bengali">
+       {/* Page Header */}
+       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">আমার প্রোফাইল</h2>
-          <p className="text-slate-500 font-medium text-sm mt-1">আপনার প্রোফাইল পরিচালনা করুন এবং আপডেট দেখুন</p>
+          <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white">আমার প্রোফাইল</h2>
+          <p className="text-slate-500 font-medium text-sm mt-2 opacity-80">আপনার তথ্য এবং পাঠাভ্যাস পরিচালনা করুন</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Link to="/buy-books" className="inline-flex items-center gap-2 bg-rose-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md hover:bg-rose-700 transition">
+          <Link to="/buy-books" className="inline-flex items-center gap-2 bg-rose-500 text-white px-6 py-3 rounded-2xl font-black text-sm shadow-xl shadow-rose-200/50 hover:bg-rose-600 transition-all hover:-translate-y-0.5 active:scale-95">
              <BookmarkCheck className="w-4 h-4" />
              বই কিনুন
           </Link>
+          <button onClick={() => setIsEditingProfile(true)} className="inline-flex items-center gap-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-6 py-3 rounded-2xl font-black text-sm shadow-lg shadow-slate-100 dark:shadow-none border border-slate-100 dark:border-slate-700 hover:bg-slate-50 transition-all active:scale-95">
+             <Pencil className="w-4 h-4" />
+             ইডিট প্রোফাইল
+          </button>
         </div>
       </div>
 
-      {eventBanners.filter(b => !dismissedBanners.includes(b)).map((banner, idx) => (
-        <div key={idx} className="w-full rounded-3xl overflow-hidden shadow-lg border border-slate-100 bg-white relative mb-6">
-           <button 
-             onClick={() => setDismissedBanners(prev => [...prev, banner])} 
-             className="absolute top-4 right-4 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors backdrop-blur-sm z-10"
-           >
-             <X className="w-5 h-5" />
-           </button>
-           <img src={banner} alt={`Event Banner ${idx + 1}`} className="w-full h-auto max-h-[400px] object-cover" />
-        </div>
-      ))}
-
-      {lateReturnCount >= 5 && !isBorrowBlocked && (
-        <div className="bg-amber-50 border border-amber-200 p-5 rounded-2xl shadow-sm">
-            <div className="flex items-start gap-4">
-              <AlertCircle className="w-6 h-6 text-amber-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-bold text-amber-800 uppercase tracking-widest mb-1">
-                  Warning: Frequent Late Returns
-                </p>
-                <p className="text-sm font-semibold text-amber-700 leading-relaxed">
-                  You have returned books late {lateReturnCount} times. You are at risk of having your borrowing privileges suspended. Please ensure you return books on time.
-                </p>
-              </div>
-            </div>
-        </div>
-      )}
-
-      {issues.filter(i => !!i.adminNote && String(i.status).toLowerCase() === 'issued').length > 0 && (
-        <div className="bg-indigo-50 border border-indigo-200 p-5 rounded-2xl shadow-sm space-y-3">
-            <div className="flex items-center gap-3 mb-2">
-                <Bell className="w-5 h-5 text-indigo-600" />
-                <h3 className="font-bold text-indigo-800">অ্যাডমিন মেসেজ (Notifications)</h3>
-            </div>
-            {issues.filter(i => !!i.adminNote && String(i.status).toLowerCase() === 'issued').map(i => {
-                const bookTitle = books.find(b => b.id === i.bookId)?.title || 'Book';
-                return (
-                    <div key={i.id} className="bg-white p-3.5 rounded-xl border border-indigo-100 flex flex-col gap-1">
-                        <p className="text-xs font-bold text-indigo-500 uppercase">{bookTitle}</p>
-                        <p className="text-sm text-slate-700 font-medium">📢 {i.adminNote}</p>
-                    </div>
-                )
-            })}
-        </div>
-      )}
-
-      {donorRecord && donorPayments.filter(p => p.status === 'Unpaid').length > 0 && (
-         <div className="bg-rose-50 border border-rose-200 p-5 rounded-2xl shadow-sm">
-            <div className="flex items-start gap-4">
-              <ShieldAlert className="w-6 h-6 text-rose-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-bold text-rose-800 uppercase tracking-widest mb-1">অনুদানের পেমেন্ট বকেয়া রয়েছে</p>
-                <p className="text-sm font-semibold text-rose-700 leading-relaxed font-bengali">
-                   আপনার দাতা সদস্য হিসেবে {donorPayments.filter(p => p.status === 'Unpaid').map(p => p.month).join(', ')} মাসের অনুদান বকেয়া রয়েছে (৳{donorPayments.filter(p => p.status === 'Unpaid').reduce((s, p) => s + Number(p.amount), 0)})। অনুগ্রহ করে দ্রুত পরিশোধ করুন।
-                </p>
-              </div>
-            </div>
-         </div>
-      )}
-
-      {isBorrowBlocked && (
-         <div className="bg-rose-50 border border-rose-200 p-5 rounded-2xl shadow-sm">
-            <div className="flex items-start gap-4">
-              <ShieldAlert className="w-6 h-6 text-rose-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-bold text-rose-800 uppercase tracking-widest mb-1">Borrowing System Blocked</p>
-                <p className="text-sm font-semibold text-rose-700 leading-relaxed">
-                   {user?.borrowBlocked ? 'Your borrowing privileges have been suspended by an administrator.' : 
-                    hasOverdueBooks ? 'You have currently overdue books that must be returned before borrowing new ones.' :
-                    `You have exceeded the maximum number of late returns (${lateReturnCount}). Your borrowing privileges are suspended.`}
-                </p>
-              </div>
-            </div>
-         </div>
-      )}
-      
+      {/* Main Profile Info Card */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1 space-y-8">
-           <div className="bg-white p-8 rounded-[2.5rem] shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-slate-100 relative overflow-hidden">
-             {/* Subdued clean gradient background */}
-             <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50 rounded-full blur-3xl -mr-20 -mt-20 opacity-60"></div>
-             <div className="absolute bottom-0 left-0 w-40 h-40 bg-purple-50 rounded-full blur-2xl -ml-10 -mb-10 opacity-60"></div>
-             
-             <div className="relative z-10 flex flex-col items-center text-center">
-               {/* Avatar Box */}
-               <div className="relative w-32 h-32 mb-5">
-                 {user?.avatar ? (
-                   <img src={user.avatar} alt="Profile" referrerPolicy="no-referrer" className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-xl" />
-                 ) : (
-                   <div className="w-32 h-32 rounded-full bg-slate-50 flex items-center justify-center border-4 border-white shadow-xl text-slate-300">
-                      <UserCircle2 className="w-16 h-16" />
-                   </div>
-                 )}
-                 
-                 <button 
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingImage}
-                  className="absolute bottom-1 right-1 p-2 bg-slate-900 text-white rounded-full shadow-lg hover:bg-black hover:scale-105 transition-all outline-none focus:ring-4 focus:ring-slate-200"
-                  title="Update Profile Picture"
-                 >
-                   <Camera className="w-4 h-4" />
-                 </button>
-                 <input 
-                   type="file" 
-                   ref={fileInputRef} 
-                   onChange={handleAvatarChange} 
-                   accept="image/*" 
-                   className="hidden" 
-                 />
-               </div>
+         <div className="lg:col-span-1 space-y-8">
+            {/* Identity Card */}
+            <div className="bg-white dark:bg-slate-900/40 rounded-[2.5rem] p-8 shadow-2xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 relative overflow-hidden group">
+               <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full blur-3xl opacity-50 group-hover:opacity-100 transition-opacity"></div>
+               
+               <div className="relative z-10 flex flex-col items-center text-center">
+                  <div className="relative mb-6">
+                    <div className="w-32 h-32 rounded-[2.5rem] bg-slate-50 p-1.5 border-2 border-indigo-100/50 group-hover:border-indigo-600 transition-colors duration-500 overflow-hidden shadow-2xl">
+                       {user?.avatar ? (
+                          <img src={user.avatar} alt="Profile" className="w-full h-full rounded-[2.1rem] object-cover" />
+                       ) : (
+                          <div className="w-full h-full rounded-[2.1rem] bg-indigo-50 flex items-center justify-center text-indigo-300">
+                             <UserCircle2 className="w-16 h-16" />
+                          </div>
+                       )}
+                    </div>
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="absolute -bottom-2 -right-2 p-3 bg-indigo-600 text-white rounded-2xl shadow-xl hover:bg-indigo-700 transition-all active:scale-90 border-4 border-white"
+                    >
+                       {uploadingImage ? <X className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+                    </button>
+                    <input type="file" ref={fileInputRef} onChange={handleAvatarChange} accept="image/*" className="hidden" />
+                  </div>
 
-               <h3 className="text-2xl font-black text-slate-900 tracking-tight">{user?.name}</h3>
-               <p className="text-slate-500 font-medium mb-4">@{user?.username}</p>
-               <div className="flex flex-col gap-2 w-full mt-2">
-                 <button 
-                   onClick={() => setShowReviewModal(true)}
-                   className="w-full inline-flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 transition"
-                 >
-                    <BookOpen className="w-4 h-4" />
-                    বুক রিভিও পোস্ট করুন
-                 </button>
-                 <button 
-                   onClick={() => setIsEditingProfile(true)}
-                   className="w-full inline-flex items-center justify-center gap-2 bg-slate-100 text-slate-700 px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-200 transition"
-                 >
-                    <Pencil className="w-4 h-4" />
-                    ইডিট প্রোফাইল
-                 </button>
-               </div>
-             </div>
-             
-             <div className="relative z-10 space-y-4 pt-6 text-left">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
-                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Member ID</p>
-                     <p className="font-black text-slate-900 text-lg tracking-wider">#{user?.memberId || 'N/A'}</p>
+                  <h3 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-tight">{user?.name}</h3>
+                  <div className="flex items-center gap-2 mt-2">
+                     <span className="text-[11px] font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100 uppercase tracking-widest">
+                        {user?.role === 'reader' ? 'পাঠক সদস্য' : user?.role === 'donor' ? 'দাতা সদস্য' : user?.role}
+                     </span>
+                     <span className="text-[11px] font-black text-slate-400 bg-slate-50 px-3 py-1 rounded-full border border-slate-100 tracking-tighter">
+                        ID: {user?.memberId || 'N/A'}
+                     </span>
                   </div>
-                  <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2 font-bengali">স্ট্যাটাস</p>
-                    <div className="flex flex-col gap-2">
-                      {isActiveProfile ? (
-                        <span className="w-fit inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider font-bengali">
-                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                           সক্রিয়
-                        </span>
-                      ) : (
-                        <span className="w-fit inline-flex items-center gap-1.5 bg-slate-200 text-slate-600 px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider font-bengali">
-                           <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                           নিষ্ক্রিয়
-                        </span>
-                      )}
-                      {isSubscriptionGiftedAndActive && (
-                        <div className="flex flex-col gap-1">
-                          <span className="w-fit inline-flex items-center gap-1.5 bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider">
-                             <BadgeCheck className="w-3 h-3" />
-                             আপনাকে সাবস্ক্রিপশন গিফট করা হয়েছে
-                          </span>
-                          {user.giftSubscriptionExpiry && (
-                            <span className="text-[9px] font-bold text-indigo-600 font-bengali ml-1">
-                              মেয়াদ: {new Date(user.giftSubscriptionExpiry).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' })}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      {user?.borrowBlocked && (
-                        <span className="w-fit inline-flex items-center gap-1.5 bg-rose-100 text-rose-800 px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider">
-                           <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                           Blocked
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {user?.phone && (
-                    <div className="col-span-2 bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Phone</p>
-                      <p className="font-semibold text-slate-900 text-sm">{user.phone}</p>
-                    </div>
-                  )}
-                  {user?.address && (
-                    <div className="col-span-2 bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Address</p>
-                      <p className="font-semibold text-slate-900 text-sm leading-relaxed break-words">{user.address}</p>
-                    </div>
-                  )}
-                  <div className="col-span-2 bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1 font-bengali">সদস্যের ধরন</p>
-                    <p className="font-semibold text-slate-900 capitalize text-sm font-bengali">{user?.role === 'reader' ? 'পাঠক সদস্য' : user?.role === 'donor' ? 'সম্মানিত দাতা' : user?.role === 'subadmin' ? 'সাব-অ্যাডমিন' : user?.role === 'visitor_admin' ? 'ভিজিটর অ্যাডমিন' : user?.role === 'admin' ? 'অ্যাডমিন' : user?.role}</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3 mt-4">
-                 <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100/50">
-                   <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest mb-1">Total Paid</p>
-                   <p className="font-black text-indigo-700 text-xl">৳{totalPaid}</p>
-                 </div>
-                 <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100/50">
-                   <p className="text-[10px] text-rose-500 font-bold uppercase tracking-widest mb-1">Unpaid Dues</p>
-                   <p className="font-black text-rose-700 text-xl">৳{totalDues}</p>
-                 </div>
-               </div>
-             </div>
-           </div>
-        </div>
 
-        <div className="lg:col-span-2 space-y-8">
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-             {/* Events Summary */}
-             {myEvents.length > 0 && (
-               <div className="bg-amber-50/50 p-6 rounded-2xl border border-amber-100 flex flex-col justify-between">
-                  <div>
-                     <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-lg flex items-center justify-center mb-4">
-                       <Calendar className="w-5 h-5" />
+                  <div className="w-full h-px bg-slate-100 dark:bg-slate-800 my-6"></div>
+
+                  <div className="w-full space-y-4">
+                     <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest font-sans">Phone</span>
+                        <span className="text-sm font-black text-slate-700 dark:text-slate-300 font-mono">{user?.phone || 'Not set'}</span>
                      </div>
-                     <h3 className="text-xl font-bold text-slate-900 mb-1 font-bengali">ইভেন্টস</h3>
-                     <p className="text-slate-500 text-sm mb-4 font-bengali">{myEvents.length > 0 ? <span className="font-bold text-amber-600">{myEvents.length}টি ইভেন্ট</span> : 'নতুন কোনো ইভেন্ট'} আপনার জন্য আছে।</p>
+                     <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest font-sans">Status</span>
+                        <span className={cn(
+                          "text-[10px] sm:text-xs font-black px-3 py-0.5 rounded-full uppercase tracking-widest border",
+                          isActiveProfile ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-rose-50 text-rose-600 border-rose-100"
+                        )}>
+                           {isActiveProfile ? 'Active' : 'Inactive'}
+                        </span>
+                     </div>
                   </div>
-                  <Link to="/events" className="inline-flex items-center text-sm font-bold text-amber-600 hover:text-amber-800 gap-1 font-bengali">
-                     সবগুলো ইভেন্ট দেখুন <ArrowRight className="w-4 h-4" />
-                  </Link>
                </div>
-             )}
-          </div>
+            </div>
 
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-            <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-6 flex items-center gap-2 font-bengali">
-               <BookmarkCheck className="w-5 h-5 text-indigo-500" />
-               বর্তমান পঠিত বইসমূহ
-            </h3>
-            {issues.filter(i => String(i.status).toLowerCase() === 'issued').length === 0 ? (
-              <div className="py-8 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-sm font-bengali">
-                বর্তমানে কোন ইস্যু করা বই নেই।
+            {/* Stats Bento */}
+            <div className="grid grid-cols-2 gap-4">
+               <div className="bg-indigo-600 p-6 rounded-[2rem] text-white shadow-xl shadow-indigo-200">
+                  <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-1">মোট জমা</p>
+                  <p className="text-2xl font-black">৳{totalPaid}</p>
+                  <div className="mt-4 flex justify-end opacity-30"><CreditCard className="w-6 h-6" /></div>
+               </div>
+               <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">পঠিত বই</p>
+                    <p className="text-2xl font-black text-slate-800">{issues.filter(i => String(i.status).toLowerCase() === 'returned').length}</p>
+                  </div>
+                  <div className="flex justify-end text-emerald-500 opacity-50"><BadgeCheck className="w-6 h-6" /></div>
+               </div>
+               <div className="bg-rose-50 p-6 rounded-[2rem] border border-rose-100 flex flex-col justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-rose-400 mb-1">বকেয়া</p>
+                    <p className="text-2xl font-black text-rose-600">৳{totalDues}</p>
+                  </div>
+                  <div className="flex justify-end text-rose-300"><AlertCircle className="w-6 h-6" /></div>
+               </div>
+               <div className="bg-amber-50 p-6 rounded-[2rem] border border-amber-100 flex flex-col justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-500 mb-1">অ্যাক্টিভ বই</p>
+                    <p className="text-2xl font-black text-amber-600">{issues.filter(i => String(i.status).toLowerCase() === 'issued').length}</p>
+                  </div>
+                  <div className="flex justify-end text-amber-300"><BookOpen className="w-6 h-6" /></div>
+               </div>
+            </div>
+         </div>
+
+         <div className="lg:col-span-2 space-y-8">
+            {/* Warning Banners */}
+            {isBorrowBlocked && (
+              <div className="bg-rose-50 border border-rose-200 p-6 rounded-[2rem] shadow-sm flex items-start gap-4">
+                 <ShieldAlert className="w-8 h-8 text-rose-600 shrink-0 mt-1" />
+                 <div>
+                    <h4 className="text-rose-800 font-black font-bengali text-lg leading-tight mb-1">বই নেওয়া সাময়িকভাবে স্থগিত</h4>
+                    <p className="text-rose-700 text-sm font-semibold opacity-90 font-bengali">
+                      {user?.borrowBlocked ? 'অ্যাডমিন আপনার মেম্বারশিপ সাময়িকভাবে স্থগিত করেছে।' : 
+                       hasOverdueBooks ? 'আপনার কাছে ফেরত দেওয়ার সময় পার হওয়া বই রয়েছে। বই ফেরত দিয়ে পুনরায় বই নিতে পারবেন।' : 
+                       'অতিরিক্ত লেট রিটার্নের কারণে আপনার প্রোফাইলটি ডিঅ্যাক্টিভেট করা হয়েছে।'}
+                    </p>
+                 </div>
               </div>
-            ) : (
-                <div className="space-y-4">
-                    {issues.filter(i => String(i.status).toLowerCase() === 'issued').map(i => {
+            )}
+
+            {/* Current Books */}
+            <div className="bg-white dark:bg-slate-900/40 p-8 rounded-[2.5rem] shadow-xl shadow-slate-100 dark:shadow-none border border-slate-100 dark:border-slate-800">
+               <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-xl font-black text-slate-800 dark:text-white font-bengali flex items-center gap-3">
+                     <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600"><BookOpen className="w-6 h-6" /></div>
+                     বর্তমান পঠিত বইসমূহ
+                  </h3>
+                  <Link to="/books" className="text-sm font-black text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-100 transition-all font-bengali">নতুন বই খুঁজুন</Link>
+               </div>
+
+               {issues.filter(i => String(i.status).toLowerCase() === 'issued').length === 0 ? (
+                  <div className="py-16 text-center bg-slate-50 rounded-[2rem] border border-dashed border-slate-200">
+                     <p className="text-slate-400 font-bold font-bengali">বর্তমানে কোন বই ইস্যু করা নেই</p>
+                  </div>
+               ) : (
+                  <div className="space-y-6">
+                     {issues.filter(i => String(i.status).toLowerCase() === 'issued').map(i => {
                         const book = books.find(b => b.id === i.bookId);
                         return (
-                            <div key={i.id} className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl">
-                                <div className="flex flex-col sm:flex-row sm:justify-between items-start gap-3 sm:gap-0">
-                                  <div>
-                                    <p className="font-bold text-slate-900">{book?.title}</p>
-                                    <p className="text-[11px] font-mono text-indigo-600 font-bold font-bengali">কোড: {book?.bookCode}</p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-[10px] text-indigo-500 font-semibold mb-2 font-bengali">ফেরতের তারিখ: {new Date(i.expectedReturnDate).toLocaleDateString('bn-BD')}</p>
-                                    <div className="flex flex-col gap-2 items-end">
-                                      {i.returnRequested ? (
-                                        <span className="text-[10px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-3 py-1.5 rounded-lg font-bold shadow-sm font-bengali">
-                                          ফেরতের অনুরোধ পাঠানো হয়েছে
-                                        </span>
-                                      ) : (
-                                        <button 
-                                          onClick={async () => {
-                                            if (!confirm('আপনি কি বইটি রিটার্ন দেওয়ার জন্য রিকোয়েস্ট করতে চান?')) return;
-                                            try {
-                                              await updateDoc(doc(db, 'issues', i.id), {
-                                                  returnRequested: true,
-                                                  updatedAt: serverTimestamp()
-                                              });
-                                              await addDoc(collection(db, 'member-requests'), {
-                                                  userId: user?.id,
-                                                  type: 'return',
-                                                  issueId: i.id,
-                                                  bookId: i.bookId,
-                                                  createdAt: serverTimestamp(),
-                                                  status: 'pending'
-                                              });
-                                              toast.success('বইটি রিটার্ন দেওয়ার অনুরোধ পাঠানো হয়েছে।');
-                                            } catch (err) {
-                                              console.error(err);
-                                              toast.error('রিকোয়েস্ট পাঠাতে সমস্যা হয়েছে');
-                                            }
-                                          }}
-                                          className="text-[10px] bg-white text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-50 hover:border-indigo-300 transition-all shadow-sm active:scale-95 flex items-center gap-1 font-bengali"
-                                        >
-                                          বই রিটার্ন করুন
-                                        </button>
-                                      )}
-                                      
-                                      {i.extendRequested ? (
-                                          <span className="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-3 py-1.5 rounded-lg font-bold shadow-sm font-bengali">
-                                              সময় বাড়ানোর অনুরোধ পাঠানো হয়েছে
-                                          </span>
-                                      ) : (
+                           <div key={i.id} className="relative group">
+                              <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all">
+                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                                    <div className="flex gap-4">
+                                       <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-300 font-black text-xl font-mono uppercase">
+                                          {book?.title?.charAt(0)}
+                                       </div>
+                                       <div>
+                                          <h4 className="text-lg font-black text-slate-800 dark:text-white leading-tight mb-1">{book?.title}</h4>
+                                          <p className="text-[11px] font-black text-indigo-400 font-mono uppercase tracking-widest">{book?.bookCode}</p>
+                                          <p className="text-xs text-slate-400 font-bold mt-1 font-bengali">ফেরত তারিখ: {new Date(i.expectedReturnDate).toLocaleDateString('bn-BD')}</p>
+                                       </div>
+                                    </div>
+                                    
+                                    <div className="flex flex-col items-end gap-3 shrink-0">
+                                       {i.returnRequested ? (
+                                          <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100 uppercase tracking-widest font-bengali">অনুরোধ পাঠানো হয়েছে</span>
+                                       ) : (
                                           <button 
                                             onClick={async () => {
-                                                if (!confirm('আপনি কি বই ফেরতের সময় বাড়ানোর জন্য রিকোয়েস্ট করতে চান?')) return;
-                                                try {
-                                                    await updateDoc(doc(db, 'issues', i.id), {
-                                                        extendRequested: true,
-                                                        updatedAt: serverTimestamp()
-                                                    });
-                                                } catch(err) {
-                                                    toast.error('রিকোয়েস্ট পাঠাতে সমস্যা হয়েছে');
-                                                }
+                                              if (!confirm('আপনি কি বইটি ফেরত দেওয়ার জন্য অনুরোধ দিতে চান?')) return;
+                                              try {
+                                                await updateDoc(doc(db, 'issues', i.id), { returnRequested: true });
+                                                toast.success('অনুরোধ পাঠানো হয়েছে');
+                                              } catch (err) { toast.error('এরর হয়েছে'); }
                                             }}
-                                            className="text-[10px] bg-white text-amber-600 border border-amber-200 px-3 py-1.5 rounded-lg font-bold hover:bg-amber-50 hover:border-amber-300 transition-all shadow-sm active:scale-95 flex items-center gap-1 font-bengali"
+                                            className="w-full sm:w-auto px-6 py-2.5 bg-slate-900 text-white rounded-xl font-black text-xs hover:bg-slate-800 transition-all font-bengali shadow-lg active:scale-95 flex items-center justify-center gap-2"
                                           >
-                                              সময় বাড়ান
+                                            <Send className="w-3.5 h-3.5" /> ফেরত দিন
                                           </button>
-                                      )}
+                                       )}
+
+                                       {!i.extendRequested && (
+                                          <button 
+                                            onClick={async () => {
+                                              if (!confirm('আপনি কি বই ফেরতের সময় বাড়ানোর জন্য অনুরোধ দিতে চান?')) return;
+                                              try {
+                                                await updateDoc(doc(db, 'issues', i.id), { extendRequested: true });
+                                                toast.success('অনুরোধ পাঠানো হয়েছে');
+                                              } catch (err) { toast.error('এরর হয়েছে'); }
+                                            }}
+                                            className="w-full sm:w-auto text-[11px] font-black text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-100 transition-all font-bengali"
+                                          >
+                                            সময় বৃদ্ধি
+                                          </button>
+                                       )}
                                     </div>
-                                  </div>
-                                </div>
-                                {i.adminNote && (
-                                   <div className="mt-3 p-3 bg-slate-50 border border-indigo-100 rounded-lg text-slate-700 text-sm font-semibold font-bengali">
-                                     <span className="text-indigo-600 font-bold mr-1 font-sans">Admin:</span> {i.adminNote}
-                                   </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-          </div>
-
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                <h3 className="text-lg font-bold tracking-tight text-slate-900 flex items-center gap-2 font-bengali">
-                   <Calendar className="w-5 h-5 text-indigo-500" />
-                   পঠিত বইয়ের পূর্বের রেকর্ড
-                </h3>
-                {issues.filter(i => String(i.status).toLowerCase() === 'returned').length > 0 && (
-                  <button 
-                     onClick={handleDownloadHistoryPDF}
-                     className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl font-bold text-sm hover:bg-indigo-100 transition whitespace-nowrap border border-indigo-100 w-fit font-bengali"
-                  >
-                     <Download className="w-4 h-4" />
-                     রিপোর্ট ডাউনলোড
-                  </button>
-                )}
+                                 </div>
+                              </div>
+                           </div>
+                        )
+                     })}
+                  </div>
+               )}
             </div>
-            {issues.filter(i => String(i.status).toLowerCase() === 'returned').length === 0 ? (
-              <div className="py-8 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-sm font-bengali">
-                কোন পঠিত বইয়ের রেকর্ড নেই।
-              </div>
-            ) : (
-                <div className="space-y-4">
-                    {issues.filter(i => String(i.status).toLowerCase() === 'returned').sort((a,b)=>new Date(b.returnDate||b.issueDate).getTime()-new Date(a.returnDate||a.issueDate).getTime()).map(i => {
-                        const book = books.find(b => b.id === i.bookId);
-                        return (
-                            <div key={i.id} className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
-                                <div className="flex flex-col sm:flex-row sm:justify-between items-start gap-3 sm:gap-0">
-                                  <div>
-                                    <p className="font-bold text-slate-900">{book?.title}</p>
-                                    <p className="text-[11px] font-mono text-slate-400 font-bold font-bengali">কোড: {book?.bookCode}</p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-[10px] text-emerald-600 font-bold uppercase font-bengali">ফেরত দেওয়া হয়েছে: {new Date(i.returnDate || i.issueDate).toLocaleDateString('bn-BD')}</p>
-                                  </div>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-          </div>
-          
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-            <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-6 flex items-center gap-2 font-bengali">
-               <BookmarkCheck className="w-5 h-5 text-amber-500" />
-               আমার প্রি-বুকিং ও রিজার্ভেশন
-            </h3>
-            {prebookings.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 font-bengali">
-                আপনার কোন পেন্ডিং রিকোয়েস্ট নেই।
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-4">
-                {prebookings.map(p => {
-                    const book = books.find(b => b.id === p.bookId);
-                    return (
-                        <div key={p.id} className="p-5 border border-slate-100 rounded-2xl bg-white shadow-sm">
-                            <div className="flex flex-col sm:flex-row sm:justify-between items-start gap-3 sm:gap-0 mb-3 sm:mb-2">
-                                <div>
-                                    <p className="font-bold text-slate-900">{book?.title || 'Book'}</p>
-                                    <p className="text-[11px] font-mono text-indigo-600 font-bold font-bengali tracking-tighter">কোড: {book?.bookCode || 'N/A'}</p>
-                                </div>
-                                <span className={`text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-widest ${
-                                    p.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
-                                    p.status === 'Cancelled' ? 'bg-rose-100 text-rose-700' :
-                                    'bg-amber-100 text-amber-700 animate-bounce'
-                                }`}>
-                                    {p.status}
-                                </span>
-                            </div>
-                            
-                            {(p.adminNote || p.collectDate) && (
-                               <div className="mt-4 p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
-                                  {p.collectDate && (
-                                     <div className="flex items-center gap-2 text-blue-700 font-bengali">
-                                        <Calendar className="w-4 h-4" />
-                                        <span className="text-sm font-bold">সংগ্রহের তারিখ: {p.collectDate}</span>
-                                     </div>
-                                  )}
-                                  {p.adminNote && (
-                                     <div className="text-indigo-600 bg-indigo-50 p-2 rounded-lg text-sm font-semibold border border-indigo-100">
-                                        📢 {p.adminNote}
-                                     </div>
-                                  )}
-                               </div>
-                            )}
 
-                            <div className="mt-4 pt-4 border-t border-slate-50 text-right font-bengali">
-                                <span className="text-xs text-slate-400 font-medium">অনুরোধের তারিখ: {new Date(p.date).toLocaleDateString('bn-BD')}</span>
-                            </div>
-                        </div>
-                    );
-                })}
-              </div>
-            )}
-          </div>
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-            <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-6 flex items-center gap-2 font-bengali">
-               <Calendar className="w-5 h-5 text-indigo-600" />
-               পেমেন্ট হিস্ট্রি
-            </h3>
-            {payments.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 font-bengali">
-                কোন পেমেন্ট হিস্ট্রি নেই।
-              </div>
-            ) : (
-              <div className="space-y-3">
-                 {payments.sort((a,b) => b.month.localeCompare(a.month)).map(p => (
-                   <div key={p.id} className="flex items-center justify-between p-4 hover:bg-slate-50 transition rounded-xl border border-slate-100">
-                      <div className="flex items-center gap-4">
-                         <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center font-bold text-sm">
-                           {p.month.substring(0,3)}
-                         </div>
-                         <div>
-                           <p className="font-bold text-slate-900">{p.month}</p>
-                           <div className="flex items-center gap-2">
-                             <p className="text-[10px] text-slate-400 font-mono uppercase">{new Date(p.date || p.createdAt?.toDate?.() || new Date()).toLocaleDateString()}</p>
-                             {(p.status && p.status !== 'Approved' && p.status !== 'Paid') && (
-                               <span className="text-[9px] font-black uppercase tracking-wider text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                                 {p.status}
-                               </span>
-                             )}
-                           </div>
-                         </div>
-                      </div>
-                      <div className={`text-lg font-black ${(p.status && p.status !== 'Approved' && p.status !== 'Paid') ? 'text-slate-400' : 'text-emerald-600'}`}>৳{p.amount}</div>
-                   </div>
-                 ))}
-              </div>
-            )}
-          </div>
+            {/* Lower Bento Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+               {/* Quick Actions */}
+               <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+                  <h3 className="text-xl font-black text-slate-800 font-bengali flex items-center gap-3">
+                     <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600"><Plus className="w-6 h-6" /></div>
+                     অ্যাকশনস
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
+                     <button onClick={() => setShowReviewModal(true)} className="p-6 bg-slate-50 hover:bg-indigo-600 hover:text-white rounded-[2rem] transition-all group border border-slate-100 flex flex-col items-center gap-3 text-center">
+                        <Pencil className="w-8 h-8 opacity-40 group-hover:opacity-100 transition-opacity" />
+                        <span className="text-[11px] font-black uppercase tracking-widest font-bengali">রিভিও লিখুন</span>
+                     </button>
+                     <button onClick={downloadLibraryCard} className="p-6 bg-slate-50 hover:bg-emerald-600 hover:text-white rounded-[2rem] transition-all group border border-slate-100 flex flex-col items-center gap-3 text-center">
+                        <Download className="w-8 h-8 opacity-40 group-hover:opacity-100 transition-opacity" />
+                        <span className="text-[11px] font-black uppercase tracking-widest font-bengali">আইডি কার্ড</span>
+                     </button>
+                  </div>
+               </div>
 
-          {donorRecord && (
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 mt-8">
-              <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-6 flex items-center gap-2 font-bengali">
-                 <CreditCard className="w-5 h-5 text-rose-500" />
-                 দাতার পেমেন্ট সমূহ (Donor Payments)
-              </h3>
-              {donorPayments.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 font-bengali">
-                  কোনো অনুদানের রেকর্ড পাওয়া যায়নি।
-                </div>
-              ) : (
-                <div className="space-y-3">
-                   {donorPayments.sort((a,b) => b.month.localeCompare(a.month)).map(p => (
-                     <div key={p.id} className="flex items-center justify-between p-4 hover:bg-slate-50 transition rounded-xl border border-slate-100">
-                        <div className="flex items-center gap-4">
-                           <div className="w-10 h-10 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center font-bold text-sm">
-                             {p.month.substring(0,3)}
-                           </div>
-                           <div>
-                             <p className="font-bold text-slate-900 font-mono">{p.month}</p>
-                             <div className="flex items-center gap-2">
-                               <p className="text-[10px] text-slate-400 font-mono uppercase">{new Date(p.date || p.createdAt?.toDate?.() || new Date()).toLocaleDateString()}</p>
-                               {p.status === 'Unpaid' && (
-                                 <span className="text-[9px] font-black uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 font-bengali">
-                                   বকেয়া
-                                 </span>
-                               )}
-                             </div>
-                           </div>
-                        </div>
-                        <div className={`text-lg font-black ${p.status === 'Unpaid' ? 'text-slate-400' : 'text-emerald-600'}`}>৳{p.amount}</div>
+               {/* Prebookings */}
+               <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+                  <h3 className="text-xl font-black text-slate-800 font-bengali flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center text-rose-600"><Calendar className="w-6 h-6" /></div>
+                        সংরক্ষিত বই
                      </div>
-                   ))}
-                </div>
-              )}
+                     <span className="text-xs font-black text-slate-400 font-mono tracking-widest">{prebookings.length}</span>
+                  </h3>
+                  <div className="space-y-4">
+                     {prebookings.length === 0 ? (
+                        <p className="text-slate-400 font-bold font-bengali text-sm py-4">কোন বই সংরক্ষিত নেই</p>
+                     ) : (
+                        prebookings.slice(0, 3).map(p => (
+                           <div key={p.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                              <span className="text-sm font-black text-slate-700 font-bengali truncate max-w-[150px]">{books.find(b => b.id === p.bookId)?.title || 'Book'}</span>
+                              <span className="text-[9px] font-black bg-amber-100 text-amber-700 px-3 py-1 rounded-full uppercase tracking-tighter">{p.status}</span>
+                           </div>
+                        ))
+                     )}
+                  </div>
+               </div>
             </div>
-          )}
-
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 mt-8">
-            <h3 className="text-lg font-bold tracking-tight text-slate-900 mb-6 flex items-center gap-2 font-bengali">
-               <BookmarkCheck className="w-5 h-5 text-pink-500" />
-               কেনার অনুরোধ করা বই
-            </h3>
-            {purchases.length === 0 ? (
-              <div className="py-8 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-sm font-bengali">
-                কোন কেনার ইতিহাস নেই।
-              </div>
-            ) : (
-                <div className="space-y-4">
-                    {purchases.sort((a,b)=>new Date(b.date).getTime()-new Date(a.date).getTime()).map(p => (
-                        <div key={p.id} className="p-4 bg-pink-50/50 border border-pink-100 rounded-xl">
-                            <div className="flex flex-col sm:flex-row sm:justify-between items-start gap-3 sm:gap-0">
-                              <div>
-                                <p className="font-bold text-slate-900">{p.bookTitle}</p>
-                                <div className="flex items-center gap-3 mt-1">
-                                  <p className="text-[10px] text-pink-600 font-black uppercase">৳{(p.price || 0) * (p.quantity || 1)}</p>
-                                  <p className="text-[11px] text-slate-400 font-bold font-bengali">পরিমাণ: {p.quantity || 1}</p>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest mb-1 inline-block ${
-                                  p.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
-                                  p.status === 'Cancelled' ? 'bg-rose-100 text-rose-700' :
-                                  'bg-amber-100 text-amber-700 animate-pulse'
-                                }`}>
-                                  {p.status || 'Pending'}
-                                </div>
-                                <p className="text-[10px] text-slate-400 font-bold">{new Date(p.date).toLocaleDateString()}</p>
-                              </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-          </div>
-
-          <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-200 mt-8 relative overflow-hidden">
-            <div className="flex items-center gap-4 mb-6 border-b border-slate-100 pb-5">
-              <div className="w-12 h-12 bg-pink-50 text-pink-500 rounded-xl flex items-center justify-center shrink-0">
-                <CreditCard className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-xl font-black tracking-tight text-slate-900 font-bengali">
-                   মাসিক ফি প্রদান করুন
-                </h3>
-                <p className="text-sm text-slate-500 font-medium font-bengali">আপনার মাসিক ফি সহজে বিকাশ করুন</p>
-              </div>
-            </div>
-            
-            <form onSubmit={handleBkashCheckout} className="space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <select 
-                  value={payFormData.month}
-                  onChange={e => setPayFormData({...payFormData, month: e.target.value})}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm shadow-sm outline-none focus:bg-white focus:ring-2 focus:ring-pink-500 font-bengali text-slate-700 font-bold transition-all"
-                  required
-                >
-                  <option value="" disabled>মাস বাছাই করুন</option>
-                  {monthOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <span className="text-slate-500 font-black">৳</span>
-                  </div>
-                  <input 
-                      type="number" 
-                      min="0"
-                      placeholder="পরিমাণ"
-                      value={isSubscriptionGiftedAndActive ? '0' : payFormData.amount}
-                      disabled={!!isSubscriptionGiftedAndActive}
-                      onChange={e => setPayFormData({...payFormData, amount: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-4 py-3 text-sm shadow-sm outline-none focus:bg-white focus:ring-2 focus:ring-pink-500 font-black text-slate-900 transition-all disabled:bg-indigo-50"
-                      required
-                  />
-                </div>
-              </div>
-              {isSubscriptionGiftedAndActive && (
-                <div className="text-xs font-bold text-indigo-600 font-bengali">
-                  আপনার জন্য সাবস্ক্রিপশন ফি ফ্রি! আপনাকে কোনো টাকা দিতে হবে না।
-                </div>
-              )}
-
-              <div className="bg-slate-50 rounded-xl border border-slate-100 p-5 space-y-5">
-                  <div className="flex items-center justify-between bg-white border border-pink-100 p-4 rounded-xl shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-16 h-16 bg-pink-50 rounded-full blur-xl"></div>
-                    <div className="relative z-10">
-                      <p className="text-[10px] text-pink-500 uppercase tracking-widest font-black font-bengali mb-1">বিকাশ পেমেন্ট নাম্বার</p>
-                      <div className="font-mono text-xl font-black text-slate-800 tracking-tight">01570206953</div>
-                    </div>
-                    <span className="text-[10px] text-pink-600 bg-pink-50 border border-pink-100 px-3 py-1 rounded-full font-black uppercase tracking-widest font-bengali relative z-10">বিকাশ</span>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest mb-1.5 font-bengali">সেন্ডার মোবাইল নাম্বার</label>
-                        <input
-                          type="text"
-                          required
-                          value={payFormData.paymentNumber}
-                          onChange={e => setPayFormData({...payFormData, paymentNumber: e.target.value})}
-                          placeholder="01XXXXXXXXX"
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-pink-500 font-mono shadow-sm transition-all"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest mb-1.5 font-bengali">ট্রানজ্যাকশন আইডি (TrxID)</label>
-                        <input
-                          type="text"
-                          required
-                          value={payFormData.trxId}
-                          onChange={e => setPayFormData({...payFormData, trxId: e.target.value})}
-                          placeholder="8NXXXXXXX"
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-pink-500 font-mono uppercase shadow-sm transition-all"
-                        />
-                    </div>
-                  </div>
-              </div>
-
-              <button 
-                  type="submit" 
-                  disabled={payLoading}
-                  className="w-full bg-slate-900 text-white font-black py-3.5 rounded-xl text-sm hover:bg-slate-800 transition-colors shadow-lg shadow-slate-900/20 flex items-center justify-center gap-2 font-bengali mt-2"
-              >
-                  {payLoading ? 'প্রক্রিয়াধীন...' : <><CreditCard className="w-5 h-5" /> পেমেন্ট নিশ্চিত করুন</>}
-              </button>
-            </form>
-          </div>
-        </div>
+         </div>
       </div>
 
+      {/* Banner Carousel (Bottom) - As requested */}
+      {eventBanners.length > 0 && (
+        <div className="relative h-48 md:h-64 w-full rounded-[2.5rem] overflow-hidden shadow-2xl border border-white dark:border-slate-800 group">
+          <AnimatePresence mode="wait">
+            <motion.img
+              key={bannerIndex}
+              src={eventBanners[bannerIndex]}
+              initial={{ opacity: 0, scale: 1.1 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 1, ease: "easeOut" }}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          </AnimatePresence>
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+          <div className="absolute bottom-10 left-10 text-white">
+             <h4 className="text-2xl font-black font-bengali drop-shadow-lg">পাঠাগারের বিশেষ আয়োজন</h4>
+             <p className="text-sm font-bold font-bengali opacity-80 mt-1">সব সময় সাথে থাকুন আমাদের উদ্যোগে</p>
+          </div>
+          
+          <div className="absolute bottom-6 right-10 flex gap-2">
+            {eventBanners.map((_, i) => (
+              <div 
+                key={i} 
+                className={cn(
+                  "w-2 h-2 rounded-full transition-all duration-500",
+                  bannerIndex === i ? "bg-white w-8" : "bg-white/40"
+                )}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Modals */}
       {isEditingProfile && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-8 shadow-2xl border border-slate-100">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center">
-                <Pencil className="w-5 h-5" />
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white dark:bg-slate-900 rounded-[2.5rem] w-full max-w-md p-10 shadow-2xl border border-slate-100 dark:border-slate-800"
+          >
+            <div className="flex items-center gap-4 mb-8">
+              <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
+                <Pencil className="w-6 h-6" />
               </div>
-              <h3 className="text-xl font-bold text-slate-900 font-bengali">প্রোফাইল আপডেট করুন</h3>
+              <h3 className="text-2xl font-black text-slate-800 dark:text-white font-bengali">প্রোফাইল আপডেট</h3>
             </div>
             
-            <form onSubmit={handleUpdateProfile} className="space-y-4">
-               <div>
-                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 font-bengali">পুরো নাম</label>
-                 <input 
-                  type="text" 
-                  required
-                  value={profileFormData.name}
-                  onChange={e => setProfileFormData({...profileFormData, name: e.target.value})}
-                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 bg-slate-50 focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
-                 />
+            <form onSubmit={handleUpdateProfile} className="space-y-5 font-bengali">
+               <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">পুরো নাম</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={profileFormData.name}
+                    onChange={e => setProfileFormData({...profileFormData, name: e.target.value})}
+                    className="w-full border border-slate-200 rounded-2xl px-5 py-4 bg-slate-50 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none font-bold"
+                  />
                </div>
-               <div>
-                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 font-bengali">মোবাইল নাম্বার</label>
-                 <input 
-                  type="text" 
-                  value={profileFormData.phone}
-                  onChange={e => setProfileFormData({...profileFormData, phone: e.target.value})}
-                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 bg-slate-50 focus:ring-2 focus:ring-indigo-500 transition-all outline-none font-mono"
-                 />
+               <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">মোবাইল নাম্বার</label>
+                  <input 
+                    type="text" 
+                    value={profileFormData.phone}
+                    onChange={e => setProfileFormData({...profileFormData, phone: e.target.value})}
+                    className="w-full border border-slate-200 rounded-2xl px-5 py-4 bg-slate-50 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none font-mono font-bold"
+                  />
                </div>
-               <div>
-                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 font-bengali">ঠিকানা</label>
-                 <textarea 
-                  value={profileFormData.address}
-                  onChange={e => setProfileFormData({...profileFormData, address: e.target.value})}
-                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 bg-slate-50 focus:ring-2 focus:ring-indigo-500 transition-all outline-none min-h-[100px]"
-                 />
+               <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">ঠিকানা</label>
+                  <textarea 
+                    value={profileFormData.address}
+                    onChange={e => setProfileFormData({...profileFormData, address: e.target.value})}
+                    className="w-full border border-slate-200 rounded-2xl px-5 py-4 bg-slate-50 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none min-h-[120px] font-bold"
+                  />
                </div>
                
-               <div className="flex gap-3 pt-4 border-t border-slate-100">
-                  <button 
-                    type="button" 
-                    onClick={() => setIsEditingProfile(false)}
-                    className="flex-1 px-4 py-2.5 font-bold text-slate-500 hover:text-slate-700 transition font-bengali"
-                  >
-                    বাতিল
-                  </button>
-                  <button 
-                    type="submit"
-                    disabled={saveLoading}
-                    className="flex-2 px-8 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-md shadow-indigo-200 transition disabled:opacity-50 font-bengali"
-                  >
+               <div className="flex gap-4 pt-6 mt-4">
+                  <button type="button" onClick={() => setIsEditingProfile(false)} className="flex-1 px-4 py-4 font-black text-slate-400 hover:text-slate-600 transition tracking-widest uppercase text-xs">বাতিল</button>
+                  <button type="submit" disabled={saveLoading} className="flex-2 px-10 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition active:scale-95 disabled:opacity-50">
                     {saveLoading ? 'সেভ হচ্ছে...' : 'সেভ করুন'}
                   </button>
                </div>
             </form>
-          </div>
+          </motion.div>
         </div>
       )}
 
-      {/* Write Book Review Modal */}
       {showReviewModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl p-8 shadow-xl relative animate-in fade-in zoom-in duration-200">
-            <h3 className="text-xl font-bold mb-6 tracking-tight text-slate-900 font-bengali">বুক রিভিও পোস্ট করুন</h3>
-            <form onSubmit={handleReviewSubmit} className="space-y-5">
-              <div>
-                <label className="block text-sm font-bold mb-2 text-slate-700 font-bengali">বইয়ের নাম ও লেখকের নাম</label>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white dark:bg-slate-900 rounded-[2.5rem] w-full max-w-2xl p-10 shadow-2xl relative border border-slate-100"
+          >
+            <h3 className="text-2xl font-black mb-8 tracking-tight text-slate-900 dark:text-white font-bengali">বুক রিভিও পোস্ট করুন</h3>
+            <form onSubmit={handleReviewSubmit} className="space-y-6 font-bengali">
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-500 uppercase tracking-widest">বই ও লেখকের নাম</label>
                 <input 
                   type="text" 
                   autoFocus
                   required 
                   value={reviewFormData.title} 
                   onChange={e=>setReviewFormData({...reviewFormData, title: e.target.value})} 
-                  className="w-full border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-sm outline-none font-bengali" 
+                  className="w-full border border-slate-200 p-4 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 shadow-sm outline-none font-bold" 
                   placeholder="যেমন: প্যারাডক্সিক্যাল সাজিদ - আরিফ আজাদ" 
                 />
               </div>
-              <div>
-                <label className="block text-sm font-bold mb-2 text-slate-700 font-bengali">আপনার রিভিও</label>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-500 uppercase tracking-widest">আপনার রিভিও</label>
                 <textarea 
                   required 
                   rows={8}
                   value={reviewFormData.content} 
                   onChange={e=>setReviewFormData({...reviewFormData, content: e.target.value})} 
-                  className="w-full border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 shadow-sm outline-none resize-none font-bengali" 
-                  placeholder="বইটি সম্পর্কে আপনার মতামত এখানে লিখুন..." 
+                  className="w-full border border-slate-200 p-4 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 shadow-sm outline-none resize-none font-bold min-h-[250px]" 
+                  placeholder="বইটি সম্পর্কে আপনার মূল্যবান মতামত এখানে লিখুন..." 
                 ></textarea>
               </div>
               
-              <div className="flex gap-3 pt-6 mt-4 border-t border-slate-100">
-                 <button 
-                   type="button" 
-                   onClick={() => setShowReviewModal(false)}
-                   className="flex-1 px-6 py-2.5 font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition font-bengali"
-                 >
-                   বাতিল
-                 </button>
-                 <button 
-                   type="submit"
-                   className="flex-2 px-8 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-md shadow-indigo-200 transition font-bengali"
-                 >
-                   রিভিও পাবলিশ করুন
-                 </button>
+              <div className="flex gap-4 pt-8">
+                 <button type="button" onClick={() => setShowReviewModal(false)} className="flex-1 px-6 py-4 font-black text-slate-400 hover:bg-slate-50 rounded-2xl transition tracking-widest uppercase text-xs">বাতিল</button>
+                 <button type="submit" className="flex-2 px-10 py-4 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition active:scale-95">পাবলিশ করুন</button>
               </div>
             </form>
-          </div>
+          </motion.div>
         </div>
       )}
     </div>

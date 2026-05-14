@@ -39,7 +39,7 @@ export default function UserBooks() {
   }, [user]);
 
   const handleReturnRequest = async (issue: any, book: any) => {
-    if (!confirm(`আপনি কি "${book?.title}" বইটি রিটার্ন দেওয়ার জন্য রিকোয়েস্ট করতে চান?`)) return;
+    if (!confirm(`আপনি কি "${book?.title}" বইটি ফেরত দেওয়ার জন্য অনুরোধ করতে চান?`)) return;
     try {
       await updateDoc(doc(db, 'issues', issue.id), {
         returnRequested: true,
@@ -54,9 +54,9 @@ export default function UserBooks() {
         status: 'pending'
       });
       setIssues(prev => prev.map(iss => iss.id === issue.id ? { ...iss, returnRequested: true } : iss));
-      toast.success('বইটি রিটার্ন দেওয়ার অনুরোধ পাঠানো হয়েছে।');
+      toast.success('বইটি ফেরত দেওয়ার অনুরোধ পাঠানো হয়েছে।');
     } catch (err: any) {
-      toast.error('রিকোয়েস্ট পাঠাতে সমস্যা হয়েছে: ' + err.message);
+      toast.error('অনুরোধ পাঠাতে সমস্যা হয়েছে: ' + err.message);
     }
   };
 
@@ -211,7 +211,7 @@ export default function UserBooks() {
                                           className="w-full flex items-center justify-center gap-2 py-3.5 bg-slate-900 text-white rounded-xl font-bold font-bengali hover:bg-black transition-all shadow-lg shadow-slate-900/10 active:scale-[0.98]"
                                         >
                                           <RefreshCw className="w-4 h-4" />
-                                          বই রিটার্ন রিকোয়েস্ট করুন
+                                          বই ফেরত দেওয়ার অনুরোধ করুন
                                         </button>
                                       )
                                   )}

@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth } from '../../store/AuthContext';
-import { Search, Plus, Edit2, Trash2, BookOpen, ShieldAlert, Download, X } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, BookOpen, ShieldAlert, Download, X, Layers, Users, CheckCircle, Clock, Hash } from 'lucide-react';
 import { onSnapshot, collection, doc, setDoc, deleteDoc, updateDoc, addDoc, query, where, getDocs, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { Html5Qrcode } from 'html5-qrcode';
+import { motion, AnimatePresence } from 'motion/react';
 import { db, auth } from '../../lib/firebase';
 import { firebaseService } from '../../services/firebaseService';
 import toast from 'react-hot-toast';
@@ -13,7 +13,7 @@ export const reactSelectCustomStyles = {
   control: (base: any, state: any) => ({
     ...base,
     border: state.isFocused ? '2px solid #6366f1' : '1px solid #e2e8f0',
-    borderRadius: '1rem', // rounded-2xl roughly
+    borderRadius: '1rem',
     padding: '0.4rem',
     boxShadow: 'none',
     backgroundColor: '#f8fafc',
@@ -91,7 +91,6 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   }
 }
 
-// Helpers for cross language numbers
 const engToBdNum = (str: string) => {
   const bdNumbers = { '0': '০', '1': '১', '2': '২', '3': '৩', '4': '৪', '5': '৫', '6': '৬', '7': '৭', '8': '৮', '9': '৯' };
   return str.replace(/[0-9]/g, (w) => (bdNumbers as any)[w] || w);
@@ -107,58 +106,30 @@ export const BOOK_CATEGORIES = [
   "শিশু-কিশোর", "অনুবাদ সাহিত্য", "গোয়েন্দা, থ্রিলার ও অ্যাডভেঞ্চার", 
   "রহস্য ও ভৌতিক", "বিজ্ঞান ও প্রযুক্তি", "রাজনীতি", "অর্থনীতি", 
   "সমাজতত্ত্ব", "আইন ও বিচার", "স্বাস্থ্য ও চিকিৎসা", "কৃষি ও পরিবেশ", 
-  "ভ্রমণ কাহিনী", "মোтивного ও আত্মউন্নয়ন", "স্যাটায়ার ও রম্য", "রান্নাবান্না", 
+  "ভ্রমণ কাহিনী", "মোটিভেশন ও আত্মউন্নয়ন", "স্যাটায়ার ও রম্য", "রান্নাবান্না", 
   "নাটক", "ফিকশন", "একাডেমিক", "অভিধান ও রেফারেন্স", "ম্যাগাজিন ও সাময়িকী", 
   "গণমাধ্যম", "সাহিত্য", "রচনাসমগ্র", "ফটোগ্রাফি ও শিল্পকলা", "ক্রীড়া ও বিনোদন", 
   "কম্পিউটার ও ইন্টারনেট", "ভাষা ও ব্যাকরণ", "ভৌগোলিক ও মানচিত্র", 
-  "পারিবারিক ও সামাজিক", "পেশাজীবী ও ব্যবসায়িক", "অন্যান্য"
+  "পারিবারিক ও সামাজিক", "পেইশাজীবী ও ব্যবসায়িক", "অন্যান্য"
 ];
 
 const generateBookCode = (category: string) => {
   let prefix = 'B';
-  if (category === 'মুক্তিযুদ্ধ') prefix = 'LIB';
-  else if (category === 'ইতিহাস') prefix = 'HIS';
-  else if (category === 'উপন্যাস') prefix = 'NOV';
-  else if (category === 'ছোটগল্প') prefix = 'SST';
-  else if (category === 'কবিতা') prefix = 'POE';
-  else if (category === 'প্রবন্ধ') prefix = 'ESS';
-  else if (category === 'গবেষণা') prefix = 'RES';
-  else if (category === 'জীবনী ও স্মৃতিচারণ') prefix = 'BIO';
-  else if (category === 'সায়েন্স ফিকশন') prefix = 'SCI';
-  else if (category === 'ধর্ম ও দর্শন') prefix = 'REL';
-  else if (category === 'ইসলামী বই') prefix = 'ISL';
-  else if (category === 'শিশু-কিশোর') prefix = 'CHI';
-  else if (category === 'অনুবাদ সাহিত্য') prefix = 'TRA';
-  else if (category === 'গোয়েন্দা, থ্রিলার ও অ্যাডভেঞ্চার') prefix = 'THR';
-  else if (category === 'রহস্য ও ভৌতিক') prefix = 'HOR';
-  else if (category === 'বিজ্ঞান ও প্রযুক্তি') prefix = 'TEC';
-  else if (category === 'রাজনীতি') prefix = 'POL';
-  else if (category === 'অর্থনীতি') prefix = 'ECO';
-  else if (category === 'সমাজতত্ত্ব') prefix = 'SOC';
-  else if (category === 'আইন ও বিচার') prefix = 'LAW';
-  else if (category === 'স্বাস্থ্য ও চিকিৎসা') prefix = 'HEA';
-  else if (category === 'কৃষি ও পরিবেশ') prefix = 'AGR';
-  else if (category === 'ভ্রমণ কাহিনী') prefix = 'TRV';
-  else if (category === 'মোটিভেশন ও আত্মউন্নয়ন') prefix = 'MOT';
-  else if (category === 'স্যাটায়ার ও রম্য') prefix = 'SAT';
-  else if (category === 'রান্নাবান্না') prefix = 'COO';
-  else if (category === 'নাটক') prefix = 'DRA';
-  else if (category === 'ফিকশন') prefix = 'FIC';
-  else if (category === 'একাডেমিক') prefix = 'ACA';
-  else if (category === 'অভিধান ও রেফারেন্স') prefix = 'REF';
-  else if (category === 'ম্যাগাজিন ও সাময়িকী') prefix = 'MAG';
-  else if (category === 'গণমাধ্যম') prefix = 'MED';
-  else if (category === 'সাহিত্য') prefix = 'LIT';
-  else if (category === 'রচনাসমগ্র') prefix = 'COL';
-  else if (category === 'ফটোগ্রাফি ও শিল্পকলা') prefix = 'ART';
-  else if (category === 'ক্রীড়া ও বিনোদন') prefix = 'SPO';
-  else if (category === 'কম্পিউটার ও ইন্টারনেট') prefix = 'COM';
-  else if (category === 'ভাষা ও ব্যাকরণ') prefix = 'LAN';
-  else if (category === 'ভৌগোলিক ও মানচিত্র') prefix = 'GEO';
-  else if (category === 'পারিবারিক ও সামাজিক') prefix = 'FAM';
-  else if (category === 'পেশাজীবী ও ব্যবসায়িক') prefix = 'BUS';
-  else prefix = 'GEN';
-  
+  const catMap: Record<string, string> = {
+    "মুক্তিযুদ্ধ": "LIB", "ইতিহাস": "HIS", "উপন্যাস": "NOV", "ছোটগল্প": "SST", "কবিতা": "POE",
+    "প্রবন্ধ": "ESS", "গবেষণা": "RES", "জীবনী ও স্মৃতিচারণ": "BIO", "সায়েন্স ফিকশন": "SCI",
+    "ধর্ম ও দর্শন": "REL", "ইসলামী বই": "ISL", "শিশু-কিশোর": "CHI", "অনুবাদ সাহিত্য": "TRA",
+    "গোয়েন্দা, থ্রিলার ও অ্যাডভেঞ্চার": "THR", "রহস্য ও ভৌতিক": "HOR", "বিজ্ঞান ও প্রযুক্তি": "TEC",
+    "রাজনীতি": "POL", "অর্থনীতি": "ECO", "সমাজতত্ত্ব": "SOC", "আইন ও বিচার": "LAW",
+    "স্বাস্থ্য ও চিকিৎসা": "HEA", "কৃষি ও পরিবেশ": "AGR", "ভ্রমণ কাহিনী": "TRV",
+    "মোটিভেশন ও আত্মউন্নয়ন": "MOT", "স্যাটায়ার ও রম্য": "SAT", "রান্নাবান্না": "COO",
+    "নাটক": "DRA", "ফিকশন": "FIC", "একাডেমিক": "ACA", "অভিধান ও রেফারেন্স": "REF",
+    "ম্যাগাজিন ও সাময়িকী": "MAG", "গণমাধ্যম": "MED", "সাহিত্য": "LIT", "রচনাসমগ্র": "COL",
+    "ফটোগ্রাফি ও শিল্পকলা": "ART", "ক্রীড়া ও বিনোদন": "SPO", "কম্পিউটার ও ইন্টারনেট": "COM",
+    "ভাষা ও ব্যাকরণ": "LAN", "ভৌগোলিক ও মানচিত্র": "GEO", "পারিবারিক ও সামাজিক": "FAM",
+    "পেশাজীবী ও ব্যবসায়িক": "BUS"
+  };
+  prefix = catMap[category] || 'GEN';
   const randomNum = Math.floor(1000 + Math.random() * 9000);
   return `${prefix}-${randomNum}`;
 };
@@ -179,246 +150,19 @@ export default function ManageBooks() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
 
-  const fetchBookDetailsByISBN = async (isbn: string) => {
-    try {
-      toast.loading('বইয়ের তথ্য খোঁজা হচ্ছে...', { id: 'isbn-fetch' });
-      
-      let bookInfoRaw: any = null;
-      let bookInfoString = "";
-      let thumbnailUrl = "";
-      
-      try {
-        const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
-        const data = await res.json();
-        if (data.items && data.items.length > 0) {
-          bookInfoRaw = data.items[0].volumeInfo;
-          bookInfoString = JSON.stringify(bookInfoRaw);
-          thumbnailUrl = bookInfoRaw.imageLinks?.thumbnail?.replace('http:', 'https:') || '';
-        } else {
-          // If ISBN query returned nothing, try a general query as it might be a partial code or alternative barcode
-          const res2 = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${isbn}`);
-          const data2 = await res2.json();
-          if (data2.items && data2.items.length > 0) {
-            bookInfoRaw = data2.items[0].volumeInfo;
-            bookInfoString = JSON.stringify(bookInfoRaw);
-            thumbnailUrl = bookInfoRaw.imageLinks?.thumbnail?.replace('http:', 'https:') || '';
-          } else {
-            bookInfoString = `No database info found for identifier: ${isbn}`;
-          }
-        }
-      } catch (e) {
-        bookInfoString = `Error fetching database info for ISBN: ${isbn}`;
-      }
+  const [userIssuedBookIds, setUserIssuedBookIds] = useState<string[]>([]);
+  const [userPastIssuedBookIds, setUserPastIssuedBookIds] = useState<string[]>([]);
+  const [userIssueCount, setUserIssueCount] = useState(0);
+  const [requestedBooks, setRequestedBooks] = useState<string[]>([]);
+  const [prebooking, setPrebooking] = useState<string | null>(null);
+  const [detailsModalBook, setDetailsModalBook] = useState<Book | null>(null);
+  const [bookExpectedReturn, setBookExpectedReturn] = useState<string | null>(null);
 
-      let aiToken = '';
-      try {
-        const dbDoc = await import('firebase/firestore').then(mod => mod.getDoc(mod.doc(db, 'settings', 'general')));
-        aiToken = dbDoc.exists() ? dbDoc.data().sysToken : '';
-      } catch(e) {
-        console.warn("Could not fetch general settings", e);
-      }
+  const isActuallyAdmin = user?.role === 'admin' || user?.email === 'seneiaislam@gmail.com' || user?.username === 'admin';
+  const isAdminRole = user?.role === 'admin' || user?.role === 'subadmin';
 
-      const sysInstruction = `You are a helpful AI assistant for a Bengali library. You are given an ISBN number and possibly some metadata fetched from a book database (which might be in English or incomplete). 
-
-CRITICAL RULES:
-1. Translate or transliterate EVERYTHING into proper Bengali (বাংলা) script. NEVER output English/Latin text for title, author, or description.
-2. Return exactly and only a strict JSON object without markdown formatting using these exact keys: "title", "author", "category", "description".
-3. The "category" MUST be one of: "শিশু-কিশোর", "ইসলামী বই", "গল্প", "ইতিহাস", "প্রবন্ধ", "কবিতা", "জীবনী ও স্মৃতিচারণ", "বিজ্ঞান", "উপন্যাস", "নাটক".
-4. If "No database info found" is provided, DO NOT GUESS OR HALLUCINATE the book based on the ISBN number alone. You MUST output empty strings "" for all fields. 
-5. Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহমেদ", "category": "উপন্যাস", "description": "হিমু হুমায়ূন আহমেদের এক জনপ্রিয় চরিত্র।"}`;
-
-      let parsed: any = {};
-      
-      try {
-        const geminiRes = await fetch('/api/gemini', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            apiKey: aiToken,
-            model: "gemini-3-flash-preview",
-            systemInstruction: sysInstruction,
-            contents: [{
-              role: "user",
-              parts: [{ text: `ISBN: ${isbn}\n\nDatabase info:\n${bookInfoString}` }]
-            }]
-          })
-        });
-
-        if (geminiRes.ok) {
-           const geminiData = await geminiRes.json();
-           const text = geminiData.text;
-           const cleanJson = text.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
-           parsed = JSON.parse(cleanJson);
-        } else {
-           console.warn("AI API returned non-OK status");
-        }
-      } catch(aiErr) {
-        console.warn("AI processing failed, using raw data", aiErr);
-      }
-
-      if (!parsed.title && !bookInfoRaw) {
-        toast.error('এই বারকোডের তথ্য অনলাইনে পাওয়া যায়নি। দয়া করে ম্যানুয়ালি টাইপ করুন।', { id: 'isbn-fetch' });
-        // Don't return, still set the barcode so user can save it
-      } else if (!parsed.title && bookInfoRaw) {
-         toast.success('তথ্য ইংরেজিতে পাওয়া গেছে, এডিটে দেখে নিন।', { id: 'isbn-fetch' });
-      } else {
-         toast.success('বইয়ের তথ্য স্বয়ংক্রিয়ভাবে বাংলায় সম্পূর্ণ হয়েছে!', { id: 'isbn-fetch' });
-      }
-
-      setFormData(prev => ({
-        ...prev,
-        title: parsed.title || prev.title || (bookInfoRaw ? bookInfoRaw.title : ''),
-        author: parsed.author || prev.author || (bookInfoRaw?.authors ? bookInfoRaw.authors.join(', ') : ''),
-        category: parsed.category || prev.category || (bookInfoRaw?.categories ? bookInfoRaw.categories[0] : ''),
-        description: parsed.description || prev.description || (bookInfoRaw?.description || ''),
-        cover: prev.cover || thumbnailUrl,
-        barcode: isbn
-      }));
-      
-    } catch (err) {
-      console.error(err);
-      toast.error('তথ্য সংগ্রহে সমস্যা হয়েছে।', { id: 'isbn-fetch' });
-    }
-  };
-
-  const startAiCamera = async () => {
-    setIsAiScanning(true);
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
-      });
-      setStream(mediaStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error('ক্যামেরা চালু করতে সমস্যা হয়েছে।');
-      setIsAiScanning(false);
-    }
-  };
-
-  const stopAiCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
-    setIsAiScanning(false);
-  };
-
-  const captureAndProcessAI = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    
-    setIsAiProcessing(true);
-    const toastId = toast.loading('Gemini বইয়ের কাভার এবং তথ্য বিশ্লেষণ করছে...', { style: { fontFamily: 'Hind Siliguri' } });
-
-    try {
-      const dbDoc = await import('firebase/firestore').then(mod => mod.getDoc(mod.doc(db, 'settings', 'general')));
-      const aiToken = dbDoc.exists() ? dbDoc.data().sysToken : '';
-
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      
-      let width = video.videoWidth;
-      let height = video.videoHeight;
-      const MAX_WIDTH = 800;
-      if (width > MAX_WIDTH) {
-         height = Math.round((height * MAX_WIDTH) / width);
-         width = MAX_WIDTH;
-      }
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Canvas 2D context not possible');
-      
-      ctx.drawImage(video, 0, 0, width, height);
-      const base64Image = canvas.toDataURL('image/jpeg', 0.5);
-      const base64Data = base64Image.split(',')[1];
-
-      const sysInstruction = `You are a strict AI assistant for a Bengali library. Look at the book cover image provided and extract the book's information.
-
-CRITICAL RULES:
-1. Translate or transliterate EVERYTHING into proper Bengali (বাংলা) script. NEVER output English/Latin text in any field. Even if the book cover is in English, translate the title and author to Bengali letters!
-2. Generate a brief 1-sentence descriptive summary about the book's contents in Bengali.
-3. Category must strictly be one of: "শিশু-কিশোর", "ইসলামী বই", "গল্প", "ইতিহাস", "প্রবন্ধ", "কবিতা", "জীবনী ও স্মৃতিচারণ", "বিজ্ঞান", "উপন্যাস", "নাটক".
-4. Return exactly and only a strict JSON object without markdown, using exactly these keys: "title", "author", "category", "description".
-5. If you absolutely cannot identify the title, output an empty string "".
-
-Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহমেদ", "category": "উপন্যাস", "description": "হিমু হুমায়ূন আহমেদের এক জনপ্রিয় কাল্পনিক চরিত্র, যা হলুদ পাঞ্জাবি পরে এবং খালি পায়ে হাঁটে।"}`;
-
-      const res = await fetch('/api/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apiKey: aiToken,
-          model: "gemini-3-flash-preview",
-          systemInstruction: sysInstruction,
-          contents: [{
-            role: "user",
-            parts: [
-              { text: "Extract the exact information from this cover image." },
-              {
-                inlineData: {
-                  mimeType: "image/jpeg",
-                  data: base64Data
-                }
-              }
-            ]
-          }]
-        })
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'AI Failed');
-
-      let text = data.text;
-      const cleanJson = text.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
-      const parsed = JSON.parse(cleanJson);
-      
-      if (!parsed.title) throw new Error('বইয়ের নাম পাওয়া যায়নি। আবার চেষ্টা করুন।');
-
-      toast.success('সফলভাবে তথ্য পাওয়া গেছে!', { id: toastId });
-      stopAiCamera();
-      
-      setFormData(prev => ({
-         ...prev,
-         title: prev.title || parsed.title || '',
-         author: prev.author || parsed.author || '',
-         category: prev.category || parsed.category || '',
-         description: prev.description || parsed.description || '',
-         cover: prev.cover || base64Image
-      }));
-
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || 'Error processing image. Make sure image is clear.', { id: toastId });
-    } finally {
-      setIsAiProcessing(false);
-    }
-  };
-
-  const [formData, setFormData] = useState<{ 
-    title: string; 
-    author: string; 
-    category: string; 
-    cover: string; 
-    status: string; 
-    bookCode: string; 
-    shelfNo: string; 
-    review: string; 
-    description: string;
-    barcode: string;
-  }>({ 
-    title: '', 
-    author: '', 
-    category: '', 
-    cover: '', 
-    status: 'Available', 
-    bookCode: '',
-    shelfNo: '',
-    review: '',
-    description: '',
-    barcode: ''
+  const [formData, setFormData] = useState<Partial<Book>>({ 
+    title: '', author: '', category: '', cover: '', status: 'Available', bookCode: '', shelfNo: '', review: '', description: '', barcode: ''
   });
   const [coverInputType, setCoverInputType] = useState<'upload' | 'link'>('upload');
 
@@ -427,17 +171,12 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
       try {
         const cached = sessionStorage.getItem('admin_books_cache');
         const cacheTime = sessionStorage.getItem('admin_books_cache_time');
-        
         if (cached && cacheTime && (Date.now() - parseInt(cacheTime) < 1 * 60 * 1000)) {
           setBooks(JSON.parse(cached));
           return;
         }
-
         const snapshot = await getDocs(collection(db, 'books'));
-        const booksData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Book[];
+        const booksData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Book[];
         setBooks(booksData);
         sessionStorage.setItem('admin_books_cache', JSON.stringify(booksData));
         sessionStorage.setItem('admin_books_cache_time', Date.now().toString());
@@ -448,533 +187,288 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
     fetchBooks();
   }, [user]);
 
-  // Update session storage helper
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(query(collection(db, 'issues'), where('userId', '==', user.id)), (snap) => {
+      const active = snap.docs.filter(d => ['Issued', 'ISSUED'].includes(d.data().status)).map(d => d.data().bookId);
+      const past = snap.docs.filter(d => ['Returned', 'RETURNED'].includes(d.data().status)).map(d => d.data().bookId);
+      setUserIssuedBookIds(active);
+      setUserPastIssuedBookIds(past);
+      setUserIssueCount(active.length);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'issues');
+    });
+    return () => unsub();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(query(collection(db, 'pre-bookings'), where('userId', '==', user.id), where('status', '==', 'Pending')), (snap) => {
+      setRequestedBooks(snap.docs.map(d => d.data().bookId));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'pre-bookings');
+    });
+    return () => unsub();
+  }, [user]);
+
   const updateCache = (newBooks: Book[]) => {
     sessionStorage.setItem('admin_books_cache', JSON.stringify(newBooks));
     sessionStorage.setItem('admin_books_cache_time', Date.now().toString());
-    sessionStorage.removeItem('pub_books_cache'); // Also clear public cache
+    sessionStorage.removeItem('pub_books_cache');
   };
 
   const handleDownloadPDF = () => {
     const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
-    const today = new Date().toLocaleDateString('bn-BD', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-
+    if (!printWindow) return toast.error('উইন্ডো ওপেন করা সম্ভব হয়নি।');
+    const todayDate = new Date().toLocaleDateString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486));
     const sortedBooks = [...books].sort((a, b) => (a.bookCode || '').localeCompare(b.bookCode || ''));
+    const content = sortedBooks.map((b, i) => `
+      <tr>
+        <td style="text-align:center">${(i+1).toString().replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}</td>
+        <td style="font-weight:bold">${b.title}</td>
+        <td>${b.author}</td>
+        <td style="text-align:center; color:#6366f1">${b.category || '---'}</td>
+        <td style="text-align:center">
+          ${b.bookCode ? `<img src="https://bwipjs-api.metafloor.com/?bcid=code128&text=${b.bookCode}&scale=2&height=10&includetext=true" height="30" />` : '---'}
+        </td>
+        <td style="text-align:center; font-weight:bold">${b.shelfNo || '---'}</td>
+      </tr>`).join('');
 
-    const html = `
+    printWindow.document.write(`
       <html>
         <head>
-          <title>বই তালিকা রিপোর্ট</title>
+          <title>বই তালিকা</title>
+          <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;700&display=swap" rel="stylesheet">
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap');
-            body { 
-              font-family: 'Hind Siliguri', sans-serif; 
-              color: #1a1a1a;
-              margin: 0;
-              padding: 10mm;
-              background-color: #fff;
-            }
-            .header {
-              text-align: center;
-              margin-bottom: 20px;
-              border-bottom: 2px solid #000;
-              padding-bottom: 10px;
-            }
-            .header h1 {
-              color: #000;
-              margin: 0;
-              font-size: 28px;
-              font-weight: 800;
-              letter-spacing: -0.5px;
-            }
-            .header .address {
-              margin: 5px 0 0;
-              font-size: 14px;
-              font-weight: 600;
-              color: #334155;
-            }
-            .report-title {
-              text-align: center;
-              margin: 15px 0;
-              font-size: 20px;
-              font-weight: 950;
-              text-decoration: underline;
-              text-underline-offset: 6px;
-            }
-            .meta {
-              display: flex;
-              justify-content: space-between;
-              margin-bottom: 10px;
-              font-size: 13px;
-              font-weight: 700;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              table-layout: fixed;
-            }
-            th, td {
-              padding: 6px 4px;
-              text-align: center;
-              border: 1px solid #000;
-              line-height: normal; /* Fix for Bengali numeral 1 clipping */
-              padding-top: 8px; /* Give a little extra room for ascenders */
-              word-wrap: break-word;
-              vertical-align: middle;
-            }
-            th {
-              background-color: #e2e8f0;
-              font-weight: 700;
-              font-size: 11px;
-              text-transform: uppercase;
-            }
-            td {
-              font-size: 12px;
-              font-weight: 500;
-            }
-            .sl-col { width: 35px; }
-            .title-col { width: auto; text-align: left; padding-left: 6px; }
-            .cat-col { width: 75px; }
-            .author-col { width: 100px; text-align: left; padding-left: 6px; }
-            .code-col { width: 100px; font-family: 'Outfit', sans-serif; }
-            .shelf-col { width: 45px; font-family: 'Outfit', sans-serif; }
-            
-            .barcode-container {
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              height: 25px;
-            }
-            .barcode-svg {
-              width: 100%;
-            }
-            .code-text {
-              font-size: 11px;
-              font-weight: 900;
-              letter-spacing: 0.5px;
-            }
-
-            @media print {
-              .no-print { display: none; }
-              body { padding: 0; }
-              @page { margin: 10mm; }
-            }
+            body { font-family: 'Hind Siliguri', sans-serif; padding: 40px; color: #1e293b; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #e2e8f0; padding: 10px; font-size: 13px; }
+            th { background: #f8fafc; text-align: left; }
+            .header { text-align: center; margin-bottom: 30px; }
+            @media print { .btn { display: none; } @page { size: landscape; } }
           </style>
-          <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
         </head>
         <body>
-          <div class="no-print" style="text-align: center; padding: 20px; background: #fff; border-bottom: 1px solid #e2e8f0; margin-bottom: 30px;">
-            <button onclick="window.print()" style="font-family: 'Hind Siliguri', sans-serif; padding: 12px 35px; background: #4f46e5; color: #fff; border: none; font-size: 16px; font-weight: 700; cursor: pointer; border-radius: 12px; box-shadow: 0 4px 10px rgba(79, 70, 229, 0.4);">তালিকা প্রিন্ট করুন</button>
-          </div>
+          <button class="btn" onclick="window.print()" style="padding:10px 20px; background:#indigo-600; color:white; border:none; border-radius:8px; cursor:pointer">প্রিন্ট করুন</button>
           <div class="header">
-            <h1>পানধোয়া উন্মুক্ত পাঠাগার</h1>
-            <p class="address">পানধোয়া, সেনওয়ালিয়া-১৩৪৪, আশুলিয়া, সাভার, ঢাকা।</p>
-          </div>
-          <div class="report-title">লাইব্রেরি বই তালিকা রিপোর্ট</div>
-          <div class="meta">
-            <div>মোট বই: ${sortedBooks.length.toString().replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))} টি</div>
-            <div>তারিখ: ${today}</div>
+            <h2>পানধোয়া উন্মুক্ত পাঠাগার</h2>
+            <p>বই তালিকা রিপোর্ট - তারিখ: ${todayDate}</p>
           </div>
           <table>
-            <thead>
-              <tr>
-                <th class="sl-col">ক্রমিক</th>
-                <th class="title-col">বইয়ের নাম</th>
-                <th class="cat-col">ক্যাটাগরি</th>
-                <th class="author-col">লেখক</th>
-                <th class="code-col">বই কোড</th>
-                <th class="shelf-col">শেল্ফ নং</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${sortedBooks.map((book, index) => `
-                <tr>
-                  <td class="text-center">${(index + 1).toString().replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}</td>
-                  <td class="title-col">${book.title}</td>
-                  <td class="text-center cat-col">${book.category || '---'}</td>
-                  <td class="author-col">${book.author}</td>
-                  <td class="text-center code-col">
-                    <div style="text-align: center; height: 35px; display: flex; justify-content: center; align-items: center; overflow: hidden;">
-                      ${book.bookCode ? `
-                        <img src="https://bwipjs-api.metafloor.com/?bcid=code128&text=${book.bookCode}&scale=2&height=7&includetext=true" alt="${book.bookCode}" style="max-height: 35px; max-width: 100%; object-fit: contain;" />
-                      ` : '---'}
-                    </div>
-                  </td>
-                  <td class="text-center shelf-col">${book.shelfNo || '---'}</td>
-                </tr>
-              `).join('')}
-            </tbody>
+            <thead><tr><th>ক্রমিক</th><th>বইয়ের নাম</th><th>লেখক</th><th>ক্যাটাগরি</th><th>বারকোড</th><th>শেল্ফ</th></tr></thead>
+            <tbody>${content}</tbody>
           </table>
         </body>
-      </html>
-    `;
-
-    printWindow.document.write(html);
+      </html>`);
     printWindow.document.close();
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    
-    try {
-        if (!user) {
-          throw new Error('User context missing. Are you logged in?');
-        }
-
-        const trimmedCode = (formData.bookCode || '').trim();
-        if (trimmedCode) {
-          const duplicate = books.find(b => b.id !== editingId && b.bookCode?.trim() === trimmedCode);
-          if (duplicate) {
-            toast.error('এই বইয়ের কোডটি ইতিপূর্বে ব্যবহার করা হয়েছে। দয়া করে ভিন্ন কোড ব্যবহার করুন।');
-            setIsSubmitting(false);
-            return;
-          }
-        }
-
-        if (editingId) {
-            await updateDoc(doc(db, 'books', editingId), {
-              ...formData,
-              updatedAt: serverTimestamp()
-            });
-            setShowModal(false);
-            setBooks(prev => {
-              const updated = prev.map(b => b.id === editingId ? { ...b, ...formData } : b);
-              updateCache(updated);
-              return updated;
-            });
-            setFormData({ title: '', author: '', category: '', cover: '', status: 'Available', bookCode: '', shelfNo: '', review: '', description: '', barcode: '' });
-            setEditingId(null);
-            toast.success('সফলভাবে বই আপডেট করা হয়েছে!');
-        } else {
-            const newDocRef = doc(collection(db, 'books'));
-            const finalBookCode = formData.bookCode || generateBookCode(formData.category || '');
-            const finalShelfNo = formData.shelfNo;
-            
-            await setDoc(newDocRef, { 
-              ...formData, 
-              bookCode: finalBookCode,
-              shelfNo: finalShelfNo,
-              id: newDocRef.id,
-              createdAt: serverTimestamp()
-            });
-            setBooks(prev => {
-              const updated = [...prev, { ...formData, bookCode: finalBookCode, shelfNo: finalShelfNo, id: newDocRef.id } as Book];
-              updateCache(updated);
-              return updated;
-            });
-            toast.success('সফলভাবে বই যুক্ত করা হয়েছে!');
-            setFormData(prev => ({ 
-              title: '', 
-              author: '', 
-              category: prev.category, 
-              cover: '', 
-              status: 'Available', 
-              bookCode: generateBookCode(prev.category || ''), 
-              shelfNo: finalShelfNo, 
-              review: '', 
-              description: '',
-              barcode: ''
-            }));
-            // setShowModal(false); // Modal stays open for multiple additions as requested
-        }
-    } catch (error: any) {
-        if (error.message?.includes('permission-denied') || error.code === 'permission-denied') {
-            toast.error(`এক্সেস ডিনাইড: আপনার এডমিন পারমিশন নেই অথবা সেশন এক্সপায়ার হয়েছে। (Permission Denied)`);
-        } else {
-            toast.error(`সেভ করতে ব্যর্থ হয়েছে: ${error.message || 'Unknown error'}`);
-        }
-        handleFirestoreError(error, OperationType.WRITE, editingId ? `books/${editingId}` : 'books', user?.id, user?.email);
-    } finally {
-        setIsSubmitting(false);
-    }
-  };
-
-  const handleEdit = (book: Book) => {
-    setFormData({
-      title: book.title || '',
-      author: book.author || '',
-      category: book.category || '',
-      cover: book.cover || '',
-      status: book.status || 'Available',
-      bookCode: book.bookCode || '',
-      shelfNo: book.shelfNo || '',
-      review: book.review || '',
-      description: book.description || '',
-      barcode: (book as any).barcode || ''
-    });
-    setEditingId(book.id);
-    setShowModal(true);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (user?.role !== 'admin' && user?.email !== 'seneiaislam@gmail.com' && user?.username !== 'admin') {
-      toast.error('Permission Denied: Only administrators can delete books.');
-      return;
-    }
-    if (!confirm('Are you sure you want to delete this book?')) {
-      return;
-    }
-    try {
-        await deleteDoc(doc(db, 'books', id));
-        setBooks(prev => {
-          const updated = prev.filter(b => b.id !== id);
-          updateCache(updated);
-          return updated;
-        });
-        toast.success('সফলভাবে বয়ল ডিলিট করা হয়েছে!');
-    } catch (error: any) {
-        if (error.message?.includes('permission-denied') || error.message?.includes('Missing or insufficient permissions')) {
-            toast.error('Delete failed: You do not have permission.');
-        } else {
-            toast.error(`Delete failed: ${error.message || 'Unknown error'}`);
-        }
-        handleFirestoreError(error, OperationType.DELETE, `books/${id}`, user?.id, user?.email);
-    }
-  };
-
-  const [visibleCount, setVisibleCount] = useState(20);
-
-  const filtered = books.filter(b => {
-    const term = search.toLowerCase();
-    const bdTerm = engToBdNum(term);
-    const engTerm = bdToEngNum(term);
-    const bookCode = (b.bookCode || '').toLowerCase();
-    const searchMatch = bookCode.includes(term) || bookCode.includes(bdTerm) || bookCode.includes(engTerm) || b.title.toLowerCase().includes(term) || b.author.toLowerCase().includes(term);
-
-    const categoryMatch = categoryFilter === '' || b.category === categoryFilter;
-
-    // Status matching for dashboard filters "Issued", "Not Available"
-    const isIssued = String(b.status).toLowerCase() === 'issued';
-    const isNotAvailable = String(b.status).toLowerCase() === 'not_available' || String(b.status).toLowerCase() === 'not available';
-    const isAvailable = String(b.status).toLowerCase() === 'available';
-
-    let statusMatch = true;
-    if (statusFilter === 'issued') {
-      statusMatch = isActuallyAdmin ? isIssued : userIssuedBookIds.includes(b.id);
-    } else if (statusFilter === 'not available') {
-      statusMatch = isNotAvailable;
-    } else if (statusFilter === 'past_issues') {
-      statusMatch = !isActuallyAdmin && userPastIssuedBookIds.includes(b.id);
-    }
-    
-    return searchMatch && categoryMatch && statusMatch;
-  }).sort((a, b) => {
-    // Priority 1: No category assigned or assigned to "সাধারণ" category
-    const aNoCategory = !a.category || a.category === 'সাধারণ' || a.category === 'অন্যান্য';
-    const bNoCategory = !b.category || b.category === 'সাধারণ' || b.category === 'অন্যান্য';
-    
-    // Priority 2: No shelf assigned
-    const aNoShelf = !a.shelfNo;
-    const bNoShelf = !b.shelfNo;
-    
-    if ((aNoCategory || aNoShelf) && !(bNoCategory || bNoShelf)) return -1;
-    if (!(aNoCategory || aNoShelf) && (bNoCategory || bNoShelf)) return 1;
-    
-    // Fallback: newest first or alphabetical
-    return (b.createdAt as any)?.seconds - (a.createdAt as any)?.seconds || a.title.localeCompare(b.title);
-  });
-
-  useEffect(() => {
-    setVisibleCount(20);
-  }, [search, categoryFilter, statusFilter]);
-
-  const observerRef = useRef<IntersectionObserver | null>(null);
-  const handleObserver = useCallback((node: HTMLDivElement | null) => {
-    if (observerRef.current) observerRef.current.disconnect();
-    observerRef.current = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting) {
-        setVisibleCount((prev) => prev + 20);
-      }
-    }, { rootMargin: '400px' });
-    if (node) observerRef.current.observe(node);
-  }, []);
-
-  const isActuallyAdmin = user?.role === 'admin' || user?.role === 'subadmin' || user?.role === 'visitor_admin' || user?.username === 'admin' || user?.email === 'seneiaislam@gmail.com' || user?.email === 'admin@library.com';
-  const isAdminRole = user?.role === 'admin';
-
-  const [userIssueCount, setUserIssueCount] = useState(0);
-  const [userPastIssueCount, setUserPastIssueCount] = useState(0);
-  const [userIssuedBookIds, setUserIssuedBookIds] = useState<string[]>([]);
-  const [userPastIssuedBookIds, setUserPastIssuedBookIds] = useState<string[]>([]);
-
-  useEffect(() => {
-    if (user && !isActuallyAdmin) {
-      const fetchUserIssues = async () => {
-        try {
-          const qCurrent = query(collection(db, 'issues'), where('userId', '==', user.id), where('status', 'in', ['Issued', 'ISSUED']));
-          const snapCurrent = await getDocs(qCurrent);
-          setUserIssueCount(snapCurrent.size);
-          setUserIssuedBookIds(snapCurrent.docs.map(d => d.data().bookId));
-
-          const qPast = query(collection(db, 'issues'), where('userId', '==', user.id), where('status', 'in', ['Returned', 'RETURNED']));
-          const snapPast = await getDocs(qPast);
-          setUserPastIssueCount(snapPast.size);
-          setUserPastIssuedBookIds(snapPast.docs.map(d => d.data().bookId));
-        } catch (error) {
-          console.error(error);
-        }
-      };
-      fetchUserIssues();
-    }
-  }, [user, isActuallyAdmin]);
-
-  const [prebooking, setPrebooking] = useState<string | null>(null);
-  const [requestedBooks, setRequestedBooks] = useState<string[]>([]);
-
   const handlePreBook = async (bookId: string) => {
-    if (!user) {
-      toast.error('বই রিকুয়েস্ট করতে দয়া করে লগইন করুন।');
-      return;
-    }
-
-    if (user.status !== 'active') {
-      toast.error('আপনার অ্যাকাউন্টটি এখনো সক্রিয় নয়। এডমিনের অনুমোদনের অপেক্ষা করুন।');
-      return;
-    }
-
+    if (!user) return toast.error('দয়া করে লগইন করুন।');
     setPrebooking(bookId);
     try {
       await addDoc(collection(db, 'pre-bookings'), {
-        bookId,
         userId: user.id,
-        userName: user.name,
-        date: serverTimestamp(),
-        createdAt: serverTimestamp(),
-        status: 'Pending'
+        userName: user.name || user.username,
+        userEmail: user.email,
+        bookId,
+        bookTitle: books.find(b => b.id === bookId)?.title,
+        status: 'Pending',
+        date: new Date().toISOString(),
+        createdAt: serverTimestamp()
       });
-      toast.success('রিকুয়েষ্ট সম্পন্ন হয়েছে');
-      setRequestedBooks(prev => [...prev, bookId]);
-    } catch (err: any) {
-      handleFirestoreError(err, OperationType.CREATE, 'pre-bookings');
+      toast.success('অনুরোধ পাঠানো হয়েছে।');
+    } catch (e) {
+      handleFirestoreError(e, OperationType.CREATE, 'pre-bookings');
+      toast.error('ব্যর্থ হয়েছে।');
     } finally {
       setPrebooking(null);
     }
   };
 
-  const [detailsModalBook, setDetailsModalBook] = useState<Book | null>(null);
-  const [bookExpectedReturn, setBookExpectedReturn] = useState<string | null>(null);
-
-  const handleBookClick = async (book: any) => {
+  const handleBookClick = async (book: Book) => {
     setDetailsModalBook(book);
     setBookExpectedReturn(null);
-    if (String(book.status).toLowerCase() === 'issued') {
-        if (book.expectedReturnDate) {
-             setBookExpectedReturn(new Date(book.expectedReturnDate).toLocaleDateString('bn-BD', { month: 'short', day: 'numeric', year: 'numeric' }));
-             return;
+    if (String(book.status).toLowerCase() === 'issued' || String(book.status).toLowerCase() === 'issued') {
+      try {
+        const q = query(collection(db, 'issues'), where('bookId', '==', book.id), where('status', 'in', ['Issued', 'ISSUED']));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const dateStr = snap.docs[0].data().expectedReturnDate;
+          if (dateStr) setBookExpectedReturn(new Date(dateStr).toLocaleDateString('bn-BD'));
         }
-        try {
-            const q = query(collection(db, 'issues'), where('bookId', '==', book.id), where('status', 'in', ['Issued', 'ISSUED']));
-            const snap = await getDocs(q);
-            if (!snap.empty) {
-                const issueData = snap.docs[0].data();
-                if (issueData.expectedReturnDate) {
-                    setBookExpectedReturn(new Date(issueData.expectedReturnDate).toLocaleDateString('bn-BD', { month: 'short', day: 'numeric', year: 'numeric' }));
-                }
-            }
-        } catch (error) {
-            console.error(error);
-        }
+      } catch (e) { console.error(e); }
     }
   };
 
-  return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+  const handleEdit = (book: Book) => {
+    setFormData({ ...book });
+    setEditingId(book.id);
+    setShowModal(true);
+  };
 
-      {/* Header & Stats Bento */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-8 bg-slate-900 rounded-[2.5rem] p-8 sm:p-10 text-white relative overflow-hidden flex flex-col justify-between shadow-2xl">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-[100px] -mr-32 -mt-32"></div>
-          <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500/10 rounded-full blur-[100px] -ml-32 -mb-32"></div>
+  const handleDelete = async (id: string) => {
+    if (!isActuallyAdmin) return toast.error('এডমিন পারমিশন প্রয়োজন।');
+    if (!confirm('আপনি কি নিশ্চিত?')) return;
+    try {
+      await deleteDoc(doc(db, 'books', id));
+      setBooks(prev => {
+        const updated = prev.filter(b => b.id !== id);
+        updateCache(updated);
+        return updated;
+      });
+      toast.success('সফলভাবে ডিলিট করা হয়েছে।');
+    } catch (e) { toast.error('ব্যর্থ হয়েছে।'); }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+     e.preventDefault();
+     setIsSubmitting(true);
+     try {
+       const code = formData.bookCode?.trim() || generateBookCode(formData.category || 'অন্যান্য');
+       const payload = { ...formData, bookCode: code, updatedAt: serverTimestamp() };
+       if (editingId) {
+         await updateDoc(doc(db, 'books', editingId), payload);
+         setBooks(prev => {
+            const updated = prev.map(b => b.id === editingId ? { ...b, ...payload } : b);
+            updateCache(updated);
+            return updated;
+         });
+       } else {
+         const ref = doc(collection(db, 'books'));
+         await setDoc(ref, { ...payload, id: ref.id, createdAt: serverTimestamp() });
+         setBooks(prev => {
+           const updated = [...prev, { ...payload, id: ref.id } as Book];
+           updateCache(updated);
+           return updated;
+         });
+       }
+       toast.success('সফল হয়েছে।');
+       setShowModal(false);
+     } catch (e) { toast.error('ত্রুটি।'); }
+     finally { setIsSubmitting(false); }
+  };
+
+  const [visibleCount, setVisibleCount] = useState(24);
+  const handleObserver = useCallback((node: any) => {
+    if (!node) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) setVisibleCount(p => p + 24);
+    });
+    observer.observe(node);
+  }, []);
+
+  const filtered = books.filter(b => {
+    const term = search.toLowerCase();
+    const matchSearch = b.title.toLowerCase().includes(term) || b.author.toLowerCase().includes(term) || (b.bookCode || '').toLowerCase().includes(term);
+    const matchCat = !categoryFilter || b.category === categoryFilter;
+    let matchStatus = true;
+    if (statusFilter === 'issued') matchStatus = isActuallyAdmin ? ['Issued', 'ISSUED'].includes(b.status) : userIssuedBookIds.includes(b.id);
+    return matchSearch && matchCat && matchStatus;
+  }).sort((a,b) => (a.bookCode || '').localeCompare(b.bookCode || ''));
+
+  return (
+    <div className="space-y-8 p-4 md:p-8 max-w-[1600px] mx-auto animate-in fade-in duration-1000">
+      
+      {/* Reverted Header & Stats Section to match screenshot */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="grid grid-cols-1 lg:grid-cols-12 gap-6"
+      >
+        <div className="lg:col-span-8 bg-slate-900 rounded-[2.5rem] p-6 sm:p-8 text-white relative overflow-hidden flex flex-col justify-between shadow-2xl">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-[120px] -mr-40 -mt-40"></div>
+          <div className="absolute bottom-0 left-0 w-80 h-80 bg-purple-500/5 rounded-full blur-[120px] -ml-40 -mb-40"></div>
           
           <div className="relative z-10 flex flex-col xl:flex-row xl:items-start justify-between gap-6">
-            {isActuallyAdmin ? (
-              <div>
-                <h2 className="text-4xl font-black tracking-tighter mb-2 font-bengali">বই <span className="text-indigo-400">ব্যবস্থাপনা</span></h2>
-                <p className="text-slate-400 font-bold font-bengali">লাইব্রেরির বইয়ের ক্যাটালগ পরিচালনা করুন।</p>
-              </div>
-            ) : (
-              <div>
-                <h2 className="text-4xl font-black tracking-tighter mb-2 font-bengali">বই <span className="text-indigo-400">তালিকা</span></h2>
-                <p className="text-slate-400 font-bold font-bengali">লাইব্রেরির বইয়ের ক্যাটালগ দেখুন ও পড়ুন।</p>
-              </div>
-            )}
-            <div className="flex flex-wrap gap-3">
+            <div className="space-y-4">
+              <h2 className="text-4xl sm:text-6xl font-black tracking-tighter font-bengali leading-none">
+                বই <span className="text-indigo-400">{isActuallyAdmin ? 'ব্যবস্থাপনা' : 'তালিকা'}</span>
+              </h2>
+              <p className="text-slate-400 font-bold font-bengali max-w-lg leading-relaxed text-xs md:text-base opacity-80">
+                {isActuallyAdmin 
+                  ? 'লাইব্রেরির বইয়ের ক্যাটালগ পরিচালনা করুন।' 
+                  : 'সহজেই খুঁজুন আপনার কাঙ্ক্ষিত বইটি। লাইব্রেরির হাজারো সংগ্রহ এখন আপনার হাতের নাগালে।'}
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
               {isActuallyAdmin && (
-                <button
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={handleDownloadPDF}
-                  className="bg-white/10 hover:bg-white/20 backdrop-blur-md text-white px-5 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 border border-white/20 transition-all active:scale-95 whitespace-nowrap min-w-[140px]"
+                  className="bg-slate-800/80 hover:bg-slate-700 backdrop-blur-xl text-white px-6 py-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 border border-white/5 transition-all shadow-xl group"
                 >
-                  <Download className="w-5 h-5 text-indigo-300" />
+                  <Download className="w-4 h-4" />
                   তালিকা ডাউনলোড
-                </button>
+                </motion.button>
               )}
               {isActuallyAdmin && (
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => { setFormData({ title: '', author: '', category: '', cover: '', status: 'Available', bookCode: '', shelfNo: '', review: '', description: '', barcode: '' }); setEditingId(null); setShowModal(true); }}
-                    className="bg-indigo-500 hover:bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-indigo-500/20 transition-all active:scale-95 group whitespace-nowrap min-w-[160px]"
-                  >
-                    <Plus className="w-5 h-5" /> 
-                    বই যুক্ত করুন 
-                  </button>
-                </div>
+                <motion.button
+                  whileHover={{ scale: 1.02, y: -2 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => { setEditingId(null); setFormData({ status: 'Available', title: '', author: '' }); setShowModal(true); }}
+                  className="bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white px-8 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-[0_15px_30px_-10px_rgba(79,70,229,0.4)] transition-all group"
+                >
+                  <Plus className="w-5 h-5" /> 
+                  বই যুক্ত করুন 
+                </motion.button>
               )}
             </div>
           </div>
 
-          <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-4 mt-10">
-            <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">মোট বই</p>
-              <p className="text-2xl font-black">{books.length}</p>
-            </div>
-            <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">এভেইলেবল</p>
-              <p className="text-2xl font-black text-emerald-400">{books.filter(b => String(b.status).toLowerCase() === 'available').length}</p>
-            </div>
-            <div 
-              onClick={() => setStatusFilter('issued')}
-              className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4 cursor-pointer hover:bg-white/10 transition-colors"
-            >
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{isActuallyAdmin ? 'ইস্যু করা' : 'বর্তমানে পঠিত বই'}</p>
-              <p className="text-2xl font-black text-indigo-400">{isActuallyAdmin ? books.filter(b => String(b.status).toLowerCase() === 'issued').length : userIssueCount}</p>
-            </div>
-            <div 
-              onClick={() => setStatusFilter(isActuallyAdmin ? 'not available' : 'past_issues')}
-              className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4 cursor-pointer hover:bg-white/10 transition-colors"
-            >
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{isActuallyAdmin ? 'বর্তমানে নেই' : 'পূর্বের পঠিত বই'}</p>
-              <p className="text-2xl font-black text-rose-400">{isActuallyAdmin ? books.filter(b => String(b.status).toLowerCase() === 'not available' || String(b.status).toLowerCase() === 'not_available').length : userPastIssueCount}</p>
-            </div>
+          <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
+            {[
+              { label: 'মোট বই', value: books.length, color: 'text-white' },
+              { label: 'এভেইলেবল', value: books.filter(b => b.status === 'Available').length, color: 'text-emerald-400' },
+              { label: 'ইস্যু করা', value: books.filter(b => ['Issued', 'ISSUED'].includes(b.status)).length, color: 'text-indigo-400', filter: 'issued' },
+              { label: 'বর্তমানে নেই', value: books.filter(b => ['not available', 'not_available'].includes(String(b.status).toLowerCase())).length, color: 'text-rose-400' }
+            ].map((stat, i) => (
+              <motion.div 
+                key={i}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                onClick={() => stat.filter && setStatusFilter(stat.filter)}
+                className={`bg-white/5 backdrop-blur-md border border-white/5 rounded-[1.5rem] p-4 transition-all group ${stat.filter ? 'cursor-pointer hover:bg-white/10 active:scale-95' : ''}`}
+              >
+                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest font-bengali mb-2">{stat.label}</p>
+                <p className={`text-2xl font-black ${stat.color} tracking-tight tabular-nums`}>
+                   {stat.value}
+                </p>
+              </motion.div>
+            ))}
           </div>
         </div>
 
-        <div className="lg:col-span-4 bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-xl flex flex-col justify-between">
-          <div>
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="lg:col-span-4 bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-xl flex flex-col justify-between relative overflow-hidden group"
+        >
+          <div className="relative z-10 h-full flex flex-col">
             <div className="flex items-center gap-3 mb-6">
-              <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+              <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-100">
                 <Search className="w-5 h-5" />
               </div>
-              <h3 className="font-black text-lg text-slate-800">দ্রুত খুঁজুন</h3>
+              <div>
+                <h3 className="font-black text-lg text-slate-800 font-bengali">অ্যাডভান্সড সার্চ</h3>
+                <p className="text-[9px] font-black text-indigo-500 font-bengali uppercase tracking-widest">স্মার্ট ইনভেন্টরি ফিল্টার</p>
+              </div>
             </div>
             
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row gap-3">
+            <div className="space-y-4 flex-1">
+              <div className="relative group/input">
                 <input
                   type="text"
                   placeholder="বই, লেখক বা কোড দিয়ে খুঁজুন..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="flex-1 bg-slate-50 border border-slate-200 px-5 py-4 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bengali"
+                  className="w-full bg-slate-50 border-2 border-slate-100 px-5 py-3.5 rounded-2xl text-xs focus:outline-none focus:border-indigo-500 font-bengali transition-all hover:bg-white placeholder:text-slate-400"
                 />
+              </div>
+
+              <div className="relative">
                 <Select
                   value={categoryFilter ? { value: categoryFilter, label: categoryFilter } : null}
                   onChange={(selected: any) => setCategoryFilter(selected ? selected.value : '')}
@@ -982,515 +476,278 @@ Example JSON: {"title": "হিমু", "author": "হুমায়ূন আহ�
                     { value: '', label: 'সব ক্যাটাগরি' },
                     ...BOOK_CATEGORIES.map(cat => ({ value: cat, label: cat }))
                   ]}
-                  placeholder="ক্যাটাগরি ফিল্টার..."
-                  styles={{
-                    ...reactSelectCustomStyles,
-                    control: (base: any, state: any) => ({
-                       ...reactSelectCustomStyles.control(base, state),
-                       minHeight: '54px',
-                       borderRadius: '1rem',
-                    })
-                  }}
-                  className="sm:w-64 font-bengali text-sm"
-                  classNamePrefix="react-select"
+                  placeholder="শ্রেণীবিভাগ সিলেক্ট করুন"
+                  styles={reactSelectCustomStyles}
+                  className="font-bengali text-xs"
                 />
+              </div>
+
+              <div className="pt-4 flex items-center justify-between border-t border-slate-50 mt-auto">
+                <button 
+                  onClick={() => { setSearch(''); setCategoryFilter(''); setStatusFilter(''); }}
+                  className="text-[9px] font-black text-rose-500 hover:text-rose-700 transition-colors uppercase tracking-widest flex items-center gap-2 font-bengali"
+                >
+                  <X className="w-4 h-4" /> রিসেট ফিল্টার
+                </button>
               </div>
             </div>
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-6">
-        {filtered.slice(0, visibleCount).map(book => (
-          <div
-            key={book.id}
-            onClick={() => handleBookClick(book)}
-            className="bg-white rounded-2xl border border-slate-200 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col h-full cursor-pointer relative overflow-hidden"
-          >
-            <div className="relative h-[220px] sm:h-[280px] w-full shrink-0 bg-slate-100 border-b border-slate-100 p-2">
-              {book.cover ? (
-                <img 
-                  src={book.cover} 
-                  alt={book.title} 
-                  loading="lazy" 
-                  decoding="async"
-                  referrerPolicy="no-referrer" 
-                  className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500" 
-                />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center p-4 text-slate-200">
-                  <BookOpen size={32} className="mb-2 opacity-10" />
-                  <span className="text-[10px] font-black text-center font-bengali opacity-30 leading-tight">{book.title}</span>
-                </div>
-              )}
-              <div className="absolute top-2 right-2">
-                <span className={`px-2 py-1 rounded-md text-[9px] font-bold font-bengali shadow-sm backdrop-blur-md ${
-                  String(book.status).toLowerCase() === 'available' ? 'bg-emerald-500/90 text-white' : 'bg-rose-500/90 text-white'
-                }`}>
-                  {String(book.status).toLowerCase() === 'available' ? 'এভেইলেবল' : String(book.status).toLowerCase() === 'issued' ? 'ইস্যু করা' : String(book.status).toLowerCase() === 'not_available' || String(book.status).toLowerCase() === 'not available' ? 'বর্তমানে নেই' : book.status}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex-1 p-2.5 sm:p-3.5 flex flex-col">
-              <p className="text-[9px] sm:text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1 font-bengali truncate">{book.category || 'সাধারণ'}</p>
-              <h3 className="text-xs sm:text-sm font-bold text-slate-900 font-bengali leading-snug group-hover:text-indigo-600 transition-colors flex-1 line-clamp-2">{book.title}</h3>
-              <p className="text-[10px] sm:text-xs text-slate-500 font-bengali font-medium mt-1 truncate">{book.author}</p>
-              {isActuallyAdmin && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  <span className="text-[9px] font-medium text-slate-600 bg-slate-100 px-1.5 py-1 rounded border border-slate-200 flex items-center gap-1 font-mono">
-                    <span className="opacity-70 font-bengali">কোড:</span> {book.bookCode || 'N/A'}
-                  </span>
-                  <span className="text-[9px] font-medium text-slate-600 bg-slate-100 px-1.5 py-1 rounded border border-slate-200 flex items-center gap-1 font-mono">
-                    <span className="opacity-70 font-bengali">শেল্ফ:</span> {book.shelfNo || 'N/A'}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="px-2.5 sm:px-3.5 pb-2.5 sm:pb-3.5 mt-auto grid grid-cols-2 gap-1.5 relative z-20" onClick={e=>e.stopPropagation()}>
-                {isActuallyAdmin && (book.status === 'Issued' || book.status === 'ISSUED') && (
-                   <button
-                      onClick={async (e) => {
-                         e.stopPropagation();
-                         try {
-                             const q = query(collection(db, 'issues'), where('bookId', '==', book.id));
-                             const snapshot = await getDocs(q);
-                             if (snapshot && !snapshot.empty) {
-                                 const activeIssues = snapshot.docs.filter(d => d.data().status === 'Issued' || d.data().status === 'ISSUED');
-                                 if (activeIssues.length > 0) {
-                                     const issueDoc = activeIssues[0];
-                                     await updateDoc(doc(db, 'issues', issueDoc.id), {
-                                         status: 'Returned',
-                                         returnDate: new Date().toISOString()
-                                     });
-                                 }
-                                 await updateDoc(doc(db, 'books', book.id), { status: 'Available' });
-                                 toast.success('বই সফলভাবে রিটার্ন করা হয়েছে।');
-                             }
-                         } catch (err) {
-                             toast.error('ত্রুটি: ' + (err instanceof Error ? err.message : String(err)));
-                         }
-                      }}
-                      className="col-span-2 text-[10px] sm:text-[11px] bg-emerald-50 text-emerald-700 hover:text-white py-1.5 h-8 rounded-lg font-bold uppercase hover:bg-emerald-500 transition border border-emerald-100 hover:border-emerald-500 font-bengali flex justify-center items-center"
-                   >
-                      রিটার্ন জমা
-                   </button>
+      {/* Optimized Book Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5 md:gap-8">
+        <AnimatePresence mode="popLayout">
+          {filtered.slice(0, visibleCount).map((book, idx) => (
+            <motion.div
+              layout
+              key={book.id}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: (idx % 12) * 0.05, duration: 0.4 }}
+              onClick={() => handleBookClick(book)}
+              className="group flex flex-col bg-white rounded-[2rem] p-2 border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-indigo-500/10 hover:-translate-y-2 transition-all duration-500 cursor-pointer overflow-hidden relative"
+            >
+              <div className="relative aspect-[3/4] overflow-hidden rounded-[1.6rem] bg-slate-50 mb-2 grayscale-[0.1] group-hover:grayscale-0 transition-all duration-700">
+                {book.cover ? (
+                  <img src={book.cover} alt={book.title} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-indigo-50/30">
+                    <BookOpen size={48} className="text-indigo-200" />
+                    <span className="text-[10px] font-bold text-indigo-300 mt-2 font-bengali">কভার নেই</span>
+                  </div>
                 )}
                 
-                {isAdminRole && (
-                  <>
-                    <button onClick={(e) => {e.stopPropagation(); handleEdit(book);}} className="py-2 text-indigo-600 hover:text-white bg-indigo-50 hover:bg-indigo-600 rounded-lg transition border border-indigo-100 hover:border-indigo-600 flex justify-center items-center" title="এডিট">
-                      <Edit2 className="w-4 h-4"/>
+                {/* Stats Overlay on Image */}
+                <div className="absolute inset-x-0 bottom-0 p-2.5 bg-gradient-to-t from-black/80 via-black/40 to-transparent translate-y-1 md:translate-y-full group-hover:translate-y-0 transition-transform duration-500 flex flex-wrap gap-1.5 opacity-0 md:opacity-100 group-hover:opacity-100">
+                   {book.bookCode && (
+                     <span className="px-2 py-0.5 rounded-md bg-white/20 backdrop-blur-md text-white text-[7px] font-mono border border-white/10 uppercase tracking-tighter">{book.bookCode}</span>
+                   )}
+                   {book.shelfNo && (
+                     <span className="px-2 py-0.5 rounded-md bg-indigo-500/40 backdrop-blur-md text-white text-[7px] font-black font-bengali border border-indigo-400/20">শেল্ফ: {book.shelfNo}</span>
+                   )}
+                </div>
+
+                <div className="absolute top-2.5 right-2.5 flex flex-col gap-1.5 items-end">
+                   <div className={`px-2.5 py-1 rounded-full text-[8px] font-black backdrop-blur-md shadow-lg border border-white/20 text-white font-bengali ${['Issued', 'ISSUED'].includes(book.status) ? 'bg-rose-500/90' : 'bg-emerald-500/90'}`}>
+                      {['Issued', 'ISSUED'].includes(book.status) ? 'অ্যালট করা' : 'উপলব্ধ'}
+                   </div>
+                   {/* Mobile visibility for Shelf/Code if needed */}
+                   <div className="md:hidden flex flex-col gap-1 items-end">
+                      {book.shelfNo && <span className="px-2 py-0.5 rounded-full bg-indigo-600/80 backdrop-blur-md text-white text-[7px] font-black font-bengali border border-white/10">{book.shelfNo}</span>}
+                   </div>
+                </div>
+              </div>
+
+              <div className="px-2 space-y-1.5 flex-1 pt-1">
+                <span className="text-[8px] font-black text-indigo-500 uppercase tracking-[0.12em] font-bengali bg-indigo-50 px-2 py-0.5 rounded-md inline-block">{book.category || 'সাধারণ'}</span>
+                <h3 className="text-xs md:text-[13px] font-black text-slate-800 font-bengali line-clamp-2 min-h-[2.8em] leading-snug group-hover:text-indigo-600 transition-colors">
+                  {book.title}
+                </h3>
+                <p className="text-[10px] font-bold text-slate-400 font-bengali truncate opacity-80">{book.author}</p>
+                
+                {/* Book Metadata Row */}
+                <div className="flex items-center flex-wrap gap-2 pt-2 border-t border-slate-50 mt-1">
+                   {book.bookCode ? (
+                     <div className="flex items-center gap-1 text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded-lg border border-slate-100">
+                        <Hash size={10} className="opacity-50" />
+                        <span className="text-[9px] font-black font-mono tracking-tighter">{book.bookCode}</span>
+                     </div>
+                   ) : (
+                     <div className="flex items-center gap-1 text-slate-300 bg-slate-50/50 px-1.5 py-0.5 rounded-lg border border-slate-50">
+                        <Hash size={10} className="opacity-30" />
+                        <span className="text-[8px] font-bold font-bengali italic">কোড নেই</span>
+                     </div>
+                   )}
+                   {book.shelfNo ? (
+                     <div className="flex items-center gap-1 text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-lg border border-indigo-100">
+                        <Layers size={10} className="opacity-60" />
+                        <span className="text-[9px] font-black font-bengali">{book.shelfNo}</span>
+                     </div>
+                   ) : (
+                     <div className="flex items-center gap-1 text-slate-300 bg-slate-50/50 px-1.5 py-0.5 rounded-lg border border-slate-50">
+                        <Layers size={10} className="opacity-30" />
+                        <span className="text-[8px] font-bold font-bengali italic">শেল্ফ নেই</span>
+                     </div>
+                   )}
+                </div>
+              </div>
+
+              {/* Enhanced Action Buttons */}
+              <div className="mt-4 px-1 pb-1">
+                {isActuallyAdmin ? (
+                  <div className="flex gap-2">
+                    <button onClick={(e) => { e.stopPropagation(); handleEdit(book); }} className="flex-1 py-2.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl transition-all flex justify-center items-center shadow-sm">
+                      <Edit2 size={13} />
                     </button>
-                    <button onClick={(e) => {e.stopPropagation(); handleDelete(book.id);}} className="py-2 text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 rounded-lg transition border border-rose-100 hover:border-rose-600 flex justify-center items-center" title="ডিলিট">
-                      <Trash2 className="w-4 h-4"/>
+                    <button onClick={(e) => { e.stopPropagation(); handleDelete(book.id); }} className="flex-1 py-2.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl transition-all flex justify-center items-center shadow-sm">
+                      <Trash2 size={13} />
                     </button>
-                  </>
+                  </div>
+                ) : (
+                  <div className={`w-full py-3 rounded-xl text-[10px] font-black font-bengali text-center transition-all shadow-sm ${requestedBooks.includes(book.id) ? 'bg-amber-50 text-amber-600' : ['Issued', 'ISSUED'].includes(book.status) ? 'bg-slate-50 text-slate-300' : 'bg-slate-900 text-white group-hover:bg-indigo-600 shadow-indigo-100'}`}>
+                    {requestedBooks.includes(book.id) ? 'রিকুয়েষ্ট পাঠানো হয়েছে' : ['Issued', 'ISSUED'].includes(book.status) ? 'বইটি এখন নেই' : 'বিস্তারিত দেখুন'}
+                  </div>
                 )}
-            </div>
-
-            {!isActuallyAdmin && (String(book.status).toLowerCase() === 'available') && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); handlePreBook(book.id!); }}
-                  disabled={prebooking === book.id || requestedBooks.includes(book.id!)}
-                  className="mt-3 sm:mt-6 w-full py-2.5 sm:py-4 rounded-lg sm:rounded-xl font-black font-bengali text-[10px] sm:text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/50 flex items-center justify-center gap-1.5 sm:gap-2 bg-slate-900 text-white hover:bg-indigo-600 shadow-md shadow-slate-200 disabled:bg-slate-50 disabled:text-slate-300 disabled:shadow-none active:scale-[0.98] z-20 relative"
-                >
-                  {requestedBooks.includes(book.id!) ? 'রিকুয়েষ্ট করা হয়েছে' : prebooking === book.id ? 'অপেক্ষা করুন...' : 'ইস্যুর অনুরোধ'}
-                </button>
-            )}
-            {!isActuallyAdmin && (String(book.status).toLowerCase() !== 'available') && (
-                <button disabled className="mt-3 sm:mt-6 w-full py-2.5 sm:py-4 rounded-lg sm:rounded-xl font-black font-bengali text-[10px] sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 bg-slate-50 text-slate-300 z-20 relative">
-                    বুকড 
-                </button>
-            )}
-          </div>
-        ))}
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
-      
-      {filtered.length > visibleCount && (
-        <div ref={handleObserver} className="h-10 w-full"></div>
-      )}
 
+      {filtered.length > visibleCount && <div ref={handleObserver} className="h-20 w-full flex items-center justify-center text-slate-400 font-bengali text-xs">অপেক্ষা করুন...</div>}
+
+      {/* Add/Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-start justify-center p-0 sm:p-4 overflow-y-auto sm:overflow-hidden">
-          <div className="bg-white sm:rounded-3xl w-full max-w-lg h-full sm:h-auto sm:max-h-[90vh] shadow-2xl relative flex flex-col">
-            <div className="p-6 sm:p-8 flex items-center justify-between border-b border-slate-100 bg-white sm:rounded-t-3xl sticky top-0 z-10 shrink-0">
-              <h3 className="text-xl sm:text-2xl font-black font-bengali text-slate-800">
-                {editingId ? 'বই এডিট করুন' : 'নতুন বই যোগ করুন'}
-              </h3>
-              <button 
-                type="button" 
-                onClick={() => setShowModal(false)}
-                className="p-2 hover:bg-slate-100 rounded-full transition-colors"
-              >
-                <X className="w-6 h-6 text-slate-400" />
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 sm:p-8 pt-4">
-              {isAiScanning ? (
-                 <div className="mb-6 bg-slate-900 border overflow-hidden rounded-3xl relative">
-                    <div className="absolute top-4 left-0 w-full z-10 flex justify-center pointer-events-none">
-                       <div className="bg-black/60 backdrop-blur text-white px-4 py-1.5 rounded-full text-xs font-bold font-bengali tracking-wide flex items-center gap-2">
-                          <BookOpen className="w-4 h-4 text-indigo-400" />
-                          বইয়ের কাভারের ছবি তুলুন
-                       </div>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+           <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+                 <h3 className="text-2xl font-black text-slate-800 font-bengali">{editingId ? 'বই আপডেট' : 'নতুন বই যুক্ত'}</h3>
+                 <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={24} className="text-slate-400" /></button>
+              </div>
+              <form id="bookForm" onSubmit={handleSubmit} className="p-8 overflow-y-auto space-y-6 flex-1">
+                 <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-bengali">বই কোড</label>
+                       <input type="text" value={formData.bookCode || ''} onChange={e=>setFormData({...formData, bookCode: e.target.value})} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none font-bold text-sm" placeholder="NOV-1234" />
                     </div>
-                    <video ref={videoRef} className="w-full aspect-[4/3] object-cover" autoPlay playsInline muted />
-                    <canvas ref={canvasRef} className="hidden" />
-                    
-                    <div className="absolute bottom-6 w-full flex items-center justify-center gap-4 z-10">
-                      <button 
-                        type="button" 
-                        onClick={stopAiCamera}
-                        className="bg-white/10 backdrop-blur hover:bg-white/20 p-3.5 rounded-full text-white transition pointer-events-auto"
-                      >
-                        <X className="w-6 h-6" />
-                      </button>
-                      <button 
-                         type="button"
-                         onClick={captureAndProcessAI}
-                         disabled={isAiProcessing}
-                         className="w-16 h-16 bg-white rounded-full flex items-center justify-center p-1 pointer-events-auto active:scale-95 transition-transform"
-                      >
-                         <div className={`w-full h-full rounded-full flex items-center justify-center ${isAiProcessing ? 'bg-indigo-200' : 'bg-indigo-600'}`}>
-                           {isAiProcessing ? (
-                             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                           ) : (
-                             <BookOpen className="w-6 h-6 text-white" />
-                           )}
-                         </div>
-                      </button>
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-bengali">শেল্ফ নং</label>
+                       <input type="text" value={formData.shelfNo || ''} onChange={e=>setFormData({...formData, shelfNo: e.target.value})} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none font-bold text-sm" placeholder="A1, B2..." />
                     </div>
                  </div>
-               ) : (
-                <div className="mb-6">
-                </div>
-              )}
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-bengali">বইয়ের নাম</label>
+                    <input type="text" required value={formData.title || ''} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none font-bold font-bengali text-base" />
+                 </div>
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-bengali">লেখকের নাম</label>
+                    <input type="text" required value={formData.author} onChange={e=>setFormData({...formData, author: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none font-bold font-bengali text-base" />
+                 </div>
+                 <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-bengali">ক্যাটাগরি</label>
+                       <CreatableSelect options={BOOK_CATEGORIES.map(c=>({value:c,label:c}))} styles={reactSelectCustomStyles} value={formData.category?{value:formData.category,label:formData.category}:null} onChange={(v:any)=>setFormData({...formData, category: v?.value, bookCode: generateBookCode(v?.value)})} />
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-bengali">স্ট্যাটাস</label>
+                       <Select options={[{value:'Available',label:'উপলব্ধ আছে'}, {value:'Issued',label:'ইস্যু করা'}]} styles={reactSelectCustomStyles} value={{value:formData.status, label: formData.status === 'Available' ? 'উপলব্ধ আছে' : 'ইস্যু করা'}} onChange={(v:any)=>setFormData({...formData, status: v.value})} />
+                    </div>
+                 </div>
+              </form>
+              <div className="p-8 border-t border-slate-100 bg-slate-50 shrink-0 flex gap-4">
+                 <button onClick={() => setShowModal(false)} className="flex-1 py-4 px-6 rounded-2xl bg-white border border-slate-200 text-slate-500 font-bold hover:bg-slate-100 transition-all font-bengali">বাতিল</button>
+                 <button type="submit" form="bookForm" disabled={isSubmitting} className="flex-[2] py-4 px-6 rounded-2xl bg-indigo-600 text-white font-black hover:bg-indigo-700 shadow-xl shadow-indigo-200 transition-all active:scale-95 disabled:opacity-50 font-bengali">
+                   {isSubmitting ? 'সেভ হচ্ছে...' : editingId ? 'আপডেট করুন' : 'নতুন বই যুক্ত করুন'}
+                 </button>
+              </div>
+           </motion.div>
+        </div>
+      )}
 
-              <form id="bookForm" onSubmit={handleSubmit} className="space-y-5 font-bengali pb-4">
-                <div>
-                   <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বইয়ের বারকোড (ISBN/UPC)</label>
-                   <input 
-                     type="text" 
-                     value={formData.barcode || ''} 
-                     onChange={e=>setFormData({...formData, barcode: e.target.value})} 
-                     onKeyDown={(e) => {
-                       if (e.key === 'Enter') {
-                         e.preventDefault();
-                         if (formData.barcode) fetchBookDetailsByISBN(formData.barcode);
-                       }
-                     }}
-                     className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold font-mono text-sm" 
-                     placeholder="বারকোড মেশিন দিয়ে স্ক্যান করুন" 
-                   />
-                   <p className="text-[10px] text-slate-400 mt-1">মেশিন দিয়ে স্ক্যান করলে বইয়ের তথ্য অটোমেটিক পূরণ হবে</p>
-                </div>
-                <div className="grid grid-cols-2 gap-4 text-slate-800">
-                  <div>
-                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বইয়ের কোড</label>
-                    <input type="text" value={formData.bookCode || ''} onChange={e=>setFormData({...formData, bookCode: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm" placeholder="LIB-001" />
+      {/* Book Details Modal */}
+      {detailsModalBook && (
+         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-500">
+            <motion.div 
+               initial={{ scale: 0.9, opacity: 0, y: 20 }} 
+               animate={{ scale: 1, opacity: 1, y: 0 }} 
+               className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden relative flex flex-col md:flex-row transform transition-all"
+            >
+               <button onClick={()=>setDetailsModalBook(null)} className="absolute top-6 right-6 z-30 p-2.5 bg-slate-100/80 hover:bg-rose-50 text-slate-400 hover:text-rose-500 rounded-full transition-all backdrop-blur-xl border border-slate-200 shadow-xl"><X size={20} /></button>
+               
+               {/* Image Section */}
+               <div className="relative w-full md:w-[45%] bg-slate-50 flex items-center justify-center p-8 md:p-12 overflow-hidden border-b md:border-b-0 md:border-r border-slate-100">
+                  <div className="absolute inset-0 opacity-10 blur-3xl scale-125 pointer-events-none">
+                     {detailsModalBook.cover && <img src={detailsModalBook.cover} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />}
                   </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">শেল্ফ নং (Shelf No)</label>
-                    <input type="text" value={formData.shelfNo || ''} onChange={e=>setFormData({...formData, shelfNo: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm" placeholder="A1, B2..." />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বইয়ের নাম</label>
-                  <input type="text" required value={formData.title || ''} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold" placeholder="বইয়ের নাম লিখুন" />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">লেখকের নাম</label>
-                  <input type="text" required value={formData.author || ''} onChange={e=>setFormData({...formData, author: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold" placeholder="লেখকের নাম লিখুন" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">ক্যাটাগরি</label>
-                    <CreatableSelect
-                      isClearable
-                      value={formData.category ? { value: formData.category, label: formData.category } : null}
-                      onChange={(selected: any) => {
-                        const newCategory = selected ? selected.value : '';
-                        setFormData({
-                          ...formData, 
-                          category: newCategory, 
-                          bookCode: generateBookCode(newCategory)
-                        });
-                      }}
-                      options={BOOK_CATEGORIES.map(cat => ({ value: cat, label: cat }))}
-                      placeholder="টাইপ করুন..."
-                      formatCreateLabel={(inputValue) => `নতুন: "${inputValue}"`}
-                      styles={{
-                        ...reactSelectCustomStyles,
-                        control: (base: any, state: any) => ({
-                          ...reactSelectCustomStyles.control(base, state),
-                          minHeight: '48px',
-                          borderRadius: '0.75rem'
-                        })
-                      }}
-                      className="font-bengali text-sm"
-                      classNamePrefix="react-select"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">অবস্থা</label>
-                    <Select
-                      value={{ value: formData.status, label: formData.status === 'Available' ? 'এভেইলেবল' : 'ইস্যুকৃত' }}
-                      onChange={(selected: any) => setFormData({...formData, status: selected.value})}
-                      options={[
-                        { value: 'Available', label: 'এভেইলেবল' },
-                        { value: 'Issued', label: 'ইস্যুকৃত' }
-                      ]}
-                      styles={{
-                        ...reactSelectCustomStyles,
-                        control: (base: any, state: any) => ({
-                          ...reactSelectCustomStyles.control(base, state),
-                          minHeight: '48px',
-                          borderRadius: '0.75rem'
-                        })
-                      }}
-                      className="font-bengali text-sm font-bold"
-                      classNamePrefix="react-select"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বইয়ের বিবরণ (Description)</label>
-                  <textarea 
-                    value={formData.description || ''} 
-                    onChange={e=>setFormData({...formData, description: e.target.value})} 
-                    className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-50 outline-none font-bold text-sm h-32" 
-                    placeholder="বিবরণ লিখুন..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">বই সমালোচনা (ঐচ্ছিক)</label>
-                  <textarea 
-                    value={formData.review || ''} 
-                    onChange={e=>setFormData({...formData, review: e.target.value})} 
-                    className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm h-24" 
-                    placeholder="রিভিউ লিখুন..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-3">কভার ইমেজ (ঐচ্ছিক)</label>
-                  
-                  <div className="flex gap-2 mb-4 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
-                    <button 
-                      type="button" 
-                      onClick={() => setCoverInputType('upload')}
-                      className={`flex-1 py-2 px-3 rounded-lg text-xs font-black transition-all ${coverInputType === 'upload' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
-                    >
-                      আপলোড
-                    </button>
-                    <button 
-                      type="button" 
-                      onClick={() => setCoverInputType('link')}
-                      className={`flex-1 py-2 px-3 rounded-lg text-xs font-black transition-all ${coverInputType === 'link' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
-                    >
-                      লিঙ্ক (URL)
-                    </button>
-                  </div>
-
-                  <div className="flex gap-4">
-                    {formData.cover ? (
-                      <div className="w-16 h-24 bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-sm relative group shrink-0">
-                        <img src={formData.cover} alt="Preview" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                        <button type="button" onClick={() => setFormData({...formData, cover: ''})} className="absolute inset-0 bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center font-bold text-[10px]">REMOVE</button>
-                      </div>
+                  <div className="relative z-10 group">
+                    <div className="absolute -inset-4 bg-indigo-500/10 rounded-3xl blur-2xl group-hover:bg-indigo-500/20 transition-all duration-700"></div>
+                    {detailsModalBook.cover ? (
+                      <img src={detailsModalBook.cover} alt={detailsModalBook.title} className="max-h-[350px] md:max-h-[450px] w-auto shadow-[0_35px_60px_-15px_rgba(0,0,0,0.3)] rounded-xl relative transform group-hover:scale-[1.02] transition-transform duration-700" referrerPolicy="no-referrer" />
                     ) : (
-                      <div className="w-16 h-24 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center shrink-0">
-                        <BookOpen className="w-6 h-6 text-slate-300" />
+                      <div className="w-48 h-64 bg-slate-100 rounded-xl flex flex-col items-center justify-center gap-4 text-slate-300 relative shadow-xl">
+                        <BookOpen size={64} />
                       </div>
                     )}
-                    <div className="flex-1">
-                      {coverInputType === 'upload' ? (
-                        <input 
-                          type="file" 
-                          accept="image/*"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              if (file.size > 2 * 1024 * 1024) {
-                                toast.error('ফাইলের সাইজ ২ এমবি-র কম হতে হবে।');
-                                return;
-                              }
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                const img = new Image();
-                                img.onload = () => {
-                                  const canvas = document.createElement('canvas');
-                                  const MAX_WIDTH = 400;
-                                  const MAX_HEIGHT = 600;
-                                  let width = img.width;
-                                  let height = img.height;
+                  </div>
+                  <div className="absolute bottom-6 left-6 right-6 flex justify-center gap-3">
+                     <span className={`px-4 py-2 rounded-full text-[10px] font-black font-bengali backdrop-blur-md border ${['Issued', 'ISSUED'].includes(detailsModalBook.status) ? 'bg-rose-500/90 text-white border-rose-400' : 'bg-emerald-500/90 text-white border-emerald-400'}`}>
+                        {['Issued', 'ISSUED'].includes(detailsModalBook.status) ? 'বর্তমানে লাইব্রেরিতে নেই' : 'পড়ার জন্য উপলব্ধ'}
+                     </span>
+                  </div>
+               </div>
 
-                                  if (width > height) {
-                                    if (width > MAX_WIDTH) {
-                                      height *= MAX_WIDTH / width;
-                                      width = MAX_WIDTH;
-                                    }
-                                  } else {
-                                    if (height > MAX_HEIGHT) {
-                                      width *= MAX_HEIGHT / height;
-                                      height = MAX_HEIGHT;
-                                    }
-                                  }
+               {/* Content Section */}
+               <div className="flex-1 p-8 md:p-14 overflow-y-auto bg-white">
+                  <div className="space-y-8 h-full flex flex-col">
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap gap-2">
+                        <span className="px-4 py-1.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase tracking-widest font-bengali">{detailsModalBook.category || 'সাধারণ'}</span>
+                        <span className="px-4 py-1.5 rounded-full bg-slate-50 text-slate-500 text-[10px] font-mono font-bold tracking-wider">{detailsModalBook.bookCode}</span>
+                      </div>
+                      <h2 className="text-3xl md:text-5xl font-black text-slate-900 font-bengali leading-tight">{detailsModalBook.title}</h2>
+                      <div className="flex items-center gap-3">
+                         <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center text-indigo-600 font-black text-lg">
+                            {detailsModalBook.author[0]}
+                         </div>
+                         <div>
+                            <p className="text-sm font-bold text-slate-400 font-bengali">রচনায়</p>
+                            <p className="text-lg font-black text-slate-700 font-bengali leading-none">{detailsModalBook.author}</p>
+                         </div>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4 py-6 border-y border-slate-100">
+                       <div className="bg-slate-50 p-4 rounded-2xl">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-bengali mb-1">অবস্থান</p>
+                          <div className="flex items-center gap-2 text-indigo-600">
+                            <Layers size={18} />
+                            <span className="text-lg font-black font-mono">শেল্ফ {detailsModalBook.shelfNo || 'N/A'}</span>
+                          </div>
+                       </div>
+                       <div className="bg-slate-50 p-4 rounded-2xl">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-bengali mb-1">ফেরত দানের সম্ভাব্য তারিখ</p>
+                          <div className="flex items-center gap-2 text-slate-600">
+                            <Clock size={18} />
+                            <span className="text-sm font-black font-bengali">{bookExpectedReturn || (['Issued', 'ISSUED'].includes(detailsModalBook.status) ? 'শীঘ্রই ফেরত আসবে' : 'প্রয়োজ্য নয়')}</span>
+                          </div>
+                       </div>
+                    </div>
 
-                                  canvas.width = width;
-                                  canvas.height = height;
-                                  const ctx = canvas.getContext('2d');
-                                  ctx?.drawImage(img, 0, 0, width, height);
-                                  const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-                                  setFormData({ ...formData, cover: dataUrl });
-                                };
-                                img.src = reader.result as string;
-                              };
-                              reader.readAsDataURL(file);
-                            }
-                          }} 
-                          className="w-full text-xs file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-black file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
-                        />
-                      ) : (
-                        <input 
-                          type="text" 
-                          placeholder="https://example.com/image.jpg"
-                          value={formData.cover?.startsWith('data:') ? '' : (formData.cover || '')}
-                          onChange={(e) => setFormData({ ...formData, cover: e.target.value })}
-                          className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-xs"
-                        />
+                    {detailsModalBook.description ? (
+                      <div className="space-y-3">
+                         <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">বইয়ের সারসংক্ষেপ</h4>
+                         <p className="text-base text-slate-600 font-bengali leading-relaxed">{detailsModalBook.description}</p>
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center py-6 opacity-30 text-slate-400 border-2 border-dashed border-slate-100 rounded-3xl">
+                         <BookOpen size={32} strokeWidth={1.5} />
+                         <p className="text-xs font-bold font-bengali mt-2">কোনো বিবরণ প্রদান করা হয়নি</p>
+                      </div>
+                    )}
+
+                    <div className="pt-6 mt-auto">
+                      {!isActuallyAdmin && (
+                        <button 
+                          onClick={() => { handlePreBook(detailsModalBook.id); setDetailsModalBook(null); }}
+                          disabled={requestedBooks.includes(detailsModalBook.id) || ['Issued', 'ISSUED'].includes(detailsModalBook.status)}
+                          className={`w-full py-5 rounded-[1.75rem] font-black text-base font-bengali transition-all active:scale-95 shadow-2xl flex items-center justify-center gap-3 ${requestedBooks.includes(detailsModalBook.id) ? 'bg-amber-100 text-amber-700' : ['Issued', 'ISSUED'].includes(detailsModalBook.status) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-slate-900 shadow-indigo-100'}`}
+                        >
+                          {requestedBooks.includes(detailsModalBook.id) ? (
+                            <>অনুরোধ প্রক্রিয়াধীন</>
+                          ) : ['Issued', 'ISSUED'].includes(detailsModalBook.status) ? (
+                            <>দুঃখিত, বইটি এখন নেই</>
+                          ) : (
+                            <><BookOpen size={20} /> পড়ার অনুরোধ জানান</>
+                          )}
+                        </button>
                       )}
                     </div>
                   </div>
-                </div>
-              </form>
-            </div>
-
-            <div className="p-6 sm:p-8 bg-slate-50 border-t border-slate-100 sm:rounded-b-3xl shrink-0 flex items-center justify-between gap-4">
-              <button 
-                type="button" 
-                onClick={() => setShowModal(false)} 
-                disabled={isSubmitting} 
-                className="flex-1 py-3.5 px-4 font-black text-slate-500 hover:text-slate-700 transition disabled:opacity-50 text-sm border border-slate-200 rounded-2xl bg-white"
-              >
-                বাতিল
-              </button>
-              <button 
-                type="submit" 
-                form="bookForm"
-                disabled={isSubmitting} 
-                className="flex-[2] py-3.5 px-4 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 shadow-xl shadow-indigo-200 transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base outline-none ring-offset-2 focus:ring-2 focus:ring-indigo-500"
-              >
-                {isSubmitting && <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-                {editingId ? 'পরিবর্তন সংরক্ষণ করুন' : 'নতুন বই যুক্ত করুন'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {detailsModalBook && (
-        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl relative flex flex-col overflow-hidden animate-in zoom-in-95 mt-10 md:mt-0 max-h-[90vh] overflow-y-auto">
-            <div className="absolute top-4 right-4 z-10 block">
-              <button 
-                type="button" 
-                onClick={() => setDetailsModalBook(null)}
-                className="bg-black/50 hover:bg-black/80 backdrop-blur-md text-white p-2 text-sm rounded-full transition-colors"
-                title="বইয়ের বিবরণ বন্ধ করুন"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="h-80 sm:h-96 w-full bg-slate-900 relative shrink-0 p-4">
-              {detailsModalBook.cover ? (
-                <img 
-                  src={detailsModalBook.cover} 
-                  alt={detailsModalBook.title} 
-                  loading="lazy" 
-                  referrerPolicy="no-referrer" 
-                  className="w-full h-full object-contain" 
-                />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center p-4 text-slate-300 bg-slate-100">
-                  <BookOpen size={48} className="mb-2 opacity-20" />
-                  <span className="text-sm font-black font-bengali opacity-30 text-center">{detailsModalBook.title}</span>
-                </div>
-              )}
-              <div className="absolute top-4 left-4 flex gap-2">
-                 <span className={`px-2.5 py-1 rounded-md text-xs font-bold font-bengali shadow-sm backdrop-blur-md ${
-                  String(detailsModalBook.status).toLowerCase() === 'available' ? 'bg-emerald-500/90 text-white' : 'bg-rose-500/90 text-white'
-                }`}>
-                  {String(detailsModalBook.status).toLowerCase() === 'available' ? 'এভেইলেবল' : String(detailsModalBook.status).toLowerCase() === 'issued' ? 'ইস্যু করা' : String(detailsModalBook.status).toLowerCase() === 'not_available' || String(detailsModalBook.status).toLowerCase() === 'not available' ? 'বর্তমানে নেই' : detailsModalBook.status}
-                </span>
-              </div>
-            </div>
-            
-            <div className="p-6">
-              <p className="text-xs font-bold text-indigo-600 uppercase tracking-widest mb-2 font-bengali">{detailsModalBook.category || 'সাধারণ'}</p>
-              <h3 className="text-xl sm:text-2xl font-black text-slate-900 font-bengali leading-snug mb-1">{detailsModalBook.title}</h3>
-              <p className="text-sm text-slate-500 font-bengali font-bold mb-4">{detailsModalBook.author}</p>
-              
-              {String(detailsModalBook.status).toLowerCase() === 'issued' && bookExpectedReturn && (
-                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 mb-4 flex items-start gap-3">
-                      <div className="bg-amber-100 text-amber-600 p-2 rounded-lg shrink-0">
-                          <span className="text-sm">📅</span>
-                      </div>
-                      <div>
-                          <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest font-bengali mb-0.5">সম্ভাব্য ফেরত তারিখ</p>
-                          <p className="text-sm font-bold text-amber-800 font-bengali">{bookExpectedReturn}</p>
-                      </div>
-                  </div>
-              )}
-              
-              {detailsModalBook.description && (
-                  <div className="mb-4">
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 font-bengali">বইয়ের বিবরণ</p>
-                      <p className="text-sm text-slate-700 font-bengali leading-relaxed">{detailsModalBook.description}</p>
-                  </div>
-              )}
-
-              {detailsModalBook.review && (
-                  <div className="mb-4">
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 font-bengali">রিভিউ</p>
-                      <p className="text-sm text-slate-700 font-bengali leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100">{detailsModalBook.review}</p>
-                  </div>
-              )}
-
-              {isActuallyAdmin && (
-                <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
-                  <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1.5 rounded-lg border border-slate-200 flex items-center gap-1.5 font-mono">
-                    <span className="opacity-70 font-bengali">কোড:</span> {detailsModalBook.bookCode || 'N/A'}
-                  </span>
-                  <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1.5 rounded-lg border border-slate-200 flex items-center gap-1.5 font-mono">
-                    <span className="opacity-70 font-bengali">শেল্ফ:</span> {detailsModalBook.shelfNo || 'N/A'}
-                  </span>
-                </div>
-              )}
-              
-              {!isActuallyAdmin && (String(detailsModalBook.status).toLowerCase() === 'available') && (
-                  <button
-                    onClick={() => { handlePreBook(detailsModalBook.id!); setDetailsModalBook(null); }}
-                    disabled={prebooking === detailsModalBook.id || requestedBooks.includes(detailsModalBook.id!)}
-                    className="mt-6 w-full py-4 rounded-xl font-black font-bengali text-[13px] uppercase tracking-wider transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/50 flex items-center justify-center gap-2 bg-slate-900 text-white hover:bg-slate-800 shadow-xl shadow-slate-200 disabled:bg-slate-50 disabled:text-slate-300 disabled:shadow-none active:scale-[0.98]"
-                  >
-                    {requestedBooks.includes(detailsModalBook.id!) ? 'রিকুয়েষ্ট করা হয়েছে' : prebooking === detailsModalBook.id ? 'অপেক্ষা করুন...' : 'ইস্যুর অনুরোধ করুন'}
-                  </button>
-              )}
-            </div>
-          </div>
-        </div>
+               </div>
+            </motion.div>
+         </div>
       )}
     </div>
   );
 }
-

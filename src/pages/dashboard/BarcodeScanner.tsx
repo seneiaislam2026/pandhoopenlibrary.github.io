@@ -28,23 +28,8 @@ export default function BarcodeScanner() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Focus the input ref on mount for physical scanner machines
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
-    
-    // Global listener to refocus if clicked away
-    const handleGlobalClick = () => {
-       if (!selectedUserId && !book && !isScannerActive) {
-         inputRef.current?.focus();
-       }
-    };
-    window.addEventListener('click', handleGlobalClick);
-
-    return () => {
-      window.removeEventListener('click', handleGlobalClick);
-    };
-  }, [selectedUserId, book, isScannerActive]);
+    // Global listener removed as per user request to prevent automatic keyboard popup
+  }, []);
 
   useEffect(() => {
     if (!isScannerActive) {
@@ -71,7 +56,11 @@ export default function BarcodeScanner() {
         try {
           const devices = await Html5Qrcode.getCameras();
           if (devices && devices.length > 0) {
-            const backCamera = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('environment'));
+            const backCamera = devices.find(d => 
+              d.label.toLowerCase().includes('back') || 
+              d.label.toLowerCase().includes('environment') ||
+              d.label.toLowerCase().includes('rear')
+            );
             if (backCamera) {
               cameraConfig = backCamera.id;
             }
@@ -80,37 +69,71 @@ export default function BarcodeScanner() {
           console.warn("Could not probe cameras, using default environment mode", e);
         }
 
-        await html5QrCode.start(
-          cameraConfig, 
-          { 
-            fps: 10, 
-            qrbox: (videoWidth, videoHeight) => {
-              const minEdge = Math.min(videoWidth, videoHeight);
-              const width = Math.floor(minEdge * 0.85);
-              return { width: width, height: width };
-            }
-          },
-          async (decodedText) => {
-            if (isScanningBlocked.current) return;
-            
-            // For book scans, we block and handle
-            if (!book) {
-              isScanningBlocked.current = true;
-              setScanResult(decodedText);
-              // Stop scanner before updating state that might unmount to prevent crashes
-              try { await html5QrCode.stop(); } catch(e) {}
-              setIsScannerActive(false); 
-              handleBookLookup(decodedText);
-            } else if (book.status === 'Available' && !selectedUserId) {
-              // Member scan
-              handleMemberScan(decodedText);
-              // Keep scanner active but maybe block briefly
-              isScanningBlocked.current = true;
-              setTimeout(() => { isScanningBlocked.current = false; }, 2000);
-            }
-          },
-          () => {} // failure callback
-        );
+        // Small delay to ensure hardware is released
+        await new Promise(r => setTimeout(r, 200));
+
+        const qrboxConfig = (videoWidth: number, videoHeight: number) => {
+          const minEdge = Math.min(videoWidth, videoHeight);
+          // Standard qrbox size is 70% of minEdge, but at least 150px and at most 80%
+          let size = Math.floor(minEdge * 0.7);
+          if (size < 150) size = Math.min(minEdge, 150);
+          if (size < 50) size = 50; // Absolute library minimum
+          return { width: size, height: size };
+        };
+
+        try {
+          await html5QrCode.start(
+            cameraConfig, 
+            { 
+              fps: 10, 
+              qrbox: qrboxConfig,
+              aspectRatio: 1.0
+            },
+            async (decodedText) => {
+              if (isScanningBlocked.current) return;
+              
+              if (!book) {
+                isScanningBlocked.current = true;
+                setScanResult(decodedText);
+                try { await html5QrCode.stop(); } catch(e) {}
+                setIsScannerActive(false); 
+                handleBookLookup(decodedText);
+              } else if (book.status === 'Available' && !selectedUserId) {
+                handleMemberScan(decodedText);
+                isScanningBlocked.current = true;
+                setTimeout(() => { isScanningBlocked.current = false; }, 2000);
+              }
+            },
+            () => {}
+          );
+        } catch (innerErr: any) {
+          // If specific camera ID failed, retry with generic environment mode
+          if (cameraConfig !== "environment") {
+            console.warn("Retrying with generic environment mode due to error:", innerErr);
+            await html5QrCode.start(
+              { facingMode: "environment" },
+              { fps: 10, qrbox: qrboxConfig, aspectRatio: 1.0 },
+              async (decodedText) => {
+                 /* same callback */
+                 if (isScanningBlocked.current) return;
+                 if (!book) {
+                   isScanningBlocked.current = true;
+                   setScanResult(decodedText);
+                   try { await html5QrCode.stop(); } catch(e) {}
+                   setIsScannerActive(false); 
+                   handleBookLookup(decodedText);
+                 } else if (book.status === 'Available' && !selectedUserId) {
+                   handleMemberScan(decodedText);
+                   isScanningBlocked.current = true;
+                   setTimeout(() => { isScanningBlocked.current = false; }, 2000);
+                 }
+              },
+              () => {}
+            );
+          } else {
+            throw innerErr;
+          }
+        }
       } catch (err) {
         console.error("Camera start error:", err);
         toast.error("ক্যামেরা চালু করতে সমস্যা হয়েছে। দয়া করে ব্রাউজারের ক্যামেরা পারমিশন চেক করুন।");
@@ -184,10 +207,12 @@ export default function BarcodeScanner() {
         
         toast.success("বইটি পাওয়া গিয়েছে!");
         
-        // After finding a book, we refocus the input for scanning the member
+        // After finding a book, we don't auto-focus anymore as per user request
+        /*
         setTimeout(() => {
           inputRef.current?.focus();
         }, 500);
+        */
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.GET, "books");
@@ -321,10 +346,12 @@ export default function BarcodeScanner() {
     setExpectedReturnDate('');
     setIsScannerActive(true);
     
-    // Refocus for physical machine
+    // Refocus for physical machine removed as per user request
+    /*
     setTimeout(() => {
       inputRef.current?.focus();
     }, 200);
+    */
 
     isScanningBlocked.current = false;
     if (scannerInstance.current && scannerInstance.current.resume) {
@@ -391,7 +418,6 @@ export default function BarcodeScanner() {
               ref={inputRef}
               type="text"
               value={manualCode}
-              autoFocus
               onChange={(e) => setManualCode(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {

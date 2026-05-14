@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../store/AuthContext';
-import { BookmarkMinus, CheckCircle2, Trash2, ShieldAlert, FileDown, BookOpen, ScanFace, Camera as CameraIcon, X, ScanLine } from 'lucide-react';
+import { BookmarkMinus, CheckCircle2, Trash2, ShieldAlert, FileDown, BookOpen, ScanFace, Camera as CameraIcon, X, ScanLine, ClipboardList } from 'lucide-react';
 import { onSnapshot, collection, doc, updateDoc, deleteDoc, setDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -98,148 +98,6 @@ export default function ManageIssues() {
       }).catch(console.error);
     } else {
       setIsBarcodeScanning(false);
-    }
-  };
-
-  // AI Scanner State
-  const [showAiScanner, setShowAiScanner] = useState(false);
-  const [isAiProcessing, setIsAiProcessing] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [stream, setStream] = useState<MediaStream | null>(null);
-
-  const startCamera = async () => {
-    try {
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
-      }
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
-      });
-      setStream(newStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = newStream;
-      }
-    } catch (err: any) {
-      toast.error('Camera access denied or unavailable: ' + err.message);
-    }
-  };
-
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-      setStream(null);
-    }
-  };
-
-  useEffect(() => {
-    if (!showAiScanner && stream) {
-      stopCamera();
-    }
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
-      }
-    };
-  }, [showAiScanner]);
-
-  const captureAndProcessAI = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    
-    let width = video.videoWidth;
-    let height = video.videoHeight;
-    const MAX_WIDTH = 800; // Resize to max 800 width for faster inference
-    if (width > MAX_WIDTH) {
-       height = Math.round((height * MAX_WIDTH) / width);
-       width = MAX_WIDTH;
-    }
-    
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    ctx.drawImage(video, 0, 0, width, height);
-    const base64Image = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-    
-    setIsAiProcessing(true);
-    const toastId = toast.loading('Gemini বইটিকে শনাক্ত করছে...', { duration: 15000 });
-    
-    try {
-      const dbDoc = await import('firebase/firestore').then(mod => mod.getDoc(mod.doc(db, 'settings', 'general')));
-      const aiToken = dbDoc.exists() ? dbDoc.data().sysToken : '';
-
-      const sysInstruction = `You are a strict library book cover parser. 
-The user is giving you a photo of a book cover.
-Return exactly and only a strict JSON object: {"titleBn": "Exact title in Bengali", "titleEn": "Transliterated/Exact title in English"}. Do not include markdown, do not include anything else.`;
-
-      const response = await fetch('/api/gemini', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apiKey: aiToken,
-          model: "gemini-3-flash-preview",
-          systemInstruction: sysInstruction,
-          contents: [{
-            role: "user",
-            parts: [
-              { text: "Extract the exact book title from this cover image." },
-              { inlineData: { mimeType: "image/jpeg", data: base64Image } }
-            ]
-          }]
-        })
-      });
-      
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'AI Failed');
-      
-      const text = data.text;
-      if (!text) throw new Error("Could not parse result from AI.");
-      
-      const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
-      const parsed = JSON.parse(cleanJson);
-      
-      if (parsed.titleBn || parsed.titleEn) {
-         toast.success('Found book title: ' + (parsed.titleBn || parsed.titleEn), { id: toastId });
-         
-         const normalizeText = (t: string) => t ? t.toLowerCase()
-              .replace(/[\s\-_]/g, '')
-              .replace(/য়/g, 'য')
-              .replace(/ড়/g, 'র')
-              .replace(/ী/g, 'ি')
-              .replace(/ূ/g, 'ু')
-              .replace(/ণ/g, 'ন')
-              .replace(/শ/g, 'স')
-              .replace(/ষ/g, 'স')
-              .replace(/[ঁংঃ]/g, '') : '';
-
-         const targetBn = normalizeText(parsed.titleBn);
-         const targetEn = normalizeText(parsed.titleEn);
-         
-         const matchedBook = books.find(b => {
-             const bt = normalizeText(b.title);
-             return (targetBn && (bt.includes(targetBn) || targetBn.includes(bt))) || 
-                    (targetEn && (bt.includes(targetEn) || targetEn.includes(bt)));
-         });
-
-         if (matchedBook) {
-            setFormData(prev => ({ ...prev, bookId: matchedBook.id }));
-            toast.success('Book selected automatically!');
-            setShowAiScanner(false);
-            stopCamera();
-         } else {
-            toast.error('The extracted title "' + (parsed.titleBn || parsed.titleEn) + '" was not found in your inventory.', { id: toastId, duration: 5000 });
-         }
-      } else {
-        toast.error('AI could not confidently find the title.', { id: toastId });
-      }
-    } catch (err: any) {
-      console.error(err);
-      toast.error('AI Processing failed: ' + err.message, { id: toastId });
-    } finally {
-      setIsAiProcessing(false);
     }
   };
 
@@ -926,50 +784,113 @@ Return exactly and only a strict JSON object: {"titleBn": "Exact title in Bengal
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 font-bengali">
-      <div className="flex flex-col gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-        <div className="flex flex-col md:flex-row md:justify-between items-start md:items-end gap-4">
+      {/* Page Header & Stats Summary */}
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-             <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Issue / Return</h2>
-             <p className="text-slate-500 font-medium text-sm mt-1 mb-0">Manage book rentals and returns for the library.</p>
+             <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+               <BookmarkMinus className="w-8 h-8 text-indigo-600" />
+               ইস্যু ও ফেরত ব্যবস্থাপনা
+             </h2>
+             <p className="text-slate-500 font-medium text-sm mt-1">পাঠাগারের বই লেনদেন ও সদস্যদের বই ফেরত কার্যক্রম পরিচালনা করুন।</p>
           </div>
-          <div className="flex flex-wrap gap-3 w-full md:w-auto">
-             <input 
-                type="text" 
-                placeholder="বইয়ের নাম, কোড বা মেম্বার দিয়ে খুঁজুন..." 
-                className="border border-slate-200 px-4 py-2.5 rounded-xl text-sm w-full md:w-auto shadow-inner bg-slate-50 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium font-bengali"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-             />
-             <button onClick={handleSendOverdueAlerts} className="flex-1 md:flex-none justify-center bg-amber-50 text-amber-700 px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-amber-100 transition shadow-sm border border-amber-200/50 hover:border-amber-300 whitespace-nowrap">
-               মেয়াদ উত্তীর্ণদের <br className="md:hidden" /> মেসেজ দিন
-             </button>
-             <button onClick={downloadOverdueReport} className="flex-1 md:flex-none justify-center bg-rose-50/50 text-rose-600 px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-rose-100 transition shadow-sm border border-rose-200/50 hover:border-rose-300">
-               <FileDown className="w-5 h-5 truncate" /> ওভারডিউ রিপোর্ট
-             </button>
-             <button 
-               onClick={() => {
-                 const sevenDaysLater = new Date();
-                 sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
-                 setFormData({ 
-                   bookId: '', 
-                   userId: '', 
-                   expectedReturnDate: sevenDaysLater.toISOString().split('T')[0] 
-                 });
-                 setShowIssueForm(true);
-               }} 
-               className="flex-1 md:flex-none justify-center bg-indigo-600 shadow-lg shadow-indigo-600/20 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-700 hover:-translate-y-0.5 transition-all font-bengali whitespace-nowrap"
-             >
-               নতুন বই ইস্যু
-             </button>
-          </div>
+          
+          <motion.button 
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => {
+              const sevenDaysLater = new Date();
+              sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+              setFormData({ 
+                bookId: '', 
+                userId: '', 
+                expectedReturnDate: sevenDaysLater.toISOString().split('T')[0] 
+              });
+              setShowIssueForm(true);
+            }} 
+            className="flex items-center justify-center gap-2 bg-indigo-600 shadow-xl shadow-indigo-600/20 text-white px-8 py-3.5 rounded-2xl font-black hover:bg-indigo-700 transition-all font-bengali"
+          >
+            <BookOpen className="w-5 h-5" />
+            নতুন বই ইস্যু করুন
+          </motion.button>
         </div>
-        <div className="flex flex-wrap gap-2 mt-2">
-          {[{id:'all',l:'সবগুলো'},{id:'issued',l:'বর্তমানে ইস্যুকৃত'},{id:'overdue',l:'ওভারডিউ বা লেট'},{id:'returned',l:'ফেরত দেওয়া'},{id:'extend',l:'সময় বৃদ্ধির রিকোয়েস্ট'}].map((btn) => (
+
+        {/* Quick Stats & Actions Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+              <ClipboardList className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-widest font-black text-slate-400">মোট ইস্যুকৃত</p>
+              <p className="text-xl font-black text-slate-800">
+                {issues.filter(i => i.status === 'ISSUED' || i.status === 'Issued').length.toString().replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))} টি
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 bg-rose-50 rounded-xl flex items-center justify-center text-rose-600">
+              <ShieldAlert className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-widest font-black text-slate-400">ওভারডিউ বা লেট</p>
+              <p className="text-xl font-black text-rose-600">
+                {issues.filter(i => (i.status === 'ISSUED' || i.status === 'Issued') && new Date(i.expectedReturnDate) < new Date()).length.toString().replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))} টি
+              </p>
+            </div>
+          </div>
+
+          <button onClick={handleSendOverdueAlerts} className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 shadow-sm flex items-center gap-4 hover:bg-indigo-100 transition-all text-left">
+            <div className="w-12 h-12 bg-indigo-600 text-white rounded-xl flex items-center justify-center">
+              <ScanFace className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-[12px] font-black text-indigo-700 leading-tight">মেয়াদ উত্তীর্ণদের<br />মেসেজ পাঠান</p>
+              <p className="text-[10px] text-indigo-500 mt-0.5 font-bold uppercase tracking-widest">এক ক্লিকেই</p>
+            </div>
+          </button>
+
+          <button onClick={downloadOverdueReport} className="bg-slate-900 p-5 rounded-2xl shadow-xl shadow-slate-200 border border-slate-800 flex items-center gap-4 hover:bg-black transition-all text-left">
+            <div className="w-12 h-12 bg-white/10 text-white rounded-xl flex items-center justify-center">
+              <FileDown className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-[12px] font-black text-white leading-tight">ওভারডিউ প্রিন্ট<br />রিপোর্ট ডাউনলোড</p>
+              <p className="text-[10px] text-slate-400 mt-0.5 font-bold uppercase tracking-widest">পিডিএফ ভার্সন</p>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* Search & Filters */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-5">
+        <div className="relative group">
+          <input 
+            type="text" 
+            placeholder="বইয়ের নাম, কোড বা মেম্বার আইডি দিয়ে খুঁজুন..." 
+            className="w-full bg-slate-50 border-2 border-slate-100 px-12 py-4 rounded-2xl text-base font-medium shadow-inner focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <BookmarkMinus className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {[
+            {id:'all',l:'সবগুলো', color: 'slate'},
+            {id:'issued',l:'বর্তমানে ইস্যুকৃত', color: 'indigo'},
+            {id:'overdue',l:'ওভারডিউ বা লেট', color: 'rose'},
+            {id:'returned',l:'ফেরত দেওয়া', color: 'emerald'},
+            {id:'extend',l:'সময় বৃদ্ধির রিকোয়েস্ট', color: 'amber'}
+          ].map((btn) => (
             <button
               key={btn.id}
               onClick={() => setFilterStatus(btn.id)}
-              className={`flex-1 md:flex-none px-4 py-2.5 rounded-xl text-xs font-bold transition-all border whitespace-nowrap ${
-                filterStatus === btn.id ? "bg-indigo-600 text-white border-indigo-600 shadow-md" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+              className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all border tracking-wide ${
+                filterStatus === btn.id 
+                ? "bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-100" 
+                : "bg-white text-slate-600 border-slate-100 hover:bg-slate-50 hover:border-slate-200"
               }`}
             >
               {btn.l}
@@ -1016,52 +937,6 @@ Return exactly and only a strict JSON object: {"titleBn": "Exact title in Bengal
       {showIssueForm && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto font-bengali">
           <motion.div initial={{scale:0.9,opacity:0}} animate={{scale:1,opacity:1}} className="bg-white rounded-[2.5rem] w-full max-w-2xl shadow-2xl border border-slate-100 relative my-4 sm:my-8 overflow-hidden sticky top-4">
-            
-            {showAiScanner && (
-              <div className="absolute inset-0 z-[60] bg-white flex flex-col items-center justify-center p-6">
-                <div className="w-full max-w-md bg-slate-900 rounded-3xl overflow-hidden shadow-2xl relative">
-                  <div className="absolute top-4 right-4 z-10 flex gap-2">
-                    <button 
-                      onClick={() => {
-                        setShowAiScanner(false);
-                        stopCamera();
-                      }}
-                      className="w-10 h-10 bg-black/50 text-white rounded-full flex items-center justify-center backdrop-blur hover:bg-white hover:text-black transition"
-                    >
-                      <X size={20} />
-                    </button>
-                  </div>
-                  <div className="relative aspect-[3/4] bg-black">
-                    <video 
-                      ref={videoRef}
-                      autoPlay 
-                      playsInline 
-                      className="w-full h-full object-cover"
-                    />
-                    <canvas ref={canvasRef} className="hidden" />
-                    
-                    <div className="absolute inset-0 pointer-events-none">
-                      <div className="w-full h-full border-[10px] border-slate-900/50"></div>
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-64 border-2 border-white/50 rounded-xl flex items-center justify-center">
-                        <div className="w-12 h-12 border-4 border-indigo-500 rounded-full animate-ping opacity-50"></div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-6 bg-slate-900 flex flex-col items-center">
-                    <button
-                      onClick={captureAndProcessAI}
-                      disabled={isAiProcessing}
-                      className="w-16 h-16 bg-white rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-slate-200 transition-transform active:scale-95 mb-4 shadow-lg shadow-white/20"
-                    >
-                      <CameraIcon size={28} className="text-slate-900" />
-                    </button>
-                    <p className="text-center text-slate-300 text-sm font-medium font-bengali">
-                      {isAiProcessing ? "Gemini স্ক্যান করছে..." : "বইয়ের কাভার স্ক্যান করুন"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
             
             <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
             <div className="sticky top-0 bg-white z-10 px-8 sm:px-10 py-6 border-b border-slate-50 flex items-center gap-4">
@@ -1134,18 +1009,6 @@ Return exactly and only a strict JSON object: {"titleBn": "Exact title in Bengal
                     className="text-sm font-medium focus:outline-none font-bengali"
                     required
                   />
-                  <div className="flex flex-col space-y-1.5 mt-2">
-                    <button 
-                      type="button" 
-                      onClick={() => {
-                        setShowAiScanner(true);
-                        startCamera();
-                      }}
-                      className="bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 text-indigo-700 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition"
-                    >
-                      <ScanFace size={18} /> Gemini স্ক্যানার দিয়ে বইটি খুঁজুন
-                    </button>
-                  </div>
                 </div>
                 
                 <div className="space-y-1.5">
@@ -1226,125 +1089,171 @@ Return exactly and only a strict JSON object: {"titleBn": "Exact title in Bengal
         </div>
       )}
 
-      <div className="bg-white border border-slate-200 rounded-2xl md:rounded-3xl shadow-sm overflow-hidden md:overflow-hidden">
-        <table className="w-full text-left block md:table">
-          <thead className="hidden md:table-header-group bg-[#f8fafc] border-b border-slate-200 font-bengali">
-            <tr>
-              <th className="p-5 text-sm font-black text-[#64748B]">ইস্যু / স্ট্যাটাস</th>
-              <th className="p-5 text-sm font-black text-[#64748B]">বইয়ের তথ্য</th>
-              <th className="p-5 text-sm font-black text-[#64748B]">সদস্যের তথ্য</th>
-              <th className="p-5 text-sm font-black text-[#64748B] text-right">অ্যাকশন</th>
-            </tr>
-          </thead>
-          <tbody className="block md:table-row-group divide-y divide-slate-100">
-            {filteredIssues.map(i => (
-              <tr key={i.id} className="block md:table-row hover:bg-slate-50 transition-colors group p-4 md:p-0">
-                <td className="block md:table-cell p-2 md:p-5 md:align-top">
-                  <div className="font-bold text-slate-700 text-sm mb-1.5 tracking-tight uppercase">
-                    #{i.id.slice(-6).replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}
-                  </div>
-                  <div className="mb-2 md:mb-0">
-                      {(i.status === 'ISSUED' || i.status === 'Issued') ? (
-                         <div className="flex flex-col gap-1.5 items-start">
-                            <span className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold tracking-wide border font-bengali ${new Date(i.expectedReturnDate) < new Date() ? 'bg-rose-50 text-rose-600 border-rose-200 animate-pulse' : 'bg-emerald-50 text-emerald-600 border-emerald-200'}`}>
-                               {new Date(i.expectedReturnDate) < new Date() ? 'ওভারডিউ' : 'অ্যাকটিভ'}
+      <div className="bg-transparent overflow-hidden">
+        <div className="flex items-center justify-between mb-4 px-2">
+           <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-indigo-500" />
+              সাম্প্রতিক লেনদেন সমূহ
+           </h3>
+           <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+             মোট {filteredIssues.length.toString().replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))} টি ফলাফল
+           </span>
+        </div>
+
+        <div className="space-y-4">
+          <AnimatePresence mode="popLayout">
+            {filteredIssues.map((i, idx) => {
+              const book = books.find(b => b.id === i.bookId);
+              const member = users.find(u => u.id === i.userId);
+              const isOverdue = (i.status === 'ISSUED' || i.status === 'Issued') && new Date(i.expectedReturnDate) < new Date();
+              
+              return (
+                <motion.div 
+                  key={i.id}
+                  layout
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ delay: idx * 0.03 }}
+                  className="bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all overflow-hidden group"
+                >
+                  <div className="flex flex-col md:flex-row items-stretch">
+                    {/* Status Indicator & ID */}
+                    <div className={`w-full md:w-1.5 ${i.status === 'Returned' ? 'bg-emerald-500' : isOverdue ? 'bg-rose-500' : 'bg-indigo-500'}`}></div>
+                    
+                    <div className="p-5 flex-1 flex flex-col md:flex-row md:items-center gap-6">
+                      {/* Book Cover / Info */}
+                      <div className="flex items-start gap-4">
+                        <div className="relative shrink-0">
+                          {book?.imageUrl ? (
+                            <img src={book.imageUrl} alt={book.title} className="w-16 h-20 sm:w-20 sm:h-24 object-cover rounded-xl shadow-md border border-slate-100 group-hover:scale-105 transition-transform" />
+                          ) : (
+                            <div className="w-16 h-20 sm:w-20 sm:h-24 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center">
+                              <BookOpen className="w-8 h-8 text-slate-300" />
+                            </div>
+                          )}
+                          <div className={`absolute -top-2 -right-2 w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white ${i.status === 'Returned' ? 'bg-emerald-500 text-white' : isOverdue ? 'bg-rose-500 text-white animate-pulse' : 'bg-indigo-500 text-white'}`}>
+                            {i.status === 'Returned' ? <CheckCircle2 className="w-4 h-4" /> : <BookmarkMinus className="w-4 h-4" />}
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-slate-400 tracking-tighter uppercase">#{i.id.slice(-6).replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest ${i.status === 'Returned' ? 'bg-emerald-50 text-emerald-600' : isOverdue ? 'bg-rose-50 text-rose-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                              {i.status === 'Returned' ? 'ফেরত দেওয়া হয়েছে' : isOverdue ? 'ওভারডিউ' : 'ইস্যুকৃত'}
                             </span>
-                            {i.adminNote && <span className="text-indigo-700 font-medium font-bengali text-[10.5px] bg-indigo-50/80 px-2 py-1.5 rounded-md border border-indigo-100/50 flex flex-wrap max-w-[150px]">নোট: {i.adminNote}</span>}
-                         </div>
-                      ) : (
-                         <span className="text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg text-[10.5px] font-bold tracking-wide border border-slate-200 font-bengali">ফেরত দেওয়া হয়েছে</span>
+                          </div>
+                          <h4 className="text-base sm:text-lg font-black text-slate-800 leading-tight group-hover:text-indigo-600 transition-colors">{book?.title || 'অজানা বই'}</h4>
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-50 text-slate-500 text-[11px] font-black border border-slate-200/50">
+                              <ScanLine className="w-3 h-3" />
+                              কোড: {book?.bookCode?.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}
+                            </span>
+                            <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-black border ${isOverdue ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}>
+                              <ShieldAlert className="w-3 h-3" />
+                              ফেরত: {new Date(i.expectedReturnDate).toLocaleDateString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Divider for Mobile */}
+                      <div className="h-px w-full bg-slate-50 md:hidden"></div>
+
+                      {/* Member Info */}
+                      <div className="flex items-center gap-4 md:border-l md:border-slate-100 md:pl-6">
+                        <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center shrink-0 border-2 border-white shadow-sm overflow-hidden">
+                          {member?.photoURL ? (
+                             <img src={member.photoURL} alt={member.name} className="w-full h-full object-cover" />
+                          ) : (
+                             <ScanFace className="w-6 h-6 text-slate-400" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black text-slate-400 tracking-widest uppercase">সদস্যের তথ্য</p>
+                          <h5 className="text-sm font-black text-slate-700">{member?.name || 'অজানা সদস্য'}</h5>
+                          <p className="text-xs font-bold text-slate-500">ID: #{member?.memberId?.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="bg-slate-50/50 p-5 md:w-64 border-t md:border-t-0 md:border-l border-slate-100 flex flex-wrap md:flex-col gap-2 items-center justify-center md:items-stretch">
+                      {(i.status === 'ISSUED' || i.status === 'Issued') && (
+                        <>
+                          <button 
+                            onClick={() => handleReturn(i.id)}
+                            className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-black text-xs hover:bg-emerald-700 transition shadow-lg shadow-emerald-200"
+                          >
+                            <CheckCircle2 className="w-4 h-4" /> বই ফেরত
+                          </button>
+                          
+                          <div className="grid grid-cols-2 gap-2 w-full">
+                            <button 
+                              onClick={() => {
+                                setEditId(i.id);
+                                setNote(i.adminNote || '');
+                              }}
+                              className="flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-200 px-3 py-2 rounded-xl font-black text-[10px] hover:bg-slate-50 transition"
+                            >
+                              নোট
+                            </button>
+
+                            {isOverdue && (
+                              <button 
+                                onClick={() => handleAlert(i.id, member?.phone || '')}
+                                className="flex items-center justify-center gap-2 bg-rose-50 text-rose-600 border border-rose-100 px-3 py-2 rounded-xl font-black text-[10px] hover:bg-rose-100 transition"
+                              >
+                                রিমাইন্ডার
+                              </button>
+                            )}
+                          </div>
+                        </>
                       )}
-                  </div>
-                </td>
-                <td className="block md:table-cell p-2 md:p-5 md:align-top">
-                  <div className="flex items-start gap-4">
-                    {books.find(b => b.id === i.bookId)?.imageUrl ? (
-                      <img src={books.find(b => b.id === i.bookId)?.imageUrl} alt={books.find(b => b.id === i.bookId)?.title} className="w-12 h-16 object-cover rounded-md shadow-sm border border-slate-200" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="w-12 h-16 bg-slate-100 rounded-md shadow-sm border border-slate-200 flex items-center justify-center">
-                        <BookOpen className="w-5 h-5 text-slate-300" />
-                      </div>
-                    )}
-                    <div>
-                      <div className="font-bold text-slate-900 text-[15px] font-bengali leading-tight mb-2">{books.find(b => b.id === i.bookId)?.title || 'অজানা বই'}</div>
-                      <div className="text-xs inline-flex items-center bg-slate-50 px-2.5 py-1 rounded-md text-slate-600 font-medium border border-slate-200 font-bengali">
-                        কোড: {books.find(b => b.id === i.bookId)?.bookCode?.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}
-                      </div>
+                      
+                      <button 
+                        onClick={() => handleDeleteIssue(i.id)}
+                        className="p-2.5 bg-white border border-slate-200 text-rose-400 rounded-xl hover:text-rose-600 hover:bg-rose-50 transition shadow-sm md:w-full flex items-center justify-center gap-2 text-[10px] font-black"
+                      >
+                        <Trash2 className="w-4 h-4" /> ডিলিট রেকর্ড
+                      </button>
+
+                      {editId === i.id && (
+                        <div className="absolute inset-x-0 bottom-0 md:inset-auto md:right-5 md:bottom-20 z-20 bg-white p-4 rounded-3xl shadow-2xl border border-slate-100 w-full md:w-72 animate-in fade-in slide-in-from-bottom-5">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">লেনদেন নোট লিখুন</p>
+                          <div className="flex gap-2">
+                             <input 
+                                className="flex-1 bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 focus:ring-0 px-3 py-2 rounded-xl text-xs font-bold font-bengali transition-all" 
+                                placeholder="কিছু লিখুন..."
+                                value={note}
+                                onChange={e=>setNote(e.target.value)}
+                                autoFocus
+                              />
+                             <button onClick={() => handleUpdateNote(i.id)} className="bg-indigo-600 text-white text-xs font-black px-4 py-2 rounded-xl hover:bg-indigo-700 transition">ঠিক আছে</button>
+                          </div>
+                          <button onClick={() => setEditId(null)} className="w-full mt-2 text-[9px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest">বন্ধ করুন</button>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </td>
-                <td className="block md:table-cell p-2 md:p-5 md:align-top">
-                  <div className="font-bold text-slate-900 text-sm mb-1.5 font-bengali">{users.find(u => u.id === i.userId)?.name || 'অজানা সদস্য'}</div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-600 font-medium bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200 font-bengali">
-                      আইডি: {users.find(u => u.id === i.userId)?.memberId?.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}
-                    </span>
-                  </div>
-                </td>
-                
-                <td className="block md:table-cell p-2 md:p-5 md:align-top md:text-right mt-4 md:mt-0 pt-4 md:pt-5 border-t border-slate-100 md:border-0 relative">
-                  <div className="flex flex-wrap md:flex-col md:items-end justify-start md:justify-end gap-2 relative z-0 group-hover:z-10">
-                    <div className="flex flex-wrap items-center gap-2">
-                        {(i.status === 'ISSUED' || i.status === 'Issued') && (
-                            <>
-                                {i.returnRequested && (
-                                    <div className="flex items-center gap-1.5 mr-2 bg-indigo-50/80 p-1.5 rounded-xl border border-indigo-200/60 shadow-sm backdrop-blur-sm">
-                                       <span className="text-[10.5px] font-bold text-indigo-700 px-2 py-1 flex items-center h-full font-bengali">রিকোয়েস্ট: ফেরত</span>
-                                    </div>
-                                )}
-                                {i.extendRequested && (
-                                    <div className="flex items-center gap-1.5 mr-2 bg-amber-50/80 p-1.5 rounded-lg border border-amber-200/60 shadow-sm backdrop-blur-sm">
-                                       <span className="text-[10.5px] font-bold text-amber-700 px-2 py-1 flex items-center h-full font-bengali">সময় বৃদ্ধি</span>
-                                       <button onClick={() => handleAcceptExtend(i.id, i.expectedReturnDate)} className="bg-emerald-500 text-white text-[10.5px] px-3 py-1.5 font-bold rounded shadow-sm hover:bg-emerald-600 transition-colors active:scale-95 font-bengali">অনুমোদন</button>
-                                       <button onClick={() => handleRejectExtend(i.id)} className="bg-rose-500 text-white text-[10.5px] px-3 py-1.5 font-bold rounded shadow-sm hover:bg-rose-600 transition-colors active:scale-95 font-bengali">বাতিল</button>
-                                    </div>
-                                )}
-                                {new Date(i.expectedReturnDate) < new Date() && !i.extendRequested && (
-                                    <button 
-                                        onClick={() => handleAlert(i.id, users.find(u => u.id === i.userId)?.phone || '')}
-                                        className="text-[10.5px] font-bold bg-rose-600 text-white px-3 py-1.5 rounded-lg shadow-sm hover:bg-rose-700 transition flex items-center gap-1.5 font-bengali"
-                                        title="Send Alert"
-                                    >
-                                        <ShieldAlert className="w-3.5 h-3.5" /> রিমাইন্ডার
-                                    </button>
-                                )}
-                                <button 
-                                    onClick={() => {
-                                        setEditId(i.id);
-                                        setNote(i.adminNote || '');
-                                    }}
-                                    className="text-[10.5px] font-bold bg-white text-slate-700 shadow-sm px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition font-bengali"
-                                >
-                                    নোট
-                                </button>
-                                <button onClick={() => { handleReturn(i.id); }} className="text-[11px] bg-emerald-600 text-white px-4 py-1.5 rounded-lg font-bold shadow-sm hover:bg-emerald-700 transition flex items-center justify-center gap-1.5 font-bengali">
-                                    <CheckCircle2 className="w-4 h-4" /> বই ফেরত
-                                </button>
-                            </>
-                        )}
-                        <button onClick={() => handleDeleteIssue(i.id)} className="p-2 bg-white border border-slate-200 rounded-lg text-rose-500 shadow-sm hover:bg-rose-50 hover:text-rose-600 transition" title="Delete Record">
-                            <Trash2 className="w-4 h-4" />
-                        </button>
-                    </div>
-                    {editId === i.id && (
-                       <div className="mt-2 flex gap-1 animate-in fade-in slide-in-from-top-2 absolute right-0 top-12 bg-white p-2 rounded-xl shadow-xl border border-slate-200 w-64 z-20">
-                          <input 
-                            className="text-xs font-medium border-2 border-slate-100 focus:border-indigo-500 focus:ring-0 p-2 rounded-lg w-full transition font-bengali" 
-                            placeholder="মেসেজ দিন..."
-                            value={note}
-                            onChange={e=>setNote(e.target.value)}
-                            autoFocus
-                          />
-                          <button onClick={() => handleUpdateNote(i.id)} className="bg-indigo-600 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-indigo-700 transition">OK</button>
-                          <button onClick={() => setEditId(null)} className="bg-slate-100 text-slate-600 text-xs font-bold px-3 py-2 rounded-lg hover:bg-slate-200 transition">X</button>
-                       </div>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+          
+          {filteredIssues.length === 0 && (
+             <div className="bg-white p-12 rounded-[2.5rem] border-2 border-dashed border-slate-100 text-center space-y-4">
+                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto">
+                   <BookmarkMinus className="w-10 h-10 text-slate-300" />
+                </div>
+                <div>
+                   <h4 className="text-lg font-black text-slate-800">কোনো কিছু পাওয়া যায়নি</h4>
+                   <p className="text-slate-500 font-medium">আপনার ফিল্টার বা সার্চ টার্ম পরিবর্তন করে চেষ্টা করুন।</p>
+                </div>
+             </div>
+          )}
+        </div>
       </div>
     </div>
   );

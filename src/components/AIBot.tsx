@@ -592,8 +592,8 @@ const AIBot = () => {
         animate={{ scale: 1, opacity: 1 }}
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "fixed right-4 sm:right-6 w-14 h-14 text-white rounded-full shadow-2xl items-center justify-center transition-all z-[60] group",
-          user ? "bottom-[80px] sm:bottom-6 md:bottom-10" : "bottom-6 sm:bottom-10",
+          "fixed right-4 sm:right-6 w-12 h-12 text-white rounded-full shadow-2xl items-center justify-center transition-all z-[60] group",
+          user ? "bottom-[100px] sm:bottom-6" : "bottom-6",
           isOpen ? "hidden sm:flex bg-slate-800" : "flex bg-indigo-600 hover:bg-indigo-700"
         )}
         id="ai-bot-toggle"

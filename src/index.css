@@ -7,10 +7,40 @@
   --font-sans: "Hind Siliguri", "Outfit", ui-sans-serif, system-ui, sans-serif;
   --font-bengali: "Hind Siliguri", sans-serif;
   --font-mono: "Outfit", ui-monospace, monospace;
+
+  --shadow-box: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-box-lg: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  
+  --animate-float: float 3s ease-in-out infinite;
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
 }
 
 body, .font-bengali {
   line-height: 1.6; /* Better vertical room for Hind Siliguri ascenders */
+}
+
+/* Fix for Hind Siliguri numeral '১' clipping issue */
+.font-bengali [class*="text-"], 
+.font-bengali span,
+.font-bengali div,
+.font-bengali p,
+.font-bengali h1,
+.font-bengali h2,
+.font-bengali h3 {
+  padding-bottom: 0.35rem; /* Increased padding */
+  padding-top: 0.1rem; /* Added slight top padding */
+}
+
+/* Ensure large numbers in Hind Siliguri don't clip */
+.font-bengali .text-5xl, 
+.font-bengali .text-6xl, 
+.font-bengali .text-4xl {
+  line-height: normal;
+  padding-bottom: 0.5rem;
 }
 
 @keyframes shimmer {

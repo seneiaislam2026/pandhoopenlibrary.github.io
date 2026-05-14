@@ -48,6 +48,9 @@ export default function UserMessages() {
       onSnapshot(qFallback, (s) => {
         setMessages(s.docs.map(d => ({ id: d.id, ...d.data() })) as Message[]);
         setLoading(false);
+      }, (e) => {
+        console.error("UserMessages fallback snapshot error:", e);
+        setLoading(false);
       });
     });
     return () => unsubscribe();

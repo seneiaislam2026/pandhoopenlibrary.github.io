@@ -21,6 +21,8 @@ const availableSubadminRoutes = [
   { name: 'প্রি-বুকিং', path: '/dashboard/pre-bookings' },
   { name: 'শপ বই ব্যবস্থাপনা', path: '/dashboard/shop-books' },
   { name: 'বই বিক্রয় অর্ডার', path: '/dashboard/shop-orders' },
+  { name: 'বই কিনুন (Shop)', path: '/buy-books' },
+  { name: 'বারকোড স্ক্যানার', path: '/dashboard/barcode-scanner' },
   { name: 'স্টিকার ও QR', path: '/dashboard/stickers' },
   { name: 'বুক রিভিও', path: '/dashboard/manageblog' },
   { name: 'ইভেন্ট পরিচালনা', path: '/dashboard/events' }
@@ -1418,7 +1420,7 @@ const handleAddUser = async (e: React.FormEvent) => {
 
                <div className="space-y-4">
                  <h4 className="font-black text-slate-900 text-sm uppercase tracking-tight flex items-center gap-2 font-bengali">
-                   <BookmarkMinus className="w-4 h-4 text-amber-500" /> পেন্ডিং রিকোয়েস্ট (ইস্যু / রিটার্ন)
+                   <BookmarkMinus className="w-4 h-4 text-amber-500" /> পেন্ডিং রিকোয়েস্ট (ইস্যু / ফেরত)
                  </h4>
                  <div className="space-y-2">
                    {userRequests.filter((r: any) => r.status === 'Pending').length === 0 ? (
@@ -1500,10 +1502,10 @@ const handleAddUser = async (e: React.FormEvent) => {
                             </div>
                             <button 
                               onClick={async () => {
-                                if(!confirm("আপনি কি নিশ্চিত যে বইটি রিটার্ন করা হয়েছে?")) return;
+                                if(!confirm("আপনি কি নিশ্চিত যে বইটি ফেরত দেওয়া হয়েছে?")) return;
                                 await updateDoc(doc(db, "issues", i.id), { status: "Returned", returnDate: new Date().toISOString() });
                                 await updateDoc(doc(db, "books", i.bookId), { status: "Available" });
-                                toast.success("বই সফলভাবে রিটার্ন করা হয়েছে!");
+                                toast.success("বই সফলভাবে ফেরত নেওয়া হয়েছে!");
                               }}
                               className="p-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-500 hover:text-white transition-all shadow-sm"
                             >
@@ -1518,11 +1520,11 @@ const handleAddUser = async (e: React.FormEvent) => {
 
                <div className="space-y-6">
                  <h4 className="font-black text-slate-900 text-sm uppercase tracking-tight flex items-center gap-2 font-bengali">
-                   <CheckCircle2 className="w-4 h-4 text-emerald-500" /> রিটার্ন হিস্ট্রি
+                   <CheckCircle2 className="w-4 h-4 text-emerald-500" /> ফেরত হিস্ট্রি
                  </h4>
                  <div className="space-y-3">
                    {userIssues.filter(i => String(i.status).toLowerCase() === 'returned').length === 0 ? (
-                     <p className="text-center text-slate-400 py-6 bg-slate-50 rounded-[2rem] border border-dashed border-slate-200 text-xs italic font-bengali">কোনো রিটার্ন হিস্ট্রি নেই</p>
+                     <p className="text-center text-slate-400 py-6 bg-slate-50 rounded-[2rem] border border-dashed border-slate-200 text-xs italic font-bengali">কোনো ফেরত হিস্ট্রি নেই</p>
                    ) : (
                      userIssues.filter(i => String(i.status).toLowerCase() === 'returned')
                        .sort((a:any,b:any) => new Date(b.returnDate).getTime() - new Date(a.returnDate).getTime())

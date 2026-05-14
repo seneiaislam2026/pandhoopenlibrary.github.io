@@ -26,9 +26,13 @@ export default function ManagePreBookings() {
   useEffect(() => {
     const unsubBookings = onSnapshot(collection(db, "pre-bookings"), (snapshot) => {
       setBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PreBooking[]);
+    }, (error) => {
+      console.error("ManagePreBookings bookings error:", error);
     });
     const unsubBooks = onSnapshot(collection(db, "books"), (snapshot) => {
       setBooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("ManagePreBookings books error:", error);
     });
 
     return () => {

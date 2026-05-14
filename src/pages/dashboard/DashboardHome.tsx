@@ -1,33 +1,36 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../store/AuthContext";
 import { firebaseService } from "../../services/firebaseService";
 import { db, handleFirestoreError, OperationType } from "../../lib/firebase";
-import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, addDoc, serverTimestamp, getDocs } from "firebase/firestore";
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, getDocs, doc, getDoc } from "firebase/firestore";
 import {
   Users,
   Library,
   DollarSign,
   Activity,
   UserCircle2,
-  BookPlus,
-  FileText,
-  Bell,
-  MessageSquare,
+  ClipboardList,
+  QrCode,
+  Scan,
+  Package,
   ShoppingCart,
-  BookmarkMinus,
-  CheckCircle2,
-  Loader2,
-  Send,
-  X,
-  Search,
-  Plus,
-  ImageIcon,
-  Clock
+  ShoppingBag,
+  Settings,
+  BookmarkCheck,
+  BookOpen,
+  LayoutDashboard,
+  Crown,
+  CreditCard,
+  MessageSquare,
+  Clock,
+  Facebook,
+  MessageCircle,
+  X
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import toast from 'react-hot-toast';
-import { getDoc } from "firebase/firestore";
+import { cn } from "../../lib/utils";
 
 export default function DashboardHome() {
   const { user } = useAuth();
@@ -45,18 +48,8 @@ export default function DashboardHome() {
   });
 
   const [availableBooks, setAvailableBooks] = useState<{id: string; title: string; bookCode: string}[]>([]);
-  const [bookSearchText, setBookSearchText] = useState("");
   const [eventBanners, setEventBanners] = useState<string[]>([]);
   const [dismissedBanners, setDismissedBanners] = useState<string[]>([]);
-
-  const [showRequestModal, setShowRequestModal] = useState(false);
-  const [requestFormData, setRequestFormData] = useState({
-    type: 'Issue',
-    bookName: '',
-    bookId: '',
-    note: ''
-  });
-  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -96,7 +89,7 @@ export default function DashboardHome() {
   }, [user]);
 
   useEffect(() => {
-    if (user && user.role !== 'admin') {
+    if (user && user.role !== 'admin' && user.role !== 'subadmin' && user.role !== 'visitor_admin') {
       const fetchMemberData = async () => {
         try {
           const cachedIssues = sessionStorage.getItem('dash_home_issues_'+user.id);
@@ -123,15 +116,15 @@ export default function DashboardHome() {
             if (data.status === 'Returned') returned++;
           });
           
-          const stats = { activeIssues: active, totalReturned: returned };
-          setMemberStats(stats);
+          const statsVal = { activeIssues: active, totalReturned: returned };
+          setMemberStats(statsVal);
 
           const books = booksSnap.docs
-            .map(doc => ({ id: doc.id, title: doc.data().title || '', bookCode: doc.data().bookCode || '', status: doc.data().status }))
+            .map(doc => ({ id: doc.id, title: (doc.data().title || '') as string, bookCode: (doc.data().bookCode || '') as string, status: doc.data().status }))
             .filter(b => !b.status || String(b.status).toLowerCase() === "available" || String(b.status).toLowerCase() === "");
-          setAvailableBooks(books);
+          setAvailableBooks(books as any);
 
-          sessionStorage.setItem('dash_home_issues_'+user.id, JSON.stringify(stats));
+          sessionStorage.setItem('dash_home_issues_'+user.id, JSON.stringify(statsVal));
           sessionStorage.setItem('dash_home_books', JSON.stringify(books));
           sessionStorage.setItem('dash_home_time', Date.now().toString());
 
@@ -145,33 +138,6 @@ export default function DashboardHome() {
     }
   }, [user]);
 
-  const handleRequestSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    setIsSubmittingForm(true);
-    try {
-      await addDoc(collection(db, "member-requests"), {
-        userId: user.id,
-        userName: user.name,
-        type: requestFormData.type,
-        bookName: requestFormData.bookName,
-        bookId: requestFormData.bookId || null,
-        note: requestFormData.note,
-        status: "Pending",
-        createdAt: serverTimestamp()
-      });
-      toast.success("রিকোয়েস্ট সফলভাবে পাঠানো হয়েছে। (Request sent successfully!)");
-      setShowRequestModal(false);
-      setRequestFormData({ type: 'Issue', bookName: '', bookId: '', note: '' });
-      setBookSearchText('');
-    } catch (error) {
-      console.error(error);
-      toast.error("Error submitting request.");
-    } finally {
-      setIsSubmittingForm(false);
-    }
-  };
-
   const hasAccess = useCallback((path: string) => {
     if (!user) return false;
     if (user.role === 'admin') return true;
@@ -183,7 +149,7 @@ export default function DashboardHome() {
 
   useEffect(() => {
     if (user?.role === "admin" || user?.role === "subadmin" || user?.role === "visitor_admin") {
-      const fetchStats = async () => {
+      const fetchAdminStats = async () => {
         try {
           const cacheKey = 'admin_dash_stats';
           const cacheTimeKey = 'admin_dash_stats_time';
@@ -197,10 +163,10 @@ export default function DashboardHome() {
 
           const statsPromises = [];
           
-          let usersPromise = Promise.resolve([]);
-          let booksPromise = Promise.resolve([]);
-          let issuesPromise = Promise.resolve([]);
-          let financesPromise = Promise.resolve([]);
+          let usersPromise = Promise.resolve([] as any[]);
+          let booksPromise = Promise.resolve([] as any[]);
+          let issuesPromise = Promise.resolve([] as any[]);
+          let financesPromise = Promise.resolve([] as any[]);
 
           if (hasAccess('/dashboard/users')) {
             usersPromise = firebaseService.getCollection("users");
@@ -258,96 +224,151 @@ export default function DashboardHome() {
         }
       };
 
-      fetchStats();
+      fetchAdminStats();
     }
   }, [user, hasAccess]);
 
   if (!user) return null;
 
-  if (user.role !== "admin" && user.role !== "visitor_admin" && user.role !== "subadmin") {
-    return <Navigate to="/dashboard/books" replace />;
-  }
+  const adminLinks = [
+    { name: 'ইস্যু ও ফেরত', path: '/dashboard/issues', icon: ClipboardList, color: 'text-amber-400', bg: 'bg-amber-50 dark:bg-amber-500/10' },
+    { name: 'সদস্য ব্যবস্থাপনা', path: '/dashboard/users', icon: Users, color: 'text-blue-400', bg: 'bg-blue-50 dark:bg-blue-500/10' },
+    { name: 'বইয়ের তালিকা', path: '/dashboard/books', icon: Library, color: 'text-teal-400', bg: 'bg-teal-50 dark:bg-teal-500/10' },
+    { name: 'দাতা সদস্য', path: '/dashboard/donors', icon: Crown, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-500/10' },
+    { name: 'বইয়ের অনুরোধ', path: '/dashboard/book-requests', icon: BookOpen, color: 'text-blue-400', bg: 'bg-blue-50 dark:bg-blue-500/10' },
+    { name: 'বারকোড স্ক্যানার', path: '/dashboard/barcode-scanner', icon: Scan, color: 'text-rose-400', bg: 'bg-rose-50 dark:bg-rose-500/10' },
+    { name: 'সদস্যদের বকেয়া', path: '/dashboard/dues', icon: DollarSign, color: 'text-red-400', bg: 'bg-red-50 dark:bg-red-500/10' },
+    { name: 'হিসাব-নিকাশ', path: '/dashboard/finances', icon: Activity, color: 'text-cyan-400', bg: 'bg-cyan-50 dark:bg-cyan-500/10' },
+    { name: 'স্টিকার ও QR', path: '/dashboard/stickers', icon: QrCode, color: 'text-purple-400', bg: 'bg-purple-50 dark:bg-purple-500/10' },
+    { name: 'শপ বই ব্যবস্থাপনা', path: '/dashboard/shop-books', icon: Package, color: 'text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10' },
+    { name: 'বই বিক্রয় অর্ডার', path: '/dashboard/shop-orders', icon: ShoppingCart, color: 'text-orange-400', bg: 'bg-orange-50 dark:bg-orange-500/10' },
+    { name: 'বই কিনুন (Shop)', path: '/buy-books', icon: ShoppingBag, color: 'text-pink-400', bg: 'bg-pink-50 dark:bg-pink-500/10' },
+    { name: 'আমার প্রোফাইল', path: '/dashboard/profile', icon: UserCircle2, color: 'text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10' },
+    { name: 'ওয়েবসাইট সেটিংস', path: '/dashboard/settings', icon: Settings, color: 'text-slate-400', bg: 'bg-slate-50 dark:bg-slate-500/10' },
+  ];
 
-  // Admin Dashboard
+  const readerLinks = [
+    { name: 'আমার প্রোফাইল', path: '/dashboard/profile', icon: UserCircle2, color: 'text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10' },
+    { name: 'বইয়ের তালিকা', path: '/dashboard/books', icon: Library, color: 'text-teal-400', bg: 'bg-teal-50 dark:bg-teal-500/10' },
+    { name: 'আমার পঠিত বই', path: '/dashboard/my-books', icon: BookmarkCheck, color: 'text-amber-400', bg: 'bg-amber-50 dark:bg-amber-500/10' },
+    { name: 'বইয়ের অনুরোধ', path: '/dashboard/book-requests', icon: BookOpen, color: 'text-blue-400', bg: 'bg-blue-50 dark:bg-blue-400/10' },
+    { name: 'ফি পরিশোধ করুন', path: '/dashboard/payment', icon: CreditCard, color: 'text-pink-400', bg: 'bg-pink-50 dark:bg-pink-500/10' },
+    { name: 'আমার ইনবক্স', path: '/dashboard/inbox', icon: MessageSquare, color: 'text-purple-400', bg: 'bg-purple-50 dark:bg-purple-400/10' },
+    { name: 'বই কিনুন (Shop)', path: '/buy-books', icon: ShoppingBag, color: 'text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-400/10' },
+    { name: 'ফেসবুক পেজ', url: 'https://www.facebook.com/PandhuaOpenLibraryOfficial', icon: Facebook, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-400/10' },
+    { name: 'WhatsApp সাপোর্ট', url: 'https://wa.me/8801570206953', icon: MessageCircle, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-400/10' },
+  ];
+
+  const [bannerIndex, setBannerIndex] = useState(0);
+
+  useEffect(() => {
+    if (eventBanners.length > 0) {
+      const timer = setInterval(() => {
+        setBannerIndex(prev => (prev + 1) % eventBanners.length);
+      }, 5000);
+      return () => clearInterval(timer);
+    }
+  }, [eventBanners.length]);
+
+  const links = user.role === 'admin' ? adminLinks : (user.role === 'subadmin' || user.role === 'visitor_admin') ? adminLinks.filter(l => hasAccess(l.path) || l.path === '/dashboard/profile') : readerLinks;
+
   return (
-    <div className="space-y-8">
-      {eventBanners.filter(b => !dismissedBanners.includes(b)).map((banner, idx) => (
-        <motion.div 
-          key={idx} 
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full rounded-2xl overflow-hidden shadow-lg border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 relative"
-        >
-           <button 
-             onClick={() => setDismissedBanners(prev => [...prev, banner])} 
-             className="absolute top-3 right-3 bg-black/50 text-white p-1.5 rounded-full hover:bg-black/70 transition-colors backdrop-blur-sm z-10"
-           >
-             <X className="w-4 h-4" />
-           </button>
-           <img src={banner} alt={`Event Banner ${idx + 1}`} className="w-full h-auto max-h-[350px] object-cover" />
-        </motion.div>
-      ))}
-
-      {/* Primary Quick Action for Admin */}
-      {(hasAccess('/dashboard/users') || hasAccess('/dashboard/issues')) && (
-      <div className="bg-slate-900 dark:bg-[#0B1120] rounded-[2rem] p-6 sm:p-10 shadow-2xl border border-slate-800 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-8 transition-colors group">
-        <div className="absolute -right-20 -top-20 w-96 h-96 bg-indigo-500/20 rounded-full blur-[80px] pointer-events-none transition-all duration-700 group-hover:bg-indigo-500/30"></div>
-        <div className="absolute -left-20 -bottom-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-[80px] pointer-events-none transition-all duration-700 group-hover:bg-emerald-500/20"></div>
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03]"></div>
-
-        <div className="relative z-10 text-center md:text-left">
-          <h2 className="text-2xl sm:text-3xl font-black mb-3 flex flex-col sm:flex-row items-center gap-4 justify-center md:justify-start text-white font-bengali">
-            <div className="p-3.5 bg-white/5 rounded-2xl backdrop-blur-md border border-white/10 shadow-inner">
-              <BookmarkMinus className="w-8 h-8 text-indigo-400" />
-            </div>
-            হালনাগাদ ও পরিচালনা
-          </h2>
-          <p className="text-slate-400 max-w-md text-sm sm:text-base leading-relaxed mt-2 font-bengali">
-            আপনার দৈনন্দিন পাঠাগারের কার্যক্রম পরিচালনা করুন। সদস্যদের ব্যবস্থাপনা এবং বই ইস্যু/রিটার্ন করুন।
-          </p>
-        </div>
-
-        <div className="relative z-10 flex flex-col sm:flex-row w-full md:w-auto gap-4">
-            <>
-              {hasAccess('/dashboard/users') && (
-                <Link
-                  to="/dashboard/users"
-                  className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-6 py-4 rounded-2xl font-bold transition-all shadow-lg active:scale-95 font-bengali"
-                >
-                  <Users className="w-5 h-5" />
-                  সদস্যগণ
-                </Link>
-              )}
-              {hasAccess('/dashboard/issues') && (
-                <>
-                  <Link
-                    to="/dashboard/issues?action=issue"
-                    className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-8 py-4 rounded-2xl font-bold transition-all shadow-lg shadow-indigo-500/25 active:scale-95 whitespace-nowrap font-bengali"
-                  >
-                    <BookPlus className="w-5 h-5" />
-                    বই প্রদান
-                  </Link>
-                  <Link
-                    to="/dashboard/issues"
-                    className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 px-8 py-4 rounded-2xl font-bold transition-all active:scale-95 whitespace-nowrap backdrop-blur-sm font-bengali"
-                  >
-                    <CheckCircle2 className="w-5 h-5" />
-                    বই ফেরত
-                  </Link>
-                </>
-              )}
-            </>
+    <div className="space-y-6 pb-24">
+      {/* User Greeting Section - Condensed UI */}
+      <div className="relative overflow-hidden rounded-[2rem] bg-indigo-600 p-5 sm:p-8 text-white shadow-xl shadow-indigo-200 dark:shadow-none">
+        <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-[40px] pointer-events-none"></div>
+        <div className="absolute -left-10 -bottom-10 w-32 h-32 bg-indigo-400/20 rounded-full blur-[30px] pointer-events-none"></div>
+        
+        <div className="relative z-10 flex items-center justify-between gap-6">
+          <div className="space-y-2">
+            <motion.div 
+               initial={{ opacity: 0, x: -20 }}
+               animate={{ opacity: 1, x: 0 }}
+               className="inline-flex items-center gap-2 bg-indigo-500/30 backdrop-blur-md px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold border border-white/10"
+            >
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
+              স্বাগতম
+            </motion.div>
+            <h1 className="text-xl sm:text-3xl font-black font-bengali leading-tight">
+              আসসালামু আলাইকুম, <br />
+              <span className="text-indigo-200">{user.name}</span>!
+            </h1>
+            <p className="text-indigo-100 font-bengali text-xs sm:text-sm opacity-90 max-w-xs">
+              পাঠাগারের সকল সেবা এখন আপনার হাতের নাগালে।
+            </p>
+          </div>
+          
+          <div className="hidden md:flex -space-x-2">
+             <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-xl flex items-center justify-center border border-white/30 rotate-6 shadow-lg">
+                <Library className="w-7 h-7" />
+             </div>
+             <div className="w-12 h-12 rounded-xl bg-indigo-400/40 backdrop-blur-xl flex items-center justify-center border border-white/20 -rotate-12 shadow-lg mt-6">
+                <BookmarkCheck className="w-6 h-6" />
+             </div>
+          </div>
         </div>
       </div>
-      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 hover:*:shadow-2xl hover:*:border-slate-200 dark:hover:*:border-slate-700 transition-all">
+      {/* App Grid Menu - Condensed style */}
+      <div className="bg-white dark:bg-slate-900/40 rounded-[2rem] p-5 sm:p-8 shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 transition-all">
+        <div className="flex items-center justify-between mb-6">
+           <div className="space-y-1">
+              <h2 className="text-lg font-black text-slate-800 dark:text-white font-bengali flex items-center gap-2">
+                 <LayoutDashboard className="w-5 h-5 text-indigo-500" /> 
+                 মেনু এবং সেবাসমূহ
+              </h2>
+           </div>
+        </div>
+        
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-y-8 gap-x-4">
+          {links.map((link: any, i) => {
+            const Icon = link.icon;
+            const content = (
+              <div className="flex flex-col items-center gap-3 group cursor-pointer">
+                <div className={cn(
+                  "w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center transition-all duration-300 relative group-hover:-translate-y-1",
+                  link.bg,
+                  "shadow-md group-hover:shadow-xl group-hover:shadow-indigo-200/50 dark:group-hover:shadow-none border border-transparent group-hover:border-white/50"
+                )}>
+                  <Icon className={cn("w-7 h-7 sm:w-9 sm:h-9 transition-all duration-300 group-hover:scale-110", link.color)} />
+                  <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity rounded-2xl"></div>
+                </div>
+                <span className="text-[12px] sm:text-sm font-black text-slate-700 dark:text-slate-300 text-center font-bengali leading-tight max-w-[100px] break-words">
+                  {link.name}
+                </span>
+              </div>
+            );
+
+            return (
+              <motion.div
+                key={(link.path || link.url) + i}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.03 }}
+              >
+                {link.url ? (
+                  <a href={link.url} target="_blank" rel="noopener noreferrer">
+                    {content}
+                  </a>
+                ) : (
+                  <Link to={link.path}>
+                    {content}
+                  </Link>
+                )}
+              </motion.div>
+            )
+          })}
+        </div>
+      </div>
+
+      {(user.role === "admin" || user.role === "subadmin" || user.role === "visitor_admin") && (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 pt-6">
         {/* Total Users Card */}
         {hasAccess('/dashboard/users') && (
         <Link to="/dashboard/users" className="block bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between">
           <div className="absolute -right-8 -top-8 w-40 h-40 bg-blue-500/10 rounded-full blur-[40px] pointer-events-none group-hover:bg-blue-500/20 transition-colors duration-500"></div>
           <div className="relative z-10 flex items-start justify-between mb-8">
-            <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-sm border border-blue-100/50 dark:border-blue-500/20 group-hover:scale-110 group-hover:shadow-md transition-all duration-300">
+            <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-sm border border-blue-100/50 dark:border-blue-100/20 group-hover:scale-110 group-hover:shadow-md transition-all duration-300">
               <Users className="w-7 h-7" />
             </div>
             <div className="bg-slate-50 dark:bg-slate-800 text-slate-400 px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase font-bengali">
@@ -370,7 +391,7 @@ export default function DashboardHome() {
         <Link to="/dashboard/books" className="block bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between">
           <div className="absolute -right-8 -top-8 w-40 h-40 bg-indigo-500/10 rounded-full blur-[40px] pointer-events-none group-hover:bg-indigo-500/20 transition-colors duration-500"></div>
           <div className="relative z-10 flex items-start justify-between mb-8">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-sm border border-indigo-100/50 dark:border-indigo-500/20 group-hover:scale-110 group-hover:shadow-md transition-all duration-300">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-sm border border-indigo-100/50 dark:border-indigo-100/20 group-hover:scale-110 group-hover:shadow-md transition-all duration-300">
               <Library className="w-7 h-7" />
             </div>
             <div className="bg-slate-50 dark:bg-slate-800 text-slate-400 px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase font-bengali">
@@ -392,7 +413,7 @@ export default function DashboardHome() {
         <Link to={hasAccess('/dashboard/issues') ? "/dashboard/issues" : "/dashboard/my-books"} className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between">
           <div className="absolute -right-8 -top-8 w-40 h-40 bg-amber-500/10 rounded-full blur-[40px] pointer-events-none group-hover:bg-amber-500/20 transition-colors duration-500"></div>
           <div className="relative z-10 flex items-start justify-between mb-8">
-            <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shadow-sm border border-amber-100/50 dark:border-amber-500/20 group-hover:scale-110 group-hover:shadow-md transition-all duration-300">
+            <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shadow-sm border border-amber-100/50 dark:border-amber-100/20 group-hover:scale-110 group-hover:shadow-md transition-all duration-300">
               <Activity className="w-7 h-7" />
             </div>
             <div className="bg-slate-50 dark:bg-slate-800 text-slate-400 px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase font-bengali">
@@ -414,7 +435,7 @@ export default function DashboardHome() {
         <Link to="/dashboard/finances" className="block bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-800 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group flex flex-col justify-between">
           <div className="absolute -right-8 -top-8 w-40 h-40 bg-emerald-500/10 rounded-full blur-[40px] pointer-events-none group-hover:bg-emerald-500/20 transition-colors duration-500"></div>
           <div className="relative z-10 flex items-start justify-between mb-8">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-sm border border-emerald-100/50 dark:border-emerald-500/20 group-hover:scale-110 group-hover:shadow-md transition-all duration-300">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-sm border border-emerald-100/50 dark:border-emerald-100/20 group-hover:scale-110 group-hover:shadow-md transition-all duration-300">
               <DollarSign className="w-7 h-7" />
             </div>
             <div className="bg-slate-50 dark:bg-slate-800 text-slate-400 px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase font-bengali">
@@ -432,6 +453,38 @@ export default function DashboardHome() {
         </Link>
         )}
       </div>
+      )}
+
+      {/* Banner Carousel - Best size: 1200x400 pixels */}
+      {eventBanners.length > 0 && (
+        <div className="mt-8">
+          <div className="relative h-48 md:h-64 w-full rounded-[2rem] overflow-hidden shadow-lg border border-slate-100 dark:border-slate-800">
+            <AnimatePresence mode="wait">
+              <motion.img
+                key={bannerIndex}
+                src={eventBanners[bannerIndex]}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 1 }}
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+            </AnimatePresence>
+            
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+              {eventBanners.map((_, i) => (
+                <div 
+                  key={i} 
+                  className={cn(
+                    "w-2 h-2 rounded-full transition-all duration-300",
+                    bannerIndex === i ? "bg-white w-6" : "bg-white/50"
+                  )}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

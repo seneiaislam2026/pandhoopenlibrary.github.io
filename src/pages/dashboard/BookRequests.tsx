@@ -37,6 +37,9 @@ export default function BookRequests() {
     const unsub = onSnapshot(q, (snapshot) => {
       setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BookRequest[]);
       setLoading(false);
+    }, (error) => {
+      console.error("BookRequests snapshot error:", error);
+      setLoading(false);
     });
     return () => unsub();
   }, [user, isAdmin]);

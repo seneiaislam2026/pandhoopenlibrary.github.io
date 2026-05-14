@@ -41,9 +41,11 @@ const ManageMessages = React.lazy(() => import('./pages/dashboard/ManageMessages
 const ManageEvents = React.lazy(() => import('./pages/dashboard/ManageEvents'));
 const UserNotices = React.lazy(() => import('./pages/dashboard/UserNotices'));
 const UserMessages = React.lazy(() => import('./pages/dashboard/UserMessages'));
+const UserPayment = React.lazy(() => import('./pages/dashboard/UserPayment'));
 const UserProfile = React.lazy(() => import('./pages/dashboard/UserProfile'));
 const UserBooks = React.lazy(() => import('./pages/dashboard/UserBooks'));
 const BookRequests = React.lazy(() => import('./pages/dashboard/BookRequests'));
+const TimeExtension = React.lazy(() => import('./pages/dashboard/TimeExtension'));
 const ManageResetRequests = React.lazy(() => import('./pages/dashboard/ManageResetRequests'));
 const DeleteUsers = React.lazy(() => import('./pages/dashboard/DeleteUsers'));
 const ManageShopBooks = React.lazy(() => import('./pages/dashboard/ManageShopBooks'));
@@ -148,7 +150,9 @@ function AppRoutes() {
             <Route path="my-books" element={<UserBooks />} />
             <Route path="notice-board" element={<UserNotices />} />
             <Route path="inbox" element={<UserMessages />} />
+            <Route path="payment" element={<UserPayment />} />
             <Route path="book-requests" element={<BookRequests />} />
+            <Route path="time-extension" element={<TimeExtension />} />
           </Route>
           {/* Catch-all route to home page */}
           <Route path="*" element={<Navigate to="/" replace />} />
