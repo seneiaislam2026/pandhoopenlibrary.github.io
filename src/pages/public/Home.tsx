@@ -91,9 +91,9 @@ export default function Home() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
-            className="text-6xl md:text-8xl lg:text-7xl xl:text-8xl font-black text-slate-900 mb-10 font-bengali tracking-tight leading-[1.05]"
+            className="text-5xl sm:text-6xl md:text-8xl lg:text-7xl xl:text-8xl font-black text-slate-900 mb-6 sm:mb-10 font-bengali tracking-tight leading-[1.2] sm:leading-[1.05]"
           >
-            জ্ঞানের আলোয় <br />
+            জ্ঞানের আলোয় <br className="hidden sm:block" />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-indigo-400">সমাজ গড়ি</span>
           </motion.h1>
           
@@ -101,51 +101,51 @@ export default function Home() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            className="text-xl md:text-2xl lg:text-xl xl:text-2xl text-slate-500 font-bengali max-w-3xl mx-auto mb-16 font-medium leading-relaxed px-4"
+            className="text-lg sm:text-xl md:text-2xl lg:text-xl xl:text-2xl text-slate-500 font-bengali max-w-3xl mx-auto mb-10 sm:mb-16 font-medium leading-relaxed px-4"
           >
-            আপনার পছন্দের বইটি এখন এক ক্লিকেই। লাইব্রেরির সদস্য হোন, ইভেন্টে অংশগ্রহণ করুন এবং নিজেকে বিকশিত করুন।
+            একটি আধুনিক সমাজ বিনির্মাণে বইয়ের কোনো বিকল্প নেই। পানধোয়া উন্মুক্ত পাঠাগারে আপনাকে স্বাগতম। আসুন এক সাথে বই পড়ি।
           </motion.p>
 
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.8, delay: 0.2, ease: "easeInOut" }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4 lg:gap-6 flex-wrap px-4"
+            className="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-6 flex-wrap px-4"
           >
             {!user && (
               <>
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="w-full sm:w-auto">
                   <Link
                     to="/register"
-                    className="w-full sm:w-auto bg-slate-900 text-white px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl hover:bg-slate-800 shadow-2xl shadow-slate-900/10 hover:shadow-indigo-500/10 transition-all group flex items-center justify-center gap-3"
+                    className="w-full sm:w-auto bg-slate-900 text-white px-6 sm:px-10 py-3.5 sm:py-5 rounded-[1.5rem] sm:rounded-[2rem] font-bold sm:font-black font-bengali text-base sm:text-xl hover:bg-slate-800 shadow-xl shadow-slate-900/10 hover:shadow-indigo-500/10 transition-all group flex items-center justify-center gap-2 sm:gap-3"
                   >
-                    সদস্য হতে আবেদন করুন
-                    <ArrowRight className="w-5 h-5 group-hover:translate-x-2 transition-transform" />
+                    সদস্য হোন
+                    <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-1 sm:group-hover:translate-x-2 transition-transform" />
                   </Link>
                 </motion.div>
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="w-full sm:w-auto">
                   <Link
                     to="/login"
-                    className="w-full sm:w-auto bg-indigo-600 text-white px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl hover:bg-indigo-700 shadow-xl shadow-indigo-600/10 transition-all flex items-center justify-center gap-3"
+                    className="w-full sm:w-auto bg-indigo-600 text-white px-6 sm:px-10 py-3.5 sm:py-5 rounded-[1.5rem] sm:rounded-[2rem] font-bold sm:font-black font-bengali text-base sm:text-xl hover:bg-indigo-700 shadow-xl shadow-indigo-600/10 transition-all flex items-center justify-center gap-2 sm:gap-3"
                   >
                     লগইন করুন
                   </Link>
                 </motion.div>
 
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="w-full sm:w-auto">
                   <Link
                     to="/books"
-                    className="w-full sm:w-auto bg-white text-slate-900 px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl border border-slate-200 hover:border-indigo-600 shadow-lg shadow-slate-200/40 hover:text-indigo-600 transition-all flex items-center justify-center gap-3"
+                    className="w-full sm:w-auto bg-white text-slate-900 px-6 sm:px-10 py-3.5 sm:py-5 rounded-[1.5rem] sm:rounded-[2rem] font-bold sm:font-black font-bengali text-base sm:text-xl border border-slate-200 hover:border-indigo-600 shadow-lg shadow-slate-200/40 hover:text-indigo-600 transition-all flex items-center justify-center gap-2 sm:gap-3"
                   >
                     বই ব্রাউজ করুন
                   </Link>
                 </motion.div>
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="w-full sm:w-auto">
                   <Link
                     to="/buy-books"
-                    className="w-full sm:w-auto bg-rose-50 text-rose-600 px-8 md:px-10 py-4 md:py-5 rounded-[2rem] font-black font-bengali text-lg md:text-xl border border-rose-100 hover:bg-rose-600 hover:text-white shadow-lg shadow-rose-200/40 transition-all flex items-center justify-center gap-3"
+                    className="w-full sm:w-auto bg-rose-50 text-rose-600 px-6 sm:px-10 py-3.5 sm:py-5 rounded-[1.5rem] sm:rounded-[2rem] font-bold sm:font-black font-bengali text-base sm:text-xl border border-rose-100 hover:bg-rose-600 hover:text-white shadow-lg shadow-rose-200/40 transition-all flex items-center justify-center gap-2 sm:gap-3"
                   >
-                    <ShoppingCart className="w-5 h-5" />
+                    <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
                     বই কিনুন
                   </Link>
                 </motion.div>

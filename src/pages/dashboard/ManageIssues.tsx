@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../store/AuthContext';
-import { BookmarkMinus, CheckCircle2, Trash2, ShieldAlert, FileDown, BookOpen, ScanFace, Camera as CameraIcon, X, ScanLine, ClipboardList } from 'lucide-react';
+import { BookmarkMinus, CheckCircle2, Trash2, ShieldAlert, FileDown, BookOpen, ScanFace, Camera as CameraIcon, X, ScanLine, ClipboardList, UserCircle, Clock, MessageSquare, Save, BellRing } from 'lucide-react';
 import { onSnapshot, collection, doc, updateDoc, deleteDoc, setDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -38,6 +38,9 @@ export default function ManageIssues() {
   const [barcodeInput, setBarcodeInput] = useState('');
   const [isBarcodeScanning, setIsBarcodeScanning] = useState(false);
   const barcodeScannerRef = useRef<Html5Qrcode | null>(null);
+
+  const [bookSearchText, setBookSearchText] = useState('');
+  const [userSearchText, setUserSearchText] = useState('');
 
   const lookupBookByBarcode = (code: string) => {
     const term = code.trim().toLowerCase();
@@ -121,8 +124,12 @@ export default function ManageIssues() {
           return null;
         };
         const setCache = (key: string, data: any) => {
-          sessionStorage.setItem(key, JSON.stringify(data));
-          sessionStorage.setItem(`${key}_time`, Date.now().toString());
+          try {
+            sessionStorage.setItem(key, JSON.stringify(data));
+            sessionStorage.setItem(`${key}_time`, Date.now().toString());
+          } catch (storageErr) {
+            console.warn("Could not set cache for", key, storageErr);
+          }
         };
 
         const [issuesSnap, booksSnap, usersSnap] = await Promise.all([
@@ -644,6 +651,20 @@ export default function ManageIssues() {
     try {
       if (!currentUser) throw new Error("Auth required");
 
+      // Find the issue to know which book it was
+      const issueToDelete = issues.find(iss => iss.id === id);
+      if (issueToDelete && (issueToDelete.status === 'Issued' || issueToDelete.status === 'ISSUED') && issueToDelete.bookId) {
+          // Revert book back to Available since the issue record is being deleted without it being returned
+        const bookDocRef = doc(db, 'books', issueToDelete.bookId);
+        await updateDoc(bookDocRef, {
+            status: 'Available',
+            currentReaderName: null,
+            currentReaderId: null,
+            expectedReturnDate: null,
+            updatedAt: serverTimestamp()
+        });
+      }
+
       await deleteDoc(doc(db, "issues", id));
       setIssues(prev => {
         const updated = prev.filter(iss => iss.id !== id);
@@ -671,7 +692,7 @@ export default function ManageIssues() {
 
   const bookOptions = books.filter(b => b.status === 'Available' || b.status === 'AVAILABLE').map(b => ({
     value: b.id,
-    label: `${b.title} [${b.bookCode || 'N/A'}]`
+    label: `${b.title} ${b.category ? `(${b.category})` : ''} - [${b.bookCode || 'N/A'}]`
   }));
 
   const selectStyles = {
@@ -1002,7 +1023,9 @@ export default function ManageIssues() {
                   <Select
                     options={bookOptions}
                     value={bookOptions.find(o => o.value === formData.bookId) || null}
-                    onChange={(option: any) => setFormData(p => ({...p, bookId: option?.value || ''}))}
+                    onChange={(option: any) => {
+                      setFormData(p => ({...p, bookId: option?.value || ''}));
+                    }}
                     placeholder="বই খুঁজুন..."
                     styles={selectStyles}
                     classNamePrefix="react-select"
@@ -1016,7 +1039,9 @@ export default function ManageIssues() {
                   <Select
                     options={userOptions}
                     value={userOptions.find(o => o.value === formData.userId) || null}
-                    onChange={(option: any) => setFormData(p => ({...p, userId: option?.value || ''}))}
+                    onChange={(option: any) => {
+                      setFormData(p => ({...p, userId: option?.value || ''}));
+                    }}
                     placeholder="সদস্য খুঁজুন..."
                     styles={selectStyles}
                     classNamePrefix="react-select"
@@ -1115,128 +1140,145 @@ export default function ManageIssues() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ delay: idx * 0.03 }}
-                  className="bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all overflow-hidden group"
+                  className="bg-white rounded-[1.5rem] p-4 md:p-5 border border-slate-100 shadow-sm hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all flex flex-col relative overflow-hidden group"
                 >
-                  <div className="flex flex-col md:flex-row items-stretch">
-                    {/* Status Indicator & ID */}
-                    <div className={`w-full md:w-1.5 ${i.status === 'Returned' ? 'bg-emerald-500' : isOverdue ? 'bg-rose-500' : 'bg-indigo-500'}`}></div>
-                    
-                    <div className="p-5 flex-1 flex flex-col md:flex-row md:items-center gap-6">
-                      {/* Book Cover / Info */}
-                      <div className="flex items-start gap-4">
-                        <div className="relative shrink-0">
+                  {/* Left border indicator */}
+                  <div className={`absolute left-0 top-0 bottom-0 w-1.5 transition-colors ${i.status === 'Returned' ? 'bg-emerald-400' : isOverdue ? 'bg-rose-400' : 'bg-indigo-400'}`}></div>
+
+                  <div className="pl-2">
+                    {/* Header: Status and Issue ID */}
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 ${i.status === 'Returned' ? 'bg-emerald-50 text-emerald-600' : isOverdue ? 'bg-rose-50 text-rose-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                          {i.status === 'Returned' ? 'ফেরত দেওয়া হয়েছে' : isOverdue ? 'ওভারডিউ' : 'ইস্যুকৃত'}
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-black tracking-tighter text-slate-300 group-hover:text-slate-400 transition-colors">#{i.id.slice(-6).replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}</span>
+                    </div>
+
+                    {/* Body: Book & Member */}
+                    <div className="flex flex-col md:flex-row gap-5">
+                      {/* Book Info */}
+                      <div className="flex-1 flex gap-3.5">
+                        <div className="w-14 h-20 md:w-16 md:h-24 rounded-lg overflow-hidden bg-slate-50 flex-shrink-0 border border-slate-100 shadow-sm">
                           {book?.imageUrl ? (
-                            <img src={book.imageUrl} alt={book.title} className="w-16 h-20 sm:w-20 sm:h-24 object-cover rounded-xl shadow-md border border-slate-100 group-hover:scale-105 transition-transform" />
+                             <img src={book.imageUrl} alt={book.title} className="w-full h-full object-cover" />
                           ) : (
-                            <div className="w-16 h-20 sm:w-20 sm:h-24 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center">
-                              <BookOpen className="w-8 h-8 text-slate-300" />
-                            </div>
+                             <div className="w-full h-full flex items-center justify-center">
+                                <BookOpen className="w-5 h-5 md:w-6 md:h-6 text-slate-300" />
+                             </div>
                           )}
-                          <div className={`absolute -top-2 -right-2 w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white ${i.status === 'Returned' ? 'bg-emerald-500 text-white' : isOverdue ? 'bg-rose-500 text-white animate-pulse' : 'bg-indigo-500 text-white'}`}>
-                            {i.status === 'Returned' ? <CheckCircle2 className="w-4 h-4" /> : <BookmarkMinus className="w-4 h-4" />}
-                          </div>
                         </div>
-                        
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-black text-slate-400 tracking-tighter uppercase">#{i.id.slice(-6).replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}</span>
-                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest ${i.status === 'Returned' ? 'bg-emerald-50 text-emerald-600' : isOverdue ? 'bg-rose-50 text-rose-600' : 'bg-indigo-50 text-indigo-600'}`}>
-                              {i.status === 'Returned' ? 'ফেরত দেওয়া হয়েছে' : isOverdue ? 'ওভারডিউ' : 'ইস্যুকৃত'}
-                            </span>
-                          </div>
-                          <h4 className="text-base sm:text-lg font-black text-slate-800 leading-tight group-hover:text-indigo-600 transition-colors">{book?.title || 'অজানা বই'}</h4>
-                          <div className="flex flex-wrap gap-2 pt-1">
-                            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-50 text-slate-500 text-[11px] font-black border border-slate-200/50">
-                              <ScanLine className="w-3 h-3" />
-                              কোড: {book?.bookCode?.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}
-                            </span>
-                            <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-black border ${isOverdue ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}>
-                              <ShieldAlert className="w-3 h-3" />
-                              ফেরত: {new Date(i.expectedReturnDate).toLocaleDateString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}
-                            </span>
+                        <div className="flex flex-col justify-center py-1">
+                          <h4 className="text-base md:text-lg font-black text-slate-800 leading-tight mb-1">{book?.title || 'অজানা বই'}</h4>
+                          <div className="text-[11px] md:text-sm font-medium text-slate-500 mb-2 line-clamp-1">{book?.author || 'অজানা লেখক'}</div>
+                          
+                          <div className="flex flex-wrap gap-2 mt-auto">
+                             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-50 rounded text-[10px] md:text-[11px] font-bold text-slate-500 border border-slate-100">
+                               <ScanLine className="w-3 h-3 text-slate-400" />
+                               {book?.bookCode?.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}
+                             </span>
+                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] md:text-[11px] font-bold ${isOverdue ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-500'}`}>
+                               <Clock className="w-3 h-3 opacity-70" />
+                               ফেরত: {new Date(i.expectedReturnDate).toLocaleDateString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}
+                             </span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Divider for Mobile */}
-                      <div className="h-px w-full bg-slate-50 md:hidden"></div>
+                      {/* Divider */}
+                      <div className="hidden md:block w-px bg-slate-100 my-2"></div>
+                      <div className="md:hidden h-px w-full bg-slate-50"></div>
 
                       {/* Member Info */}
-                      <div className="flex items-center gap-4 md:border-l md:border-slate-100 md:pl-6">
-                        <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center shrink-0 border-2 border-white shadow-sm overflow-hidden">
+                      <div className="md:w-56 flex items-center gap-3 py-1">
+                        <div className="w-10 h-10 md:w-11 md:h-11 bg-indigo-50 rounded-full border border-indigo-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
                           {member?.photoURL ? (
                              <img src={member.photoURL} alt={member.name} className="w-full h-full object-cover" />
                           ) : (
-                             <ScanFace className="w-6 h-6 text-slate-400" />
+                             <UserCircle className="w-5 h-5 md:w-6 md:h-6 text-indigo-300" />
                           )}
                         </div>
-                        <div>
-                          <p className="text-[10px] font-black text-slate-400 tracking-widest uppercase">সদস্যের তথ্য</p>
-                          <h5 className="text-sm font-black text-slate-700">{member?.name || 'অজানা সদস্য'}</h5>
-                          <p className="text-xs font-bold text-slate-500">ID: #{member?.memberId?.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}</p>
+                        <div className="flex-1">
+                          <p className="text-[9px] md:text-[10px] font-black text-slate-300 tracking-widest uppercase mb-0.5">সদস্যের তথ্য</p>
+                          <h5 className="text-sm font-bold text-slate-800 leading-tight line-clamp-1">{member?.name || 'অজানা'}</h5>
+                          <p className="text-[10px] font-bold text-indigo-500 mt-0.5">ID: #{member?.memberId?.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}</p>
                         </div>
                       </div>
                     </div>
+                  </div>
 
-                    {/* Actions */}
-                    <div className="bg-slate-50/50 p-5 md:w-64 border-t md:border-t-0 md:border-l border-slate-100 flex flex-wrap md:flex-col gap-2 items-center justify-center md:items-stretch">
-                      {(i.status === 'ISSUED' || i.status === 'Issued') && (
-                        <>
-                          <button 
-                            onClick={() => handleReturn(i.id)}
-                            className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-black text-xs hover:bg-emerald-700 transition shadow-lg shadow-emerald-200"
-                          >
-                            <CheckCircle2 className="w-4 h-4" /> বই ফেরত
-                          </button>
-                          
-                          <div className="grid grid-cols-2 gap-2 w-full">
-                            <button 
-                              onClick={() => {
-                                setEditId(i.id);
-                                setNote(i.adminNote || '');
-                              }}
-                              className="flex items-center justify-center gap-2 bg-white text-slate-700 border border-slate-200 px-3 py-2 rounded-xl font-black text-[10px] hover:bg-slate-50 transition"
-                            >
-                              নোট
-                            </button>
-
-                            {isOverdue && (
-                              <button 
-                                onClick={() => handleAlert(i.id, member?.phone || '')}
-                                className="flex items-center justify-center gap-2 bg-rose-50 text-rose-600 border border-rose-100 px-3 py-2 rounded-xl font-black text-[10px] hover:bg-rose-100 transition"
-                              >
-                                রিমাইন্ডার
-                              </button>
-                            )}
-                          </div>
-                        </>
-                      )}
-                      
+                  {/* Spacer to push actions to bottom if needed, though with flex-col it stacks naturally */}
+                  <div className="mt-4 md:mt-5 pt-4 border-t border-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pl-2">
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <button 
+                        onClick={() => {
+                          setEditId(i.id);
+                          setNote(i.adminNote || '');
+                        }}
+                        className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-colors shadow-sm"
+                        title="নোট"
+                      >
+                        <MessageSquare className="w-4 h-4 md:w-4 md:h-4" />
+                      </button>
                       <button 
                         onClick={() => handleDeleteIssue(i.id)}
-                        className="p-2.5 bg-white border border-slate-200 text-rose-400 rounded-xl hover:text-rose-600 hover:bg-rose-50 transition shadow-sm md:w-full flex items-center justify-center gap-2 text-[10px] font-black"
+                        className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-colors shadow-sm"
+                        title="ডিলিট"
                       >
-                        <Trash2 className="w-4 h-4" /> ডিলিট রেকর্ড
+                        <Trash2 className="w-4 h-4 md:w-4 md:h-4" />
                       </button>
-
-                      {editId === i.id && (
-                        <div className="absolute inset-x-0 bottom-0 md:inset-auto md:right-5 md:bottom-20 z-20 bg-white p-4 rounded-3xl shadow-2xl border border-slate-100 w-full md:w-72 animate-in fade-in slide-in-from-bottom-5">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">লেনদেন নোট লিখুন</p>
-                          <div className="flex gap-2">
-                             <input 
-                                className="flex-1 bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 focus:ring-0 px-3 py-2 rounded-xl text-xs font-bold font-bengali transition-all" 
-                                placeholder="কিছু লিখুন..."
-                                value={note}
-                                onChange={e=>setNote(e.target.value)}
-                                autoFocus
-                              />
-                             <button onClick={() => handleUpdateNote(i.id)} className="bg-indigo-600 text-white text-xs font-black px-4 py-2 rounded-xl hover:bg-indigo-700 transition">ঠিক আছে</button>
-                          </div>
-                          <button onClick={() => setEditId(null)} className="w-full mt-2 text-[9px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest">বন্ধ করুন</button>
-                        </div>
+                      
+                      {(i.status === 'ISSUED' || i.status === 'Issued') && isOverdue && (
+                        <button 
+                          onClick={() => handleAlert(i.id, member?.phone || '')}
+                          className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-rose-50 text-rose-600 border border-rose-100 px-3 h-9 md:h-10 rounded-xl font-bold text-[11px] md:text-xs hover:bg-rose-100 transition shadow-sm ml-2"
+                        >
+                          <BellRing className="w-3.5 h-3.5" /> রিমাইন্ডার
+                        </button>
                       )}
                     </div>
+
+                    {(i.status === 'ISSUED' || i.status === 'Issued') && (
+                      <button 
+                        onClick={() => handleReturn(i.id)}
+                        className="w-full sm:w-auto flex items-center justify-center gap-1.5 bg-indigo-600 text-white px-6 h-10 md:h-11 rounded-xl font-bold text-xs md:text-sm hover:bg-indigo-700 transition shadow-[0_4px_14px_0_rgb(79,70,229,0.39)] hover:shadow-[0_6px_20px_rgba(79,70,229,0.23)] hover:-translate-y-0.5 active:translate-y-0"
+                      >
+                        <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5" /> বই ফেরত
+                      </button>
+                    )}
                   </div>
+
+                  {/* Edit Note Overlay */}
+                  {editId === i.id && (
+                    <div className="absolute inset-0 z-10 bg-white/95 backdrop-blur-sm p-6 flex flex-col justify-center animate-in fade-in zoom-in-95">
+                      <div className="flex items-center justify-between mb-4">
+                        <p className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                           <MessageSquare className="w-4 h-4 text-indigo-500" />
+                           লেনদেন নোট
+                        </p>
+                        <button onClick={() => setEditId(null)} className="p-1.5 text-slate-400 hover:text-rose-500 rounded-full hover:bg-rose-50 transition"><X className="w-5 h-5" /></button>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                         <input 
+                            className="flex-1 bg-slate-50 border-2 border-slate-200 focus:border-indigo-500 focus:ring-0 px-4 py-3 rounded-xl text-sm font-bold font-bengali transition-all" 
+                            placeholder="কিছু লিখুন..."
+                            value={note}
+                            onChange={(e) => setNote(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleUpdateNote(i.id);
+                            }}
+                            autoFocus
+                         />
+                         <button 
+                            onClick={() => handleUpdateNote(i.id)}
+                            className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-indigo-700 transition flex items-center justify-center gap-2 shadow-md w-full sm:w-auto"
+                         >
+                            <Save className="w-4 h-4" /> সংরক্ষণ করুন
+                         </button>
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               );
             })}

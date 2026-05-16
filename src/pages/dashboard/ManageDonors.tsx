@@ -1060,6 +1060,52 @@ export default function ManageDonors() {
     });
   }, [donors, paymentsByDonor, search, filterOption, month]);
 
+  const dashboardStats = React.useMemo(() => {
+    let paidDonors = 0;
+    let unpaidDonors = 0;
+    let totalCollected = 0;
+
+    for (const d of donors) {
+      const pList = (paymentsByDonor.get(d.id) || []).filter(p => p.month === month);
+      const hasPaid = pList.some(p => p.status === 'Paid');
+      if (hasPaid) {
+         paidDonors++;
+      } else {
+         unpaidDonors++;
+      }
+    }
+
+    for (const [donorId, allPList] of paymentsByDonor.entries()) {
+      if (donors.some(d => d.id === donorId)) {
+         for (const p of allPList) {
+            if (p.status === 'Paid' && p.month === month) {
+               totalCollected += Number(p.amount);
+            }
+         }
+      }
+    }
+
+    return [
+      { label: 'মোট দাতা', count: donors.length, unit: 'জন', color: 'text-white' },
+      { label: 'পরিশোধিত', count: paidDonors, unit: 'জন', color: 'text-emerald-400' },
+      { label: 'বকেয়া', count: unpaidDonors, unit: 'জন', color: 'text-rose-400' },
+      { label: 'মোট সংগ্রহ', count: totalCollected, unit: '৳', color: 'text-amber-400' }
+    ];
+  }, [donors, paymentsByDonor, month]);
+
+  const recentPayments = React.useMemo(() => {
+    const donorIds = new Set(donors.map(d => d.id));
+    return payments
+      .filter(p => p.status === 'Paid' && donorIds.has(p.donorId)) // Only show Paid payments
+      .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+      .slice(0, 8);
+  }, [payments, donors]);
+
+  const overviewPaymentsModalByDonor = React.useMemo(() => {
+    if (!overviewDonor) return [];
+    return [...(paymentsByDonor.get(overviewDonor.id) || [])].sort((a,b) => b.month.localeCompare(a.month));
+  }, [paymentsByDonor, overviewDonor]);
+
   return (
     <div className="space-y-6">
       <div className="hidden">
@@ -1099,38 +1145,7 @@ export default function ManageDonors() {
           </div>
 
           <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-3 mt-8">
-            {React.useMemo(() => {
-              let paidDonors = 0;
-              let unpaidDonors = 0;
-              let totalCollected = 0;
-
-              for (const d of donors) {
-                const pList = (paymentsByDonor.get(d.id) || []).filter(p => p.month === month);
-                const hasPaid = pList.some(p => p.status === 'Paid');
-                if (hasPaid) {
-                   paidDonors++;
-                } else {
-                   unpaidDonors++;
-                }
-              }
-
-              for (const [donorId, allPList] of paymentsByDonor.entries()) {
-                if (donors.some(d => d.id === donorId)) {
-                   for (const p of allPList) {
-                      if (p.status === 'Paid' && p.month === month) {
-                         totalCollected += Number(p.amount);
-                      }
-                   }
-                }
-              }
-
-              return [
-                { label: 'মোট দাতা', count: donors.length, unit: 'জন', color: 'text-white' },
-                { label: 'পরিশোধিত', count: paidDonors, unit: 'জন', color: 'text-emerald-400' },
-                { label: 'বকেয়া', count: unpaidDonors, unit: 'জন', color: 'text-rose-400' },
-                { label: 'মোট সংগ্রহ', count: totalCollected, unit: '৳', color: 'text-amber-400' }
-              ];
-            }, [donors, paymentsByDonor, month]).map((stat, i) => (
+            {dashboardStats.map((stat, i) => (
               <div key={i} className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4 group hover:bg-white/10 transition-colors">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 font-bengali">{stat.label}</p>
                 <p className={`text-2xl font-black ${stat.color} font-mono`}>
@@ -1153,14 +1168,7 @@ export default function ManageDonors() {
           </div>
           
           <div className="space-y-3 overflow-y-auto max-h-[220px] pr-2 custom-scrollbar">
-            {React.useMemo(() => {
-                const donorIds = new Set(donors.map(d => d.id));
-                return payments
-                  .filter(p => p.status === 'Paid' && donorIds.has(p.donorId)) // Only show Paid payments
-                  .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
-                  .slice(0, 8);
-              }, [payments, donors])
-              .map((p, i) => {
+            {recentPayments.map((p, i) => {
                 const donor = donors.find(d => d.id === p.donorId);
                 return (
                   <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100 hover:border-indigo-100 transition-all group">
@@ -1625,9 +1633,7 @@ export default function ManageDonors() {
                            </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                           {React.useMemo(() => {
-                               return [...(paymentsByDonor.get(overviewDonor.id) || [])].sort((a,b) => b.month.localeCompare(a.month))
-                           }, [paymentsByDonor, overviewDonor.id]).map(payment => (
+                           {overviewPaymentsModalByDonor.map(payment => (
                              <tr key={payment.id} className="hover:bg-slate-50">
                                 <td className="p-4 font-mono font-medium text-slate-800">{payment.month}</td>
                                 <td className="p-4 font-mono font-bold text-slate-800">৳{payment.amount}</td>

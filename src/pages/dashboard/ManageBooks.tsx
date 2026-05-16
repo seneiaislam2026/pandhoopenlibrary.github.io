@@ -134,6 +134,62 @@ const generateBookCode = (category: string) => {
   return `${prefix}-${randomNum}`;
 };
 
+const BookFormModal = React.memo(({ initialData, editingId, onClose, onSubmit, isSubmitting }: any) => {
+  const [formData, setFormData] = useState(initialData);
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit(formData);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col justify-end sm:justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+       <motion.div initial={{ y: "100%", sm: {y: 0, scale: 0.9}, opacity: 0 }} animate={{ y: 0, sm: {scale: 1}, opacity: 1 }} className="bg-white rounded-t-3xl sm:rounded-[2.5rem] shadow-2xl w-full max-w-lg max-h-[85vh] sm:max-h-[90vh] overflow-hidden flex flex-col mt-auto sm:mt-0 pb-safe">
+          <div className="p-4 sm:p-8 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+             <h3 className="text-xl sm:text-2xl font-black text-slate-800 font-bengali">{editingId ? 'বই আপডেট' : 'নতুন বই যুক্ত'}</h3>
+             <button type="button" onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={20} className="text-slate-400" /></button>
+          </div>
+          <form id="bookForm" onSubmit={handleFormSubmit} className="p-4 sm:p-8 overflow-y-auto space-y-4 sm:space-y-6 flex-1">
+             <div className="grid grid-cols-2 gap-3 sm:gap-6">
+                <div className="space-y-1.5">
+                   <label className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">বই কোড</label>
+                   <input type="text" value={formData.bookCode || ''} onChange={e=>setFormData({...formData, bookCode: e.target.value})} className="w-full px-3 py-2 sm:px-4 sm:py-3.5 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-indigo-500/50 outline-none font-bold text-sm" placeholder="NOV-1234" />
+                </div>
+                <div className="space-y-1.5">
+                   <label className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">শেল্ফ নং</label>
+                   <input type="text" value={formData.shelfNo || ''} onChange={e=>setFormData({...formData, shelfNo: e.target.value})} className="w-full px-3 py-2 sm:px-4 sm:py-3.5 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-indigo-500/50 outline-none font-bold text-sm" placeholder="A1, B2..." />
+                </div>
+             </div>
+             <div className="space-y-1.5">
+                <label className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">বইয়ের নাম</label>
+                <input type="text" required value={formData.title || ''} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full px-3 py-2 sm:px-4 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-indigo-500/50 outline-none font-bold font-bengali text-sm sm:text-base" />
+             </div>
+             <div className="space-y-1.5">
+                <label className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">লেখকের নাম</label>
+                <input type="text" required value={formData.author} onChange={e=>setFormData({...formData, author: e.target.value})} className="w-full px-3 py-2 sm:px-4 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-indigo-500/50 outline-none font-bold font-bengali text-sm sm:text-base" />
+             </div>
+             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6">
+                <div className="space-y-1.5">
+                   <label className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">ক্যাটাগরি</label>
+                   <CreatableSelect options={BOOK_CATEGORIES.map(c=>({value:c,label:c}))} styles={reactSelectCustomStyles} value={formData.category?{value:formData.category,label:formData.category}:null} onChange={(v:any)=>setFormData({...formData, category: v?.value, bookCode: generateBookCode(v?.value)})} menuPlacement="top" />
+                </div>
+                <div className="space-y-1.5">
+                   <label className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">স্ট্যাটাস</label>
+                   <Select options={[{value:'Available',label:'এভেইলেবেল'}, {value:'Issued',label:'ইস্যু করা'}]} styles={reactSelectCustomStyles} value={{value:formData.status, label: formData.status === 'Available' ? 'এভেইলেবেল' : 'ইস্যু করা'}} onChange={(v:any)=>setFormData({...formData, status: v.value})} menuPlacement="top" />
+                </div>
+             </div>
+          </form>
+          <div className="p-4 sm:p-8 border-t border-slate-100 bg-slate-50 shrink-0 flex gap-3 sm:gap-4 mb-safe">
+             <button type="button" onClick={onClose} className="flex-1 py-2 sm:py-4 px-4 sm:px-6 rounded-xl sm:rounded-2xl bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-100 transition-all font-bengali text-sm sm:text-base">বাতিল</button>
+             <button type="submit" form="bookForm" disabled={isSubmitting} className="flex-[2] py-2 sm:py-4 px-4 sm:px-6 rounded-xl sm:rounded-2xl bg-indigo-600 text-white font-black hover:bg-indigo-700 shadow-[0_4px_14px_0_rgb(0,0,0,0.2)] transition-all active:scale-95 disabled:opacity-50 font-bengali text-sm sm:text-base">
+               {isSubmitting ? 'সেভ হচ্ছে...' : editingId ? 'আপডেট করুন' : 'নতুন বই যুক্ত করুন'}
+             </button>
+          </div>
+       </motion.div>
+    </div>
+  );
+});
+
 export default function ManageBooks() {
   const [books, setBooks] = useState<Book[]>([]);
   const [search, setSearch] = useState('');
@@ -178,8 +234,12 @@ export default function ManageBooks() {
         const snapshot = await getDocs(collection(db, 'books'));
         const booksData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Book[];
         setBooks(booksData);
-        sessionStorage.setItem('admin_books_cache', JSON.stringify(booksData));
-        sessionStorage.setItem('admin_books_cache_time', Date.now().toString());
+        try {
+          sessionStorage.setItem('admin_books_cache', JSON.stringify(booksData));
+          sessionStorage.setItem('admin_books_cache_time', Date.now().toString());
+        } catch (err) {
+          console.warn('Could not cache books', err);
+        }
       } catch (error) {
         handleFirestoreError(error, OperationType.GET, 'books', user?.id, user?.email);
       }
@@ -212,9 +272,15 @@ export default function ManageBooks() {
   }, [user]);
 
   const updateCache = (newBooks: Book[]) => {
-    sessionStorage.setItem('admin_books_cache', JSON.stringify(newBooks));
-    sessionStorage.setItem('admin_books_cache_time', Date.now().toString());
-    sessionStorage.removeItem('pub_books_cache');
+    try {
+      sessionStorage.setItem('admin_books_cache', JSON.stringify(newBooks));
+      sessionStorage.setItem('admin_books_cache_time', Date.now().toString());
+    } catch (e) {
+      console.warn("Could not cache books", e);
+    }
+    try {
+      sessionStorage.removeItem('pub_books_cache');
+    } catch (e) {}
   };
 
   const handleDownloadPDF = () => {
@@ -240,12 +306,20 @@ export default function ManageBooks() {
           <title>বই তালিকা</title>
           <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;700&display=swap" rel="stylesheet">
           <style>
-            body { font-family: 'Hind Siliguri', sans-serif; padding: 40px; color: #1e293b; }
+            body { font-family: 'Hind Siliguri', sans-serif; padding: 20px; color: #1e293b; }
             table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #e2e8f0; padding: 10px; font-size: 13px; }
-            th { background: #f8fafc; text-align: left; }
-            .header { text-align: center; margin-bottom: 30px; }
-            @media print { .btn { display: none; } @page { size: landscape; } }
+            th, td { border: 1px solid #e2e8f0; padding: 10px; font-size: 13px; text-align: left; }
+            th { background: #f8fafc; }
+            .header { text-align: center; margin-bottom: 20px; }
+            @media print { 
+              .btn { display: none; } 
+              @page { size: A4 portrait; margin: 15mm; }
+              body { padding: 0; margin: 0; width: 100%; }
+              table { width: 100%; max-width: 100%; table-layout: auto; page-break-inside: auto; }
+              tr { page-break-inside: avoid; page-break-after: auto; }
+              thead { display: table-header-group; }
+              tfoot { display: table-footer-group; }
+            }
           </style>
         </head>
         <body>
@@ -321,12 +395,11 @@ export default function ManageBooks() {
     } catch (e) { toast.error('ব্যর্থ হয়েছে।'); }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-     e.preventDefault();
+  const handleSubmit = async (submittedData: any) => {
      setIsSubmitting(true);
      try {
-       const code = formData.bookCode?.trim() || generateBookCode(formData.category || 'অন্যান্য');
-       const payload = { ...formData, bookCode: code, updatedAt: serverTimestamp() };
+       const code = submittedData.bookCode?.trim() || generateBookCode(submittedData.category || 'অন্যান্য');
+       const payload = { ...submittedData, bookCode: code, updatedAt: serverTimestamp() };
        if (editingId) {
          await updateDoc(doc(db, 'books', editingId), payload);
          setBooks(prev => {
@@ -530,7 +603,7 @@ export default function ManageBooks() {
 
                 <div className="absolute top-2.5 right-2.5 flex flex-col gap-1.5 items-end">
                    <div className={`px-2.5 py-1 rounded-full text-[8px] font-black backdrop-blur-md shadow-lg border border-white/20 text-white font-bengali ${['Issued', 'ISSUED'].includes(book.status) ? 'bg-rose-500/90' : 'bg-emerald-500/90'}`}>
-                      {['Issued', 'ISSUED'].includes(book.status) ? 'অ্যালট করা' : 'উপলব্ধ'}
+                      {['Issued', 'ISSUED'].includes(book.status) ? 'অ্যালট করা' : 'এভেইলেবেল'}
                    </div>
                    {/* Mobile visibility for Shelf/Code if needed */}
                    <div className="md:hidden flex flex-col gap-1 items-end">
@@ -599,50 +672,13 @@ export default function ManageBooks() {
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-           <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
-                 <h3 className="text-2xl font-black text-slate-800 font-bengali">{editingId ? 'বই আপডেট' : 'নতুন বই যুক্ত'}</h3>
-                 <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={24} className="text-slate-400" /></button>
-              </div>
-              <form id="bookForm" onSubmit={handleSubmit} className="p-8 overflow-y-auto space-y-6 flex-1">
-                 <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-bengali">বই কোড</label>
-                       <input type="text" value={formData.bookCode || ''} onChange={e=>setFormData({...formData, bookCode: e.target.value})} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none font-bold text-sm" placeholder="NOV-1234" />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-bengali">শেল্ফ নং</label>
-                       <input type="text" value={formData.shelfNo || ''} onChange={e=>setFormData({...formData, shelfNo: e.target.value})} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none font-bold text-sm" placeholder="A1, B2..." />
-                    </div>
-                 </div>
-                 <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-bengali">বইয়ের নাম</label>
-                    <input type="text" required value={formData.title || ''} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none font-bold font-bengali text-base" />
-                 </div>
-                 <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-bengali">লেখকের নাম</label>
-                    <input type="text" required value={formData.author} onChange={e=>setFormData({...formData, author: e.target.value})} className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 outline-none font-bold font-bengali text-base" />
-                 </div>
-                 <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-bengali">ক্যাটাগরি</label>
-                       <CreatableSelect options={BOOK_CATEGORIES.map(c=>({value:c,label:c}))} styles={reactSelectCustomStyles} value={formData.category?{value:formData.category,label:formData.category}:null} onChange={(v:any)=>setFormData({...formData, category: v?.value, bookCode: generateBookCode(v?.value)})} />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-bengali">স্ট্যাটাস</label>
-                       <Select options={[{value:'Available',label:'উপলব্ধ আছে'}, {value:'Issued',label:'ইস্যু করা'}]} styles={reactSelectCustomStyles} value={{value:formData.status, label: formData.status === 'Available' ? 'উপলব্ধ আছে' : 'ইস্যু করা'}} onChange={(v:any)=>setFormData({...formData, status: v.value})} />
-                    </div>
-                 </div>
-              </form>
-              <div className="p-8 border-t border-slate-100 bg-slate-50 shrink-0 flex gap-4">
-                 <button onClick={() => setShowModal(false)} className="flex-1 py-4 px-6 rounded-2xl bg-white border border-slate-200 text-slate-500 font-bold hover:bg-slate-100 transition-all font-bengali">বাতিল</button>
-                 <button type="submit" form="bookForm" disabled={isSubmitting} className="flex-[2] py-4 px-6 rounded-2xl bg-indigo-600 text-white font-black hover:bg-indigo-700 shadow-xl shadow-indigo-200 transition-all active:scale-95 disabled:opacity-50 font-bengali">
-                   {isSubmitting ? 'সেভ হচ্ছে...' : editingId ? 'আপডেট করুন' : 'নতুন বই যুক্ত করুন'}
-                 </button>
-              </div>
-           </motion.div>
-        </div>
+        <BookFormModal
+           initialData={formData}
+           editingId={editingId}
+           onClose={() => setShowModal(false)}
+           onSubmit={handleSubmit}
+           isSubmitting={isSubmitting}
+        />
       )}
 
       {/* Book Details Modal */}
@@ -672,7 +708,7 @@ export default function ManageBooks() {
                   </div>
                   <div className="absolute bottom-6 left-6 right-6 flex justify-center gap-3">
                      <span className={`px-4 py-2 rounded-full text-[10px] font-black font-bengali backdrop-blur-md border ${['Issued', 'ISSUED'].includes(detailsModalBook.status) ? 'bg-rose-500/90 text-white border-rose-400' : 'bg-emerald-500/90 text-white border-emerald-400'}`}>
-                        {['Issued', 'ISSUED'].includes(detailsModalBook.status) ? 'বর্তমানে লাইব্রেরিতে নেই' : 'পড়ার জন্য উপলব্ধ'}
+                        {['Issued', 'ISSUED'].includes(detailsModalBook.status) ? 'বর্তমানে লাইব্রেরিতে নেই' : 'এভেইলেবেল'}
                      </span>
                   </div>
                </div>

@@ -75,7 +75,7 @@ export default function Login() {
       try {
         const usernameLower = username.toLowerCase();
         // Specifically check for the user's requested admin credentials
-        const isMasterAdmin = (usernameLower === 'admin' && password === 'admin@@') || (usernameLower === 'seneiaislam' && password === 'admin@@') || (usernameLower === 'seneiaislam@gmail.com' && password === 'admin@@');
+        const isMasterAdmin = (usernameLower === 'admin' && password === 'pandhoalibrary@28052020') || (usernameLower === 'seneiaislam' && password === 'pandhoalibrary@28052020') || (usernameLower === 'seneiaislam@gmail.com' && password === 'pandhoalibrary@28052020');
         const loginEmail = username.includes('@') ? username : (usernameLower === 'admin' ? 'admin@library.com' : `${usernameLower}@library.com`);
         
         try {
@@ -114,7 +114,7 @@ export default function Login() {
             if (isMasterAdmin) {
                 manualUser = {
                     username: 'admin',
-                    password: 'admin@@',
+                    password: 'pandhoalibrary@28052020',
                     name: 'System Admin',
                     role: 'admin',
                     id: 'admin_master_uid'

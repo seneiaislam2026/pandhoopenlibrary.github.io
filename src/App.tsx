@@ -8,6 +8,7 @@ import { Toaster } from 'react-hot-toast';
 import MainLayout from './layouts/MainLayout';
 import DashboardLayout from './layouts/DashboardLayout';
 import AIBot from './components/AIBot';
+import InaugurationOverlay from './components/InaugurationOverlay';
 
 // Public Pages (Lazy Loaded)
 const Home = React.lazy(() => import('./pages/public/Home'));
@@ -169,6 +170,7 @@ export default function App() {
         <Toaster position="top-center" toastOptions={{ className: 'font-bengali font-bold' }} />
         <AppRoutes />
         <AIBot />
+        <InaugurationOverlay />
       </AuthProvider>
     </BrowserRouter>
   );

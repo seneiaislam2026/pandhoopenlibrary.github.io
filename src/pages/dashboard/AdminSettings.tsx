@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import toast from 'react-hot-toast';
+import Select from 'react-select';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
@@ -40,6 +41,16 @@ export default function AdminSettings() {
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [exportingPdf, setExportingPdf] = useState<string | null>(null);
+  const [customGreetingEnabled, setCustomGreetingEnabled] = useState(false);
+  const [customGreetingTitle, setCustomGreetingTitle] = useState('');
+  const [customGreetingSubtitle, setCustomGreetingSubtitle] = useState('');
+  const [inaugurationEnabled, setInaugurationEnabled] = useState(false);
+  const [inaugurationTitle, setInaugurationTitle] = useState('পানধোয়া উন্মুক্ত পাঠাগার');
+  const [inaugurationSubtitle, setInaugurationSubtitle] = useState('শুভ উদ্বোধন');
+  const [inaugurationMessage, setInaugurationMessage] = useState('জ্ঞান ও প্রযুক্তির আলোয় আলোকিত হোক আমাদের সমাজ। পাঠাগারের এই নতুন যাত্রায় আপনাকে স্বাগতম। আসুন, বইয়ের পাতায় খুঁজি নতুন এক পৃথিবী।');
+  const [inaugurationButtonText, setInaugurationButtonText] = useState('অটোমেশন উদ্বোধন');
+  const [inaugurationTargetUsers, setInaugurationTargetUsers] = useState<string[]>([]);
+  const [allUsersList, setAllUsersList] = useState<{value: string, label: string}[]>([]);
 
   // AI Scanner State
   const [showAiScanner, setShowAiScanner] = useState(false);
@@ -65,12 +76,35 @@ export default function AdminSettings() {
           setAiToken(data.sysToken || '');
           setSmsToken(data.smsToken || '');
           setSmsSenderId(data.smsSenderId || '');
+          setCustomGreetingEnabled(data.customGreetingEnabled || false);
+          setCustomGreetingTitle(data.customGreetingTitle || '');
+          setCustomGreetingSubtitle(data.customGreetingSubtitle || '');
+          setInaugurationEnabled(data.inaugurationEnabled || false);
+          setInaugurationTitle(data.inaugurationTitle || 'পানধোয়া উন্মুক্ত পাঠাগার');
+          setInaugurationSubtitle(data.inaugurationSubtitle || 'শুভ উদ্বোধন');
+          setInaugurationMessage(data.inaugurationMessage || 'আমাদের প্রতিষ্ঠাবার্ষিকী অনুষ্ঠানে সকল সম্মানিত অতিথিবৃন্দকে জানাই আন্তরিক শুভেচ্ছা ও স্বাগত। জ্ঞান ও প্রযুক্তির আলোয় আলোকিত হোক আমাদের সমাজ। আসুন, বইয়ের পাতায় খুঁজি নতুন এক পৃথিবী।');
+          setInaugurationButtonText(data.inaugurationButtonText || 'অটোমেশন উদ্বোধন');
+          setInaugurationTargetUsers(data.inaugurationTargetUsers || []);
         }
       } catch (err) {
         console.error(err);
       }
     };
     fetchSettings();
+
+    const fetchAllUsers = async () => {
+      try {
+        const usersSnap = await getDocs(collection(db, 'users'));
+        const users = usersSnap.docs.map(doc => ({
+          value: doc.id,
+          label: `${doc.data().firstName || ''} ${doc.data().lastName || ''} - ${doc.data().phone || doc.data().memberId || ''}`.trim()
+        }));
+        setAllUsersList(users);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchAllUsers();
 
     const fetchCategories = async () => {
       try {
@@ -295,7 +329,22 @@ export default function AdminSettings() {
   const saveSettings = async () => {
     try {
       setSaving(true);
-      await setDoc(doc(db, 'settings', 'general'), { eventBanners, subadminAccess, sysToken: aiToken, smsToken, smsSenderId }, { merge: true });
+      await setDoc(doc(db, 'settings', 'general'), { 
+        eventBanners, 
+        subadminAccess, 
+        sysToken: aiToken, 
+        smsToken, 
+        smsSenderId,
+        customGreetingEnabled,
+        customGreetingTitle,
+        customGreetingSubtitle,
+        inaugurationEnabled,
+        inaugurationTitle,
+        inaugurationSubtitle,
+        inaugurationMessage,
+        inaugurationButtonText,
+        inaugurationTargetUsers
+      }, { merge: true });
       toast.success('সেটিংস সেভ করা হয়েছে!');
     } catch (err) {
       toast.error('সেভ করতে সমস্যা হয়েছে।');
@@ -625,6 +674,183 @@ export default function AdminSettings() {
             <h3 className="text-xl font-bold font-bengali text-slate-800 mb-2">সদস্য ডিলিট করুন</h3>
             <p className="text-sm font-bengali text-slate-500">ওয়েবসাইট থেকে যেকোনো সদস্য রিমুভ বা ডিলিট করুন।</p>
          </Link>
+      </div>
+
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8 overflow-hidden relative mb-8">
+         <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-[80px] -mr-32 -mt-32"></div>
+         
+         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
+            <div className="flex items-center gap-4">
+               <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center border border-emerald-100 flex-shrink-0">
+                  <MessageSquare size={24} />
+               </div>
+               <div>
+                  <h2 className="text-xl font-black font-bengali text-slate-800">স্বাগতম বার্তা (Greeting Banner)</h2>
+                  <p className="text-slate-500 font-bengali text-sm mt-1">ড্যাশবোর্ডের স্বাগতম বার্তা কাস্টমাইজ করুন।</p>
+               </div>
+            </div>
+            
+            <label className="flex items-center cursor-pointer justify-between bg-slate-50 md:bg-transparent p-3 md:p-0 rounded-xl border border-slate-100 md:border-transparent">
+               <span className="md:hidden font-bengali text-slate-700 font-bold">স্টেটাস:</span>
+               <div className="flex items-center">
+                  <div className="relative">
+                     <input 
+                        type="checkbox" 
+                        className="sr-only" 
+                        checked={customGreetingEnabled}
+                        onChange={(e) => setCustomGreetingEnabled(e.target.checked)}
+                     />
+                     <div className={`block w-14 h-8 rounded-full transition-colors ${customGreetingEnabled ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
+                     <div className={`absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${customGreetingEnabled ? 'transform translate-x-6' : ''}`}></div>
+                  </div>
+                  <span className="ml-3 font-bengali text-slate-700 font-bold">{customGreetingEnabled ? 'নতুন মডেল' : 'ডিফল্ট মডেল'}</span>
+               </div>
+            </label>
+         </div>
+
+         <AnimatePresence>
+            {customGreetingEnabled && (
+               <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="relative z-10 space-y-4 overflow-hidden"
+               >
+                  <div>
+                     <label className="block text-sm font-bold text-slate-700 font-bengali mb-1">
+                        ব্যানার টাইটেল (Title)
+                        <span className="text-emerald-600 font-normal ml-2 text-xs">ব্যাবহারকারীর নামের জন্য [user] লিখুন</span>
+                     </label>
+                     <input
+                        type="text"
+                        placeholder="যেমন: আসসালামু আলাইকুম [user]"
+                        value={customGreetingTitle}
+                        onChange={(e) => setCustomGreetingTitle(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl p-3 bg-slate-50 focus:bg-white transition-colors focus:ring-2 focus:ring-emerald-500 outline-none font-bengali"
+                     />
+                  </div>
+                  <div>
+                     <label className="block text-sm font-bold text-slate-700 font-bengali mb-1">ব্যানার সাবটাইটেল (Subtitle)</label>
+                     <textarea
+                        placeholder="বার্তা বা ইভেন্টের তথ্য লিখুন..."
+                        value={customGreetingSubtitle}
+                        onChange={(e) => setCustomGreetingSubtitle(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl p-3 bg-slate-50 focus:bg-white transition-colors focus:ring-2 focus:ring-emerald-500 outline-none font-bengali h-24 resize-none"
+                     ></textarea>
+                  </div>
+               </motion.div>
+            )}
+         </AnimatePresence>
+      </div>
+
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8 overflow-hidden relative mb-8">
+         <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-[80px] -mr-32 -mt-32"></div>
+         
+         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
+            <div className="flex items-center gap-4">
+               <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center border border-amber-100 flex-shrink-0">
+                  <span className="text-2xl">🎉</span>
+               </div>
+               <div>
+                  <h2 className="text-xl font-black font-bengali text-slate-800">উদ্বোধন মোড (Launch Overlay)</h2>
+                  <p className="text-slate-500 font-bengali text-sm mt-1">ব্যবহারকারী প্রথমবার সাইটে ঢুকলে একটি সুন্দর স্ক্রিন শো করবে।</p>
+               </div>
+            </div>
+            
+            <div className="flex flex-col md:flex-row md:items-center gap-4 justify-between bg-slate-50 md:bg-transparent p-3 md:p-0 rounded-xl border border-slate-100 md:border-transparent">
+               <label className="flex items-center cursor-pointer justify-between w-full md:w-auto">
+                  <span className="md:hidden font-bengali text-slate-700 font-bold">স্টেটাস:</span>
+                  <div className="flex items-center">
+                     <div className="relative">
+                        <input 
+                           type="checkbox" 
+                           className="sr-only" 
+                           checked={inaugurationEnabled}
+                           onChange={(e) => setInaugurationEnabled(e.target.checked)}
+                        />
+                        <div className={`block w-14 h-8 rounded-full transition-colors ${inaugurationEnabled ? 'bg-amber-500' : 'bg-slate-300'}`}></div>
+                        <div className={`absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${inaugurationEnabled ? 'transform translate-x-6' : ''}`}></div>
+                     </div>
+                     <span className="ml-3 font-bengali text-slate-700 font-bold">{inaugurationEnabled ? 'চালু আছে' : 'বন্ধ আছে'}</span>
+                  </div>
+               </label>
+
+               {inaugurationEnabled && (
+                  <button 
+                     onClick={() => {
+                        sessionStorage.removeItem('inauguration_seen');
+                        window.location.reload();
+                     }}
+                     className="px-4 py-2 bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors font-bengali font-bold rounded-xl text-sm w-full md:w-auto text-center"
+                  >
+                     পুনরায় টেস্ট করুন
+                  </button>
+               )}
+            </div>
+         </div>
+
+         <AnimatePresence>
+            {inaugurationEnabled && (
+               <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="relative z-10 space-y-4 overflow-hidden"
+               >
+                  <div>
+                     <label className="block text-sm font-bold text-slate-700 font-bengali mb-1">উদ্বোধন টাইটেল</label>
+                     <input
+                        type="text"
+                        placeholder="যেমন: পানধোয়া উন্মুক্ত পাঠাগার"
+                        value={inaugurationTitle}
+                        onChange={(e) => setInaugurationTitle(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl p-3 bg-slate-50 focus:bg-white transition-colors focus:ring-2 focus:ring-amber-500 outline-none font-bengali"
+                     />
+                  </div>
+                  <div>
+                     <label className="block text-sm font-bold text-slate-700 font-bengali mb-1">উদ্বোধন সাবটাইটেল</label>
+                     <input
+                        type="text"
+                        placeholder="যেমন: শুভ উদ্বোধন"
+                        value={inaugurationSubtitle}
+                        onChange={(e) => setInaugurationSubtitle(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl p-3 bg-slate-50 focus:bg-white transition-colors focus:ring-2 focus:ring-amber-500 outline-none font-bengali"
+                     />
+                  </div>
+                  <div>
+                     <label className="block text-sm font-bold text-slate-700 font-bengali mb-1">স্বাগত বার্তা / বিবরণ</label>
+                     <textarea
+                        placeholder="অতিথিদের জন্য স্বাগত বার্তা..."
+                        value={inaugurationMessage}
+                        onChange={(e) => setInaugurationMessage(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl p-3 bg-slate-50 focus:bg-white transition-colors focus:ring-2 focus:ring-amber-500 outline-none font-bengali h-24 resize-none"
+                     ></textarea>
+                  </div>
+                  <div>
+                     <label className="block text-sm font-bold text-slate-700 font-bengali mb-1">বাটনের টেক্সট</label>
+                     <input
+                        type="text"
+                        placeholder="যেমন: অটোমেশন উদ্বোধন"
+                        value={inaugurationButtonText}
+                        onChange={(e) => setInaugurationButtonText(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl p-3 bg-slate-50 focus:bg-white transition-colors focus:ring-2 focus:ring-amber-500 outline-none font-bengali"
+                     />
+                  </div>
+                  <div>
+                     <label className="block text-sm font-bold text-slate-700 font-bengali mb-1">যাদেরকে মেসেজ পাঠানো হবে (ফাঁকা রাখলে সবার কাছে যাবে)</label>
+                     <Select 
+                        isMulti 
+                        options={allUsersList} 
+                        value={allUsersList.filter(u => inaugurationTargetUsers.includes(u.value))}
+                        onChange={(selected: any) => setInaugurationTargetUsers(selected ? selected.map((s: any) => s.value) : [])}
+                        placeholder="ইউজার সিলেক্ট করুন..."
+                        className="font-bengali text-sm"
+                        styles={{ control: (base) => ({ ...base, borderRadius: '0.75rem', padding: '0.2rem', borderColor: '#e2e8f0' }) }}
+                     />
+                  </div>
+               </motion.div>
+            )}
+         </AnimatePresence>
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 overflow-hidden relative">

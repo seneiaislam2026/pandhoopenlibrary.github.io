@@ -328,8 +328,8 @@ export default function ManageStickers() {
         const pageNode = document.getElementById(`sticker-page-render-${p}`);
         if (pageNode) {
           const dataUrl = await toJpeg(pageNode, {
-            quality: 0.9,
-            pixelRatio: 1.5,
+            quality: 1.0,
+            pixelRatio: 4,
             backgroundColor: '#ffffff'
           });
           doc.addImage(dataUrl, 'JPEG', 0, 0, 210, 297);
@@ -416,34 +416,35 @@ export default function ManageStickers() {
               style={{ 
                 width: '210mm', 
                 height: '297mm', 
-                padding: '10mm',
-                gap: '2mm'
+                padding: '12mm 10mm',
+                gap: '2.5mm'
               }}
             >
               {stickersToProcess.slice(pageIdx * 24, (pageIdx + 1) * 24).map(s => (
                 <div 
                   key={s.id}
-                  className="flex flex-col items-center justify-center border border-slate-200 p-2 text-center overflow-hidden bg-white"
-                  style={{ height: '34mm' }}
+                  className="flex flex-col items-center justify-center border border-slate-300 p-2 text-center overflow-hidden bg-white rounded flex-shrink-0"
+                  style={{ height: '33mm' }}
                 >
-                  <div className="mb-0.5">
+                  <div className="flex-shrink-0 mb-1 w-full flex justify-center">
                     <Barcode 
                       value={s.code} 
                       width={1.2} 
-                      height={35} 
+                      height={32} 
                       fontSize={11} 
                       margin={0}
-                      background="#ffffff"
                       displayValue={true}
+                      background="#ffffff"
                     />
                   </div>
-                  <div className="flex flex-col items-center leading-tight">
-                    <h1 className="font-bold text-black" style={{ fontSize: '13px' }}>পানধোয়া উন্মুক্ত পাঠাগার</h1>
-                    <div className="flex items-center gap-2 mt-0.5 text-slate-700 font-bold" style={{ fontSize: '8px' }}>
-                       <span>Shelf: {s.shelfNo}</span>
-                       <span>Cat: {s.category}</span>
+                  <div className="flex flex-col items-center justify-center flex-shrink-0 w-full px-1">
+                    <h1 className="font-black text-slate-900 font-bengali w-full text-center whitespace-nowrap" style={{ fontSize: '12px', lineHeight: 'normal', paddingBottom: '2px' }}>পানধোয়া উন্মুক্ত পাঠাগার</h1>
+                    <div className="flex justify-center items-center gap-1.5 mt-0.5 text-slate-800 font-bold w-full truncate" style={{ fontSize: '9px' }}>
+                       <span className="truncate">Shelf: {s.shelfNo || 'N/A'}</span>
+                       <span className="text-slate-400">|</span>
+                       <span className="truncate flex items-center gap-1">Cat: <span className="font-bengali">{s.category || 'N/A'}</span></span>
                     </div>
-                    <p className="font-black text-indigo-700 mt-1" style={{ fontSize: '9px' }}>www.pandhoalibrary.org</p>
+                    <p className="font-black text-indigo-700 mt-1 lowercase tracking-wide" style={{ fontSize: '8.5px' }}>www.pandhoalibrary.org</p>
                   </div>
                 </div>
               ))}

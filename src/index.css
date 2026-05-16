@@ -1,11 +1,12 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700;800;900&text=০১২৩৪৫৬৭৮৯');
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: "Hind Siliguri", "Outfit", ui-sans-serif, system-ui, sans-serif;
-  --font-bengali: "Hind Siliguri", sans-serif;
+  --font-sans: "Noto Sans Bengali", "Hind Siliguri", "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-bengali: "Noto Sans Bengali", "Hind Siliguri", sans-serif;
   --font-mono: "Outfit", ui-monospace, monospace;
 
   --shadow-box: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);

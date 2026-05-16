@@ -91,8 +91,12 @@ export default function Books() {
         
         if (booksData.length > 0) {
           setBooks(booksData);
-          sessionStorage.setItem('pub_books_cache', JSON.stringify(booksData));
-          sessionStorage.setItem('pub_books_cache_time', Date.now().toString());
+          try {
+            sessionStorage.setItem('pub_books_cache', JSON.stringify(booksData));
+            sessionStorage.setItem('pub_books_cache_time', Date.now().toString());
+          } catch (storageErr) {
+            console.warn("Could not cache books: quota exceeded", storageErr);
+          }
         }
         setLoading(false);
       } catch (error: any) {
@@ -163,7 +167,7 @@ export default function Books() {
       </Helmet>
 
       {/* Page Header */}
-      <div className="bg-slate-50 border-b border-slate-100 pt-32 pb-20 px-6">
+      <div className="bg-slate-50 border-b border-slate-100 py-10 md:pt-32 md:pb-20 px-6">
         <div className="max-w-7xl mx-auto text-center">
           <motion.h1 
             initial={{ opacity: 0, y: -20 }}
@@ -174,18 +178,21 @@ export default function Books() {
           </motion.h1>
           <p className="text-xl text-slate-500 font-bengali max-w-2xl mx-auto font-medium">লাইব্রেরির সকল বইয়ের সংগ্রহ অনলাইন থেকে দেখে নিন এবং আপনার পছন্দের বইটি প্রিবুক করুন।</p>
           
-          <div className="flex flex-col md:flex-row justify-center items-center gap-6 mt-12 max-w-3xl mx-auto">
+          <div className="flex flex-col md:flex-row items-center gap-3 mt-12 max-w-4xl mx-auto bg-white/70 backdrop-blur-md p-3 md:p-4 rounded-3xl md:rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-200/60 relative z-40">
             <div className="relative flex-1 w-full">
-              <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={24} />
+              <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
               <input 
                 type="text" 
                 placeholder="বইয়ের নাম বা লেখক দিয়ে খুঁজুন..." 
-                className="w-full pl-16 pr-8 py-5 bg-white border border-slate-200 rounded-[2rem] outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-bengali font-bold text-lg"
+                className="w-full pl-12 pr-6 py-4 bg-slate-50 hover:bg-slate-100 focus:bg-white border-2 border-transparent focus:border-indigo-100 rounded-2xl md:rounded-full outline-none transition-all font-bengali font-bold text-base md:text-lg text-slate-800 placeholder-slate-400"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
-            <div className="w-full md:w-64">
+            
+            <div className="hidden md:block w-px h-10 bg-slate-200 mx-2"></div>
+            
+            <div className="w-full md:w-72 relative z-50">
               <Select
                 options={['All', ...Array.from(new Set(books.map(b => b.category).filter(c => c)))].map(c => ({
                   value: c,
@@ -198,14 +205,31 @@ export default function Books() {
                 onChange={(opt: any) => setCategoryFilter(opt?.value || 'All')}
                 className="font-bengali"
                 styles={{
-                  control: (base) => ({
+                  control: (base, state) => ({
                     ...base,
-                    borderRadius: '2rem',
-                    padding: '0.6rem 1rem',
-                    border: '1px solid #e2e8f0',
-                    backgroundColor: 'white',
+                    borderRadius: '1rem',
+                    padding: '0.4rem 0.5rem',
+                    border: state.isFocused ? '2px solid #e0e7ff' : '2px solid transparent',
+                    backgroundColor: state.isFocused ? 'white' : '#f8fafc',
+                    boxShadow: 'none',
+                    cursor: 'pointer',
                     fontWeight: 'bold',
-                    boxShadow: 'none'
+                    transition: 'all 0.2s ease'
+                  }),
+                  option: (base, state) => ({
+                    ...base,
+                    fontFamily: 'inherit',
+                    backgroundColor: state.isSelected ? '#4f46e5' : state.isFocused ? '#f1f5f9' : 'white',
+                    color: state.isSelected ? 'white' : '#1e293b',
+                    cursor: 'pointer'
+                  }),
+                  menu: (base) => ({
+                    ...base,
+                    borderRadius: '1rem',
+                    overflow: 'hidden',
+                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                    border: '1px solid #f1f5f9',
+                    zIndex: 50
                   })
                 }}
               />
@@ -288,12 +312,12 @@ export default function Books() {
                   <button
                     onClick={(e) => { e.stopPropagation(); handlePreBook(book.id); }}
                     disabled={(book.status !== 'Available' && book.status !== 'AVAILABLE') || prebooking === book.id || requestedBooks.includes(book.id)}
-                    className="w-full py-1.5 h-8 rounded-lg font-bold font-bengali text-[10px] sm:text-[11px] transition-all focus:outline-none flex items-center justify-center gap-1.5 bg-slate-900 text-white hover:bg-indigo-600 disabled:bg-slate-50 disabled:text-slate-400 border border-slate-900 hover:border-indigo-600 disabled:border-slate-200 disabled:shadow-none active:scale-[0.98]"
+                    className="w-full py-2 h-9 rounded-xl font-bold font-bengali text-[11px] transition-all focus:outline-none flex items-center justify-center gap-1.5 bg-slate-100 text-slate-700 hover:bg-slate-900 hover:text-white disabled:bg-slate-50 disabled:text-slate-400 border border-transparent hover:border-slate-800 disabled:border-transparent active:scale-[0.98] shadow-sm hover:shadow-md"
                   >
                     {requestedBooks.includes(book.id) ? (
-                      <CheckCircle2 size={12} className="sm:w-3 sm:h-3" />
+                      <CheckCircle2 size={14} />
                     ) : (book.status === 'Available' || book.status === 'AVAILABLE') ? (
-                      <Clock size={12} className="sm:w-3 sm:h-3" />
+                      <Clock size={14} />
                     ) : null}
                     <span>
                       {requestedBooks.includes(book.id) ? 'রিকুয়েষ্ট সেন্ট' : (book.status === 'Available' || book.status === 'AVAILABLE') ? 'প্রিবুক করুন' : 'সংগ্রহে নেই'}
@@ -306,10 +330,10 @@ export default function Books() {
         )}
 
         {!loading && filtered.length > visibleCount && (
-          <div className="mt-12 flex justify-center">
+          <div className="mt-16 flex justify-center">
             <button
               onClick={() => setVisibleCount(prev => prev + 20)}
-              className="bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white px-8 py-3 rounded-full font-bold font-bengali transition-colors shadow-sm"
+              className="bg-white border-2 border-slate-200 text-slate-700 hover:border-slate-900 hover:bg-slate-900 hover:text-white px-8 py-3.5 rounded-2xl font-bold font-bengali transition-all shadow-sm hover:shadow-xl active:scale-95 flex items-center justify-center gap-2"
             >
               আরো বই দেখান
             </button>

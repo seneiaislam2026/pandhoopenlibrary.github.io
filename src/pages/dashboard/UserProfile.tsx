@@ -178,10 +178,14 @@ export default function UserProfile() {
            eventBanners: fetchedBanners
         };
 
-        sessionStorage.setItem('usr_profile_' + user.id, JSON.stringify(profileData));
-        sessionStorage.setItem('pub_books_cache', JSON.stringify(booksData));
-        sessionStorage.setItem('main_notices_cache', JSON.stringify(notData));
-        sessionStorage.setItem(cacheKey, now.toString());
+        try {
+          sessionStorage.setItem('usr_profile_' + user.id, JSON.stringify(profileData));
+          sessionStorage.setItem('pub_books_cache', JSON.stringify(booksData));
+          sessionStorage.setItem('main_notices_cache', JSON.stringify(notData));
+          sessionStorage.setItem(cacheKey, now.toString());
+        } catch (storageErr) {
+          console.warn("Storage limit exceeded when caching user profile", storageErr);
+        }
 
       } catch (err) {
         console.error("Error fetching user profile:", err);

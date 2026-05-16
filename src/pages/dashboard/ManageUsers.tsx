@@ -136,8 +136,12 @@ export default function ManageUsers() {
           return null;
         };
         const setCache = (key: string, data: any) => {
-          sessionStorage.setItem(key, JSON.stringify(data));
-          sessionStorage.setItem(`${key}_time`, Date.now().toString());
+          try {
+            sessionStorage.setItem(key, JSON.stringify(data));
+            sessionStorage.setItem(`${key}_time`, Date.now().toString());
+          } catch (storageErr) {
+            console.warn("Could not set cache for", key, storageErr);
+          }
         };
 
         const [booksSnap, usersSnap, issuesSnap, reqSnap, preBSnap] = await Promise.all([

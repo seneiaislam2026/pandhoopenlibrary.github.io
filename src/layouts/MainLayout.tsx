@@ -23,7 +23,10 @@ import {
   Bell,
   MessageSquare,
   DollarSign,
-  ChevronDown
+  ChevronDown,
+  Scan,
+  Search,
+  LogOut
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "../store/AuthContext";
@@ -37,7 +40,7 @@ export default function MainLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { t, i18n } = useTranslation();
   const [unreadNoticesCount, setUnreadNoticesCount] = useState(0);
   const [messagesCount, setMessagesCount] = useState(0);
@@ -361,52 +364,40 @@ export default function MainLayout() {
 
       {/* Mobile Bottom Navigation (Authenticated only) */}
       {user && (
-        <div className="fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 md:hidden flex items-center justify-around px-2 z-40 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-           {user?.role === 'admin' ? (
+        <div className="fixed bottom-0 left-0 right-0 h-[68px] bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex md:hidden items-center justify-around px-2 z-40 shadow-[0_-10px_40px_rgba(0,0,0,0.06)] pb-safe">
+           <Link to="/dashboard" className={cn("flex flex-col items-center justify-center gap-1 w-16 h-full transition-all outline-none", location.pathname === '/dashboard' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+              <Home className={cn("w-6 h-6", location.pathname === '/dashboard' && "fill-indigo-100 dark:fill-indigo-500/20")} />
+              <span className="text-[10px] font-bold uppercase tracking-wide">হোম</span>
+           </Link>
+           
+           {user?.role === 'admin' || user?.role === 'subadmin' || user?.role === 'visitor_admin' ? (
              <>
-               <Link to="/dashboard/donors" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/donors' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <Heart className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase tracking-tighter">দাতা সদস্য</span>
-               </Link>
-               <Link to="/dashboard/pre-bookings" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/pre-bookings' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <Clock className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase tracking-tighter">প্রি বুকিং</span>
-                  {/* Need prebookings count, we can use 0 for main layout or add state if needed, using 0 for now */}
-               </Link>
-               <Link to="/dashboard/finances" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/finances' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <DollarSign className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase tracking-tighter">হিসাব-নিকাশ</span>
-               </Link>
-               <Link to="/dashboard" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/dashboard' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <LayoutDashboard className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase tracking-tighter">ওভারভিউ</span>
+               <Link to="/dashboard/barcode-scanner" className={cn("flex flex-col items-center justify-center gap-1 w-16 h-full transition-all outline-none", location.pathname === '/dashboard/barcode-scanner' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <Scan className={cn("w-6 h-6", location.pathname === '/dashboard/barcode-scanner' && "fill-indigo-100 dark:fill-indigo-500/20")} />
+                  <span className="text-[10px] font-bold uppercase tracking-wide">স্ক্যানার</span>
                </Link>
              </>
            ) : (
              <>
-               <Link to="/dashboard/book-requests" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/dashboard/book-requests' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <BookOpen className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase tracking-tighter">বইয়ের অনুরোধ</span>
-               </Link>
-               <Link to="/dashboard/notice-board" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/dashboard/notice-board' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <Bell className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase tracking-tighter">নোটিশ</span>
-                  {unreadNoticesCount > 0 && (
-                    <span className="absolute top-0 right-2 w-4 h-4 bg-rose-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border border-white">
-                      {unreadNoticesCount}
-                    </span>
-                  )}
-               </Link>
-               <Link to="/buy-books" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all relative", location.pathname === '/buy-books' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <ShoppingBag className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase tracking-tighter">বই কিনুন</span>
-               </Link>
-               <Link to="/dashboard/profile" className={cn("flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all", location.pathname === '/dashboard/profile' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
-                  <UserCircle className="w-5 h-5" />
-                  <span className="text-[10px] font-black uppercase tracking-tighter">প্রোফাইল</span>
+               <Link to="/dashboard/book-requests" className={cn("flex flex-col items-center justify-center gap-1 w-16 h-full transition-all outline-none", location.pathname === '/dashboard/book-requests' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+                  <BookOpen className={cn("w-6 h-6", location.pathname === '/dashboard/book-requests' && "fill-indigo-100 dark:fill-indigo-500/20")} />
+                  <span className="text-[10px] font-bold uppercase tracking-wide">অনুরোধ</span>
                </Link>
              </>
            )}
+
+           <Link to="/books" className={cn("flex flex-col items-center justify-center gap-1 w-16 h-full transition-all outline-none", location.pathname === '/books' ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400")}>
+              {/* Center prominent button for browsing books */}
+              <div className={cn("w-12 h-12 -mt-6 rounded-full flex items-center justify-center shadow-lg border-4 border-slate-50 dark:border-slate-900 transition-transform", location.pathname === '/books' ? "bg-indigo-600 text-white scale-110" : "bg-slate-800 dark:bg-slate-700 text-white hover:bg-slate-900 dark:hover:bg-slate-600")}>
+                 <Search className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-wide -mt-1">বই খুঁজুন</span>
+           </Link>
+
+           <button onClick={() => logout()} className="flex flex-col items-center justify-center gap-1 w-16 h-full transition-all text-slate-500 dark:text-slate-400 hover:text-rose-500 outline-none">
+              <LogOut className="w-6 h-6" />
+              <span className="text-[10px] font-bold uppercase tracking-wide">লগআউট</span>
+           </button>
         </div>
       )}
 

@@ -50,6 +50,11 @@ export default function DashboardHome() {
   const [availableBooks, setAvailableBooks] = useState<{id: string; title: string; bookCode: string}[]>([]);
   const [eventBanners, setEventBanners] = useState<string[]>([]);
   const [dismissedBanners, setDismissedBanners] = useState<string[]>([]);
+  const [customGreeting, setCustomGreeting] = useState({
+    enabled: false,
+    title: '',
+    subtitle: ''
+  });
 
   useEffect(() => {
     if (user) {
@@ -57,11 +62,14 @@ export default function DashboardHome() {
         try {
           const cacheKey = 'dash_banners_cache';
           const cacheTimeKey = 'dash_banners_time';
+          const greetCacheKey = 'dash_greeting_cache';
           const cached = sessionStorage.getItem(cacheKey);
+          const cachedGreet = sessionStorage.getItem(greetCacheKey);
           const lastTime = sessionStorage.getItem(cacheTimeKey);
           
-          if (cached && lastTime && (Date.now() - parseInt(lastTime) < 1 * 60 * 1000)) {
+          if (cached && cachedGreet && lastTime && (Date.now() - parseInt(lastTime) < 1 * 60 * 1000)) {
             setEventBanners(JSON.parse(cached));
+            setCustomGreeting(JSON.parse(cachedGreet));
             return;
           }
 
@@ -76,7 +84,16 @@ export default function DashboardHome() {
               banners = [data.eventBanner];
             }
             setEventBanners(banners);
+            
+            const greetSettings = {
+              enabled: data.customGreetingEnabled || false,
+              title: data.customGreetingTitle || '',
+              subtitle: data.customGreetingSubtitle || ''
+            };
+            setCustomGreeting(greetSettings);
+            
             sessionStorage.setItem(cacheKey, JSON.stringify(banners));
+            sessionStorage.setItem(greetCacheKey, JSON.stringify(greetSettings));
             sessionStorage.setItem(cacheTimeKey, Date.now().toString());
           }
         } catch (err) {
@@ -274,40 +291,113 @@ export default function DashboardHome() {
 
   return (
     <div className="space-y-6 pb-24">
-      {/* User Greeting Section - Condensed UI */}
-      <div className="relative overflow-hidden rounded-[2rem] bg-indigo-600 p-5 sm:p-8 text-white shadow-xl shadow-indigo-200 dark:shadow-none">
-        <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-[40px] pointer-events-none"></div>
-        <div className="absolute -left-10 -bottom-10 w-32 h-32 bg-indigo-400/20 rounded-full blur-[30px] pointer-events-none"></div>
-        
-        <div className="relative z-10 flex items-center justify-between gap-6">
-          <div className="space-y-2">
-            <motion.div 
-               initial={{ opacity: 0, x: -20 }}
-               animate={{ opacity: 1, x: 0 }}
-               className="inline-flex items-center gap-2 bg-indigo-500/30 backdrop-blur-md px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold border border-white/10"
-            >
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
-              স্বাগতম
-            </motion.div>
-            <h1 className="text-xl sm:text-3xl font-black font-bengali leading-tight">
-              আসসালামু আলাইকুম, <br />
-              <span className="text-indigo-200">{user.name}</span>!
-            </h1>
-            <p className="text-indigo-100 font-bengali text-xs sm:text-sm opacity-90 max-w-xs">
-              পাঠাগারের সকল সেবা এখন আপনার হাতের নাগালে।
-            </p>
-          </div>
+      {/* User Greeting Section */}
+      {customGreeting?.enabled ? (
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-6 sm:p-8 text-white shadow-xl shadow-purple-200/50 dark:shadow-none"
+        >
+          {/* Animated Background Elements */}
+          <motion.div 
+            animate={{ 
+               scale: [1, 1.2, 1],
+               rotate: [0, 90, 0]
+            }}
+            transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
+            className="absolute -right-20 -top-20 w-64 h-64 bg-white/10 rounded-full blur-[60px] pointer-events-none"
+          />
+          <motion.div 
+            animate={{ 
+               scale: [1, 1.5, 1],
+               x: [0, 50, 0]
+            }}
+            transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
+            className="absolute -left-10 -bottom-10 w-48 h-48 bg-white/20 rounded-full blur-[50px] pointer-events-none"
+          />
           
-          <div className="hidden md:flex -space-x-2">
-             <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-xl flex items-center justify-center border border-white/30 rotate-6 shadow-lg">
-                <Library className="w-7 h-7" />
-             </div>
-             <div className="w-12 h-12 rounded-xl bg-indigo-400/40 backdrop-blur-xl flex items-center justify-center border border-white/20 -rotate-12 shadow-lg mt-6">
-                <BookmarkCheck className="w-6 h-6" />
-             </div>
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-3">
+              <motion.div 
+                 initial={{ opacity: 0, scale: 0.8 }}
+                 animate={{ opacity: 1, scale: 1 }}
+                 transition={{ delay: 0.1 }}
+                 className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-md px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold border border-white/30 shadow-sm"
+              >
+                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]"></div>
+                স্বাগতম
+              </motion.div>
+              <motion.h1 
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.2 }}
+                className="text-2xl sm:text-4xl font-black font-bengali leading-tight drop-shadow-md"
+              >
+                {customGreeting.title ? (
+                  <span dangerouslySetInnerHTML={{ __html: customGreeting.title.replace(/\[user\]|\{user\}/gi, `<span class="text-white/90">${user.name}</span>`).replace(/\n/g, '<br/>') }} />
+                ) : (
+                  <>আসসালামু আলাইকুম, <br /><span className="text-white/90">{user.name}</span>!</>
+                )}
+              </motion.h1>
+              <motion.p 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.3 }}
+                className="text-white/90 font-bengali text-sm sm:text-base max-w-sm whitespace-pre-line drop-shadow-sm font-medium"
+              >
+                {customGreeting.subtitle || 'পাঠাগারের সকল সেবা এখন আপনার হাতের নাগালে।'}
+              </motion.p>
+            </div>
+            
+            <motion.div 
+              initial={{ opacity: 0, rotate: -20 }}
+              animate={{ opacity: 1, rotate: 0 }}
+              transition={{ delay: 0.4, type: 'spring' }}
+              className="hidden md:flex -space-x-4"
+            >
+               <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-xl flex items-center justify-center border border-white/30 rotate-6 shadow-xl relative z-20">
+                  <Library className="w-8 h-8 text-white" />
+               </div>
+               <div className="w-14 h-14 rounded-2xl bg-pink-400/40 backdrop-blur-xl flex items-center justify-center border border-white/20 -rotate-12 shadow-lg mt-8 relative z-10">
+                  <BookmarkCheck className="w-6 h-6 text-white" />
+               </div>
+            </motion.div>
+          </div>
+        </motion.div>
+      ) : (
+        <div className="relative overflow-hidden rounded-[2rem] bg-indigo-600 p-5 sm:p-8 text-white shadow-xl shadow-indigo-200 dark:shadow-none">
+          <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-[40px] pointer-events-none"></div>
+          <div className="absolute -left-10 -bottom-10 w-32 h-32 bg-indigo-400/20 rounded-full blur-[30px] pointer-events-none"></div>
+          
+          <div className="relative z-10 flex items-center justify-between gap-6">
+            <div className="space-y-2">
+              <motion.div 
+                 initial={{ opacity: 0, x: -20 }}
+                 animate={{ opacity: 1, x: 0 }}
+                 className="inline-flex items-center gap-2 bg-indigo-500/30 backdrop-blur-md px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold border border-white/10"
+              >
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
+                স্বাগতম
+              </motion.div>
+              <h1 className="text-xl sm:text-3xl font-black font-bengali leading-tight">
+                আসসালামু আলাইকুম, <br /><span className="text-indigo-200">{user.name}</span>!
+              </h1>
+              <p className="text-indigo-100 font-bengali text-xs sm:text-sm opacity-90 max-w-xs whitespace-pre-line">
+                পাঠাগারের সকল সেবা এখন আপনার হাতের নাগালে।
+              </p>
+            </div>
+            
+            <div className="hidden md:flex -space-x-2">
+               <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-xl flex items-center justify-center border border-white/30 rotate-6 shadow-lg">
+                  <Library className="w-7 h-7" />
+               </div>
+               <div className="w-12 h-12 rounded-xl bg-indigo-400/40 backdrop-blur-xl flex items-center justify-center border border-white/20 -rotate-12 shadow-lg mt-6">
+                  <BookmarkCheck className="w-6 h-6" />
+               </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* App Grid Menu - Condensed style */}
       <div className="bg-white dark:bg-slate-900/40 rounded-[2rem] p-5 sm:p-8 shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 transition-all">
@@ -456,21 +546,21 @@ export default function DashboardHome() {
       )}
 
       {/* Banner Carousel - Best size: 1200x400 pixels */}
-      {eventBanners.length > 0 && (
-        <div className="mt-8">
-          <div className="relative h-48 md:h-64 w-full rounded-[2rem] overflow-hidden shadow-lg border border-slate-100 dark:border-slate-800">
-            <AnimatePresence mode="wait">
-              <motion.img
-                key={bannerIndex}
-                src={eventBanners[bannerIndex]}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 1 }}
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-            </AnimatePresence>
-            
+      <div className="mt-8">
+        <div className="relative h-48 md:h-64 w-full rounded-[2rem] overflow-hidden shadow-lg border border-slate-100 dark:border-slate-800">
+          <AnimatePresence mode="wait">
+            <motion.img
+              key={eventBanners.length > 0 ? bannerIndex : 'default'}
+              src={eventBanners.length > 0 ? eventBanners[bannerIndex] : 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?q=80&w=1200&auto=format&fit=crop'}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1 }}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          </AnimatePresence>
+          
+          {eventBanners.length > 1 && (
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
               {eventBanners.map((_, i) => (
                 <div 
@@ -482,9 +572,9 @@ export default function DashboardHome() {
                 />
               ))}
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

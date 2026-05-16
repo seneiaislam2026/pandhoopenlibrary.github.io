@@ -190,51 +190,78 @@ export default function BuyBooks() {
       </Helmet>
 
       {/* Page Header */}
-      <div className="bg-slate-50 border-b border-slate-100 pt-32 pb-20 px-6">
-        <div className="max-w-7xl mx-auto text-center">
+      <div className="bg-white border-b border-slate-100 pt-28 pb-16 px-6 relative overflow-hidden">
+        {/* Decorative background blurs */}
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[60%] rounded-full bg-indigo-50/70 blur-3xl -z-10"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[60%] rounded-full bg-slate-50/80 blur-3xl -z-10"></div>
+
+        <div className="max-w-5xl mx-auto text-center relative z-10">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-600 text-xs font-bold font-bengali uppercase tracking-widest mb-6"
+          >
+            <Library size={14} /> আমাদের পাবলিকেশন ও কালেকশন
+          </motion.div>
+
           <motion.h1 
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="text-4xl md:text-7xl font-black text-slate-900 mb-6 font-bengali tracking-tight"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-4xl md:text-6xl font-black text-slate-900 mb-6 font-bengali tracking-tight leading-tight"
           >
             বই বাজার
           </motion.h1>
-          <p className="text-xl md:text-2xl text-slate-500 font-bengali max-w-2xl mx-auto font-medium">নতুন বই কিনুন এবং আমাদের পাঠাগারের উন্নয়নে সাহায্য করুন। সরাসরি আপনার ঠিকানায় পৌঁছে দেব।</p>
+          <motion.p 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="text-lg md:text-xl text-slate-500 font-bengali max-w-2xl mx-auto font-medium leading-relaxed"
+          >
+            নতুন বই সংগ্রহ করুন এবং আমাদের পাঠাগারের উন্নয়নে ভূমিকা রাখুন। আপনার পছন্দের বই আমরা সরাসরি আপনার ঠিকানায় পৌঁছে দেব।
+          </motion.p>
           
-          <div className="flex flex-col md:flex-row justify-center items-center gap-6 mt-12 max-w-4xl mx-auto px-6">
-             <div className="relative flex-1 w-full">
-                <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={24} />
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="flex flex-col sm:flex-row justify-center items-stretch sm:items-center gap-4 mt-12 max-w-3xl mx-auto"
+          >
+             <div className="relative flex-1 w-full bg-white rounded-2xl shadow-sm border border-slate-200 group focus-within:border-indigo-400 focus-within:ring-4 focus-within:ring-indigo-50 transition-all flex items-center h-[56px] sm:h-[64px]">
+                <Search className="absolute left-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={20} />
                 <input 
                   type="text" 
-                  placeholder="বইয়ের নাম বা লেখক দিয়ে খুঁজুন..." 
-                  className="w-full pl-16 pr-8 py-5 bg-white border border-slate-200 rounded-[2rem] outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-bengali font-bold text-lg"
+                  placeholder="বইয়ের নাম বা লেখক খুঁজুন..." 
+                  className="w-full bg-transparent pl-[52px] pr-4 h-full outline-none font-bengali font-medium text-[15px] sm:text-[17px] text-slate-800 placeholder-slate-400"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                 />
              </div>
-             <div className="flex gap-4 w-full md:w-auto">
+             <div className="flex gap-4 w-full sm:w-auto h-[56px] sm:h-[64px] shrink-0">
                 <button 
                   onClick={() => setShowCart(true)}
-                  className="flex-1 md:flex-none px-8 py-5 bg-white border border-slate-200 text-slate-900 rounded-[2rem] hover:border-indigo-600 transition-all flex items-center justify-center gap-3 font-bengali font-black relative"
+                  className="flex-1 sm:flex-none px-6 h-full bg-slate-900 text-white rounded-2xl hover:bg-indigo-600 transition-colors flex items-center justify-center gap-2.5 font-bengali font-bold shadow-md relative group active:scale-[0.98]"
                 >
-                   <ShoppingCart size={24} />
-                   কার্ট
-                   {cart.length > 0 && <span className="absolute -top-3 -right-3 bg-indigo-600 text-white text-xs w-8 h-8 rounded-full flex items-center justify-center border-4 border-white font-sans">{cart.length}</span>}
+                   <ShoppingCart size={20} className="opacity-90 group-hover:scale-110 transition-transform" />
+                   <span className="hidden sm:inline">কার্ট</span>
+                   {cart.length > 0 && <span className="absolute -top-2.5 -right-2.5 bg-rose-500 text-white text-[11px] min-w-[24px] h-[24px] rounded-full flex items-center justify-center px-1.5 font-bold font-sans shadow-md border-2 border-slate-900 group-hover:border-indigo-600 transition-colors">{cart.length}</span>}
                 </button>
                 <button 
                   onClick={() => { const el = document.getElementById('tracking'); el?.scrollIntoView({ behavior: 'smooth' }); }}
-                  className="flex-1 md:flex-none px-8 py-5 bg-slate-900 text-white rounded-[2rem] font-bengali font-black hover:bg-indigo-600 transition-all shadow-xl active:scale-95"
+                  className="flex-1 sm:flex-none px-6 h-full bg-white border border-slate-200 text-slate-700 rounded-2xl font-bengali font-bold hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-sm whitespace-nowrap active:scale-[0.98] flex items-center justify-center gap-2"
                 >
-                   অর্ডার ট্র্যাকিং
+                   <Truck size={20} className="text-slate-400" />
+                   <span className="sm:hidden">ট্র্যাক</span>
+                   <span className="hidden sm:inline">অর্ডার ট্র্যাকিং</span>
                 </button>
              </div>
-          </div>
+          </motion.div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-20">
         {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-10">
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-6 md:gap-8">
             {[1, 2, 3, 4, 5].map(i => (
               <div key={i} className="animate-pulse">
                 <div className="aspect-[2/3] bg-slate-50 rounded-[2.5rem] mb-6 border border-slate-100"></div>
@@ -244,7 +271,7 @@ export default function BuyBooks() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6 sm:gap-8">
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-6 md:gap-8">
             {filtered.map((book, index) => (
               <motion.div
                 key={book.id}
@@ -256,49 +283,61 @@ export default function BuyBooks() {
                   duration: 0.5,
                   ease: [0.16, 1, 0.3, 1] 
                 }}
-                className="bg-white rounded-[2rem] border border-slate-100 p-4 hover:shadow-[0_20px_50px_rgba(0,0,0,0.06)] transition-all group flex flex-col h-full relative border-gradient-to-br from-slate-200 to-indigo-100/20"
+                className="group flex flex-col bg-white overflow-hidden rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-100 transition-all duration-300 relative"
               >
-                <div className="aspect-[3/4] rounded-[1.5rem] overflow-hidden mb-5 bg-[#f8fafc] relative shrink-0 shadow-inner">
+                {/* Image Container */}
+                <div className="relative aspect-[3/4] bg-slate-50 overflow-hidden w-full">
                   {book.cover ? (
-                    <img src={book.cover} alt={book.title} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 ease-out" />
+                    <img 
+                      src={book.cover} 
+                      alt={book.title} 
+                      referrerPolicy="no-referrer" 
+                      className="w-full h-full object-cover origin-bottom transform group-hover:scale-105 transition-transform duration-700 ease-out" 
+                    />
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-6 text-slate-200">
-                       <BookOpen size={48} className="opacity-10 mb-2" />
-                       <span className="text-[10px] font-black text-center font-bengali opacity-30 px-2 line-clamp-2 uppercase tracking-widest">{book.title}</span>
+                    <div className="w-full h-full flex flex-col items-center justify-center p-6 text-slate-300">
+                       <BookOpen size={48} className="opacity-20 mb-3" />
+                       <span className="text-xs font-semibold text-center font-bengali opacity-40 px-2 line-clamp-2 uppercase tracking-wide">{book.title}</span>
                     </div>
                   )}
                   
-                  <div className="absolute top-4 left-4">
-                     <span className="bg-white/95 backdrop-blur-md text-indigo-700 px-4 py-1.5 rounded-full text-xs font-black font-sans shadow-lg shadow-indigo-200/20 border border-indigo-50">৳ {book.price}</span>
+                  {/* Badges Overlay */}
+                  <div className="absolute top-3 left-3 flex flex-col gap-2">
+                     <span className="bg-white/95 text-slate-900 px-3 py-1.5 rounded-lg text-xs font-bold font-sans shadow-sm border border-slate-100/50 backdrop-blur-sm">
+                       ৳ {book.price}
+                     </span>
+                     {book.stock !== undefined && book.stock <= 0 && !book.isPreOrderAvailable && (
+                        <span className="bg-rose-500/90 text-white px-3 py-1.5 rounded-lg text-[10px] uppercase font-bold font-bengali shadow-sm backdrop-blur-md">
+                          স্টক আউট
+                        </span>
+                     )}
                   </div>
-
-                  {book.stock !== undefined && book.stock <= 0 && !book.isPreOrderAvailable && (
-                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] flex items-center justify-center p-6">
-                       <span className="bg-rose-500/90 text-white px-4 py-2 rounded-full text-[10px] uppercase font-black font-bengali shadow-xl backdrop-blur-md tracking-wider">স্টক আউট (Out of Stock)</span>
-                    </div>
-                  )}
-
-                  {/* Quick Add Overlay */}
-                  <div className="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/5 transition-colors pointer-events-none" />
+                  
+                  {/* Subtle Gradient Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/10 to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                 </div>
 
-                <div className="flex-1 px-1">
-                   <div className="flex items-center gap-2 mb-2">
+                {/* Content */}
+                <div className="p-5 flex flex-col flex-1">
+                   <div className="flex items-center gap-2 mb-2.5">
                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
-                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] font-bengali">{book.category || 'নতুন বই'}</p>
+                     <span className="text-[11px] font-bold text-indigo-600/80 uppercase tracking-wider font-bengali">{book.category || 'নতুন বই'}</span>
                    </div>
-                   <h3 className="text-lg font-black text-slate-900 font-bengali line-clamp-1 leading-tight mb-1 group-hover:text-indigo-600 transition-colors">{book.title}</h3>
-                   <p className="text-sm text-slate-500 font-bengali font-medium truncate">{book.author}</p>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-slate-50">
-                  <button 
-                    onClick={() => addToCart(book)}
-                    disabled={book.stock === 0 && !book.isPreOrderAvailable}
-                    className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black font-bengali text-sm hover:bg-indigo-600 transition-all shadow-xl shadow-slate-200 hover:shadow-indigo-200/40 active:scale-95 disabled:opacity-30 disabled:grayscale disabled:pointer-events-none flex items-center justify-center gap-3"
-                  >
-                    শপিং কার্টে যোগ করুন <ShoppingCart size={18} />
-                  </button>
+                   
+                   <h3 className="text-lg font-bold text-slate-900 font-bengali line-clamp-2 leading-snug mb-1 group-hover:text-indigo-600 transition-colors shrink-0">{book.title}</h3>
+                   <p className="text-sm text-slate-500 font-bengali font-medium line-clamp-1 mb-6 shrink-0">{book.author}</p>
+                   
+                   {/* Add to cart section */}
+                   <div className="mt-auto">
+                     <button 
+                       onClick={() => addToCart(book)}
+                       disabled={book.stock === 0 && !book.isPreOrderAvailable}
+                       className="w-full py-3 bg-slate-900 text-white rounded-xl font-semibold font-bengali text-sm hover:bg-indigo-600 transition-all shadow-[0_4px_14px_0_rgb(0,0,0,0.1)] hover:shadow-[0_6px_20px_rgba(79,70,229,0.23)] active:scale-[0.98] disabled:opacity-40 disabled:grayscale disabled:pointer-events-none flex items-center justify-center gap-2 group-hover:-translate-y-0.5"
+                     >
+                       <ShoppingCart size={16} className="opacity-90" />
+                       শপিং কার্টে যোগ করুন
+                     </button>
+                   </div>
                 </div>
               </motion.div>
             ))}
