@@ -26,7 +26,9 @@ import {
   Clock,
   Facebook,
   MessageCircle,
-  X
+  X,
+  ArrowRight,
+  Calendar as CalendarIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import toast from 'react-hot-toast';
@@ -50,6 +52,7 @@ export default function DashboardHome() {
   const [availableBooks, setAvailableBooks] = useState<{id: string; title: string; bookCode: string}[]>([]);
   const [eventBanners, setEventBanners] = useState<string[]>([]);
   const [dismissedBanners, setDismissedBanners] = useState<string[]>([]);
+  const [activeEvents, setActiveEvents] = useState<any[]>([]);
   const [customGreeting, setCustomGreeting] = useState({
     enabled: false,
     title: '',
@@ -96,6 +99,13 @@ export default function DashboardHome() {
             sessionStorage.setItem(greetCacheKey, JSON.stringify(greetSettings));
             sessionStorage.setItem(cacheTimeKey, Date.now().toString());
           }
+
+          const eventsSnap = await getDocs(query(collection(db, 'events'), where('status', '==', 'Active')));
+          let events = eventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          if (user.role !== 'admin') {
+            events = events.filter((ev: any) => !ev.targetUserPhone || ev.targetUserPhone === user.phone);
+          }
+          setActiveEvents(events);
         } catch (err) {
           if (err instanceof Error && err.message.includes('Quota')) return;
           console.error("Error fetching banners:", err);
@@ -261,6 +271,7 @@ export default function DashboardHome() {
     { name: 'বই বিক্রয় অর্ডার', path: '/dashboard/shop-orders', icon: ShoppingCart, color: 'text-orange-400', bg: 'bg-orange-50 dark:bg-orange-500/10' },
     { name: 'বই কিনুন (Shop)', path: '/buy-books', icon: ShoppingBag, color: 'text-pink-400', bg: 'bg-pink-50 dark:bg-pink-500/10' },
     { name: 'আমার প্রোফাইল', path: '/dashboard/profile', icon: UserCircle2, color: 'text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10' },
+    { name: 'ইভেন্ট ও স্কলারশিপ', path: '/dashboard/events', icon: CalendarIcon, color: 'text-violet-400', bg: 'bg-violet-50 dark:bg-violet-500/10' },
     { name: 'ওয়েবসাইট সেটিংস', path: '/dashboard/settings', icon: Settings, color: 'text-slate-400', bg: 'bg-slate-50 dark:bg-slate-500/10' },
   ];
 
@@ -397,6 +408,31 @@ export default function DashboardHome() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Active Events Quick Access */}
+      {activeEvents.length > 0 && (
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-indigo-50 border-2 border-indigo-100 rounded-[2rem] p-6 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden"
+        >
+           <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+              <CalendarIcon className="w-32 h-32 text-indigo-600 -rotate-12" />
+           </div>
+           <div className="flex items-center gap-5 relative z-10">
+              <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-xl shadow-indigo-200/50">
+                 <Activity className="w-8 h-8 animate-pulse" />
+              </div>
+              <div className="space-y-1">
+                 <h3 className="text-xl font-black text-indigo-900 font-bengali">চলমান ইভেন্টে অংশগ্রহণ করুন</h3>
+                 <p className="text-indigo-600 font-bold font-bengali text-sm">{activeEvents.length}টি ইভেন্ট রেজিস্ট্রেশনের জন্য উন্মুক্ত রয়েছে।</p>
+              </div>
+           </div>
+           <Link to="/events" className="relative z-10 bg-indigo-600 text-white px-8 py-3.5 rounded-2xl font-black font-bengali shadow-lg shadow-indigo-200 hover:bg-slate-900 transition-all active:scale-95 flex items-center gap-2">
+             ইভেন্ট দেখুন <ArrowRight className="w-5 h-5" />
+           </Link>
+        </motion.div>
       )}
 
       {/* App Grid Menu - Condensed style */}

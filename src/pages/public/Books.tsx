@@ -45,6 +45,7 @@ export default function Books() {
   }, [selectedBook]);
 
   const categories = useMemo(() => {
+    if (!books) return [{ value: 'All', label: 'সকল বিভাগ' }];
     return ['All', ...Array.from(new Set(books.map(b => b.category).filter(c => c)))].map(c => ({
       value: c as string,
       label: c === 'All' ? 'সকল বিভাগ' : c as string
@@ -76,7 +77,8 @@ export default function Books() {
           const snapshot = await getDocs(collection(db, 'books'));
           booksData = snapshot.docs.map(doc => ({
             id: doc.id,
-            ...doc.data()
+            ...doc.data(),
+            cover: doc.data().cover || doc.data().imageUrl
           })) as Book[];
         } catch (fetchError: any) {
           if (fetchError?.message?.includes('Quota') || fetchError?.message?.includes('Quota limit exceeded')) {
@@ -86,7 +88,8 @@ export default function Books() {
               const cachedSnapshot = await getDocsFromCache(collection(db, 'books'));
               booksData = cachedSnapshot.docs.map(doc => ({
                 id: doc.id,
-                ...doc.data()
+                ...doc.data(),
+                cover: doc.data().cover || doc.data().imageUrl
               })) as Book[];
             } catch (cacheError) {
               console.error("Cache fetch failed:", cacheError);
@@ -147,10 +150,13 @@ export default function Books() {
 
   const [visibleCount, setVisibleCount] = useState(20);
 
-  const filtered = React.useMemo(() => {
-    const term = debouncedSearch.toLowerCase();
+  const filtered = useMemo(() => {
+    if (!books) return [];
+    const term = debouncedSearch?.toLowerCase() || '';
     return books.filter(b => {
-      const matchesSearch = b.title.toLowerCase().includes(term) || b.author.toLowerCase().includes(term);
+      const title = b.title?.toLowerCase() || '';
+      const author = b.author?.toLowerCase() || '';
+      const matchesSearch = title.includes(term) || author.includes(term);
       const matchesCategory = categoryFilter === 'All' || b.category === categoryFilter;
       return matchesSearch && matchesCategory;
     });
@@ -277,9 +283,17 @@ export default function Books() {
                       className="w-full h-full object-contain drop-shadow-sm" 
                     />
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-4 text-slate-200">
-                      <BookOpen size={32} className="mb-2 opacity-10" />
-                      <span className="text-[10px] font-black text-center font-bengali opacity-30 leading-tight">{book.title}</span>
+                    <div className="w-full h-full bg-[#f8f9fa] relative flex flex-col group-hover:scale-105 transition-transform duration-700 ease-out origin-bottom">
+                      <div className="absolute top-0 bottom-0 left-2 w-1 bg-gradient-to-r from-black/5 to-transparent z-10" />
+                      <div className="absolute top-0 bottom-0 left-5 w-[2px] bg-black/5 z-10" />
+                      <div className="absolute inset-0 opacity-[0.02] mix-blend-multiply" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23000000' fill-opacity='1' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E\")" }} />
+                      <div className="flex-1 flex flex-col items-center justify-center p-3 text-center z-20 mt-4">
+                        <div className="w-12 h-12 rounded-full border border-slate-200 bg-white flex items-center justify-center mb-3 shadow-sm opacity-70">
+                          <BookOpen strokeWidth={1} className="w-6 h-6 text-slate-300" />
+                        </div>
+                        <span className="text-xs font-black text-slate-500 font-bengali px-1 line-clamp-3 leading-snug">{book.title}</span>
+                        <span className="text-[9px] font-bold text-slate-400 font-bengali mt-2 opacity-80">{book.author}</span>
+                      </div>
                     </div>
                   )}
                   <div className="absolute top-2 right-2">
@@ -367,8 +381,17 @@ export default function Books() {
                   {selectedBook.cover ? (
                     <img src={selectedBook.cover} alt={selectedBook.title} referrerPolicy="no-referrer" className="w-full h-full object-contain" />
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-white border border-slate-100">
-                      <BookOpen size={64} className="text-slate-100" />
+                    <div className="w-full h-full bg-[#f8f9fa] relative flex flex-col">
+                      <div className="absolute top-0 bottom-0 left-4 w-2 bg-gradient-to-r from-black/5 to-transparent z-10" />
+                      <div className="absolute top-0 bottom-0 left-8 w-[3px] bg-black/5 z-10" />
+                      <div className="absolute inset-0 opacity-[0.02] mix-blend-multiply" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23000000' fill-opacity='1' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E\")" }} />
+                      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center z-20 mt-8">
+                        <div className="w-20 h-20 rounded-full border-2 border-slate-200 bg-white flex items-center justify-center mb-6 shadow-sm opacity-80">
+                          <BookOpen strokeWidth={1} className="w-10 h-10 text-slate-300" />
+                        </div>
+                        <span className="text-lg md:text-xl font-black text-slate-500 font-bengali px-2 line-clamp-4 leading-snug">{selectedBook.title}</span>
+                        <span className="text-sm font-bold text-slate-400 font-bengali mt-4 opacity-80">{selectedBook.author}</span>
+                      </div>
                     </div>
                   )}
                 </div>

@@ -15,9 +15,10 @@ import {
   BookOpen, 
   Bell, 
   MessageSquare, 
-  ArrowRight, 
+  Activity,
+  ArrowRight,
   BadgeCheck, 
-  Download, 
+  Download,
   X,
   Plus
 } from 'lucide-react';
@@ -54,6 +55,7 @@ export default function UserProfile() {
   const [eventBanners, setEventBanners] = useState<string[]>([]);
   const [dismissedBanners, setDismissedBanners] = useState<string[]>([]);
   const [myEvents, setMyEvents] = useState<any[]>([]);
+  const [myRegistrations, setMyRegistrations] = useState<any[]>([]);
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -89,6 +91,7 @@ export default function UserProfile() {
            setDues(parsed.dues || []);
            if (parsed.eventBanners) setEventBanners(parsed.eventBanners);
            setMyEvents(parsed.myEvents || []);
+           setMyRegistrations(parsed.myRegistrations || []);
            setBooks(JSON.parse(cachedBooks));
            setNotices(JSON.parse(cachedNotices));
            return;
@@ -113,7 +116,7 @@ export default function UserProfile() {
             dPayments = dPaySnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
         }
 
-        const [paySnap, preSnap, issuesSnap, purchSnap, msgSnap, notSnap, duesSnap, settingsSnap, eventsSnap] = await Promise.all([
+        const [paySnap, preSnap, issuesSnap, purchSnap, msgSnap, notSnap, duesSnap, settingsSnap, eventsSnap, regSnap] = await Promise.all([
           safeGetDocs(query(collection(db, "payments"), where("userId", "==", user.id))),
           safeGetDocs(query(collection(db, "pre-bookings"), where("userId", "==", user.id))),
           safeGetDocs(query(collection(db, "issues"), where("userId", "==", user.id))),
@@ -122,7 +125,8 @@ export default function UserProfile() {
           safeGetDocs(query(collection(db, 'notices'), limit(20))),
           safeGetDocs(query(collection(db, 'dues'), where('userId', '==', user.id))),
           getDoc(doc(db, "settings", "general")),
-          safeGetDocs(query(collection(db, 'events'), where('status', '!=', 'Closed')))
+          safeGetDocs(query(collection(db, 'events'), where('status', '!=', 'Closed'))),
+          safeGetDocs(query(collection(db, 'event_registrations'), where('userId', '==', user.id)))
         ]);
 
         const paymentsData = paySnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
@@ -133,6 +137,17 @@ export default function UserProfile() {
         const notData = notSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
         const duesData = duesSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
         const settingsData = settingsSnap.exists() ? (settingsSnap.data() as any) : {};
+        const regData = regSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) } as any));
+        
+        const eventIds = new Set(regData.map(r => r.eventId));
+        let regEventsData: any[] = [];
+        if (eventIds.size > 0) {
+           const evQ = query(collection(db, 'events'), where(documentId(), 'in', Array.from(eventIds)));
+           const evSnap = await getDocs(evQ);
+           regEventsData = evSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }
+
+        setMyRegistrations(regData.map(r => ({ ...r, event: regEventsData.find(e => e.id === r.eventId) })));
         
         const neededBookIds = new Set<string>();
         issuesData.forEach((i: any) => i.bookId && neededBookIds.add(i.bookId));
@@ -142,7 +157,7 @@ export default function UserProfile() {
         if (neededBookIds.size > 0) {
           const idsArray = Array.from(neededBookIds).slice(0, 30);
           const bSnap = await getDocs(query(collection(db, 'books'), where(documentId(), 'in', idsArray)));
-          booksData = bSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
+          booksData = bSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object), cover: doc.data().cover || doc.data().imageUrl }));
         }
 
         let eventsList = eventsSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) }));
@@ -175,6 +190,7 @@ export default function UserProfile() {
            messages: msgData,
            dues: duesData,
            myEvents: eventsList,
+           myRegistrations: regData.map(r => ({ ...r, event: regEventsData.find((e:any) => e.id === r.eventId) })),
            eventBanners: fetchedBanners
         };
 
@@ -458,8 +474,12 @@ export default function UserProfile() {
                               <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all">
                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
                                     <div className="flex gap-4">
-                                       <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-300 font-black text-xl font-mono uppercase">
-                                          {book?.title?.charAt(0)}
+                                       <div className="w-16 h-20 rounded-2xl bg-indigo-50 overflow-hidden border border-indigo-100 flex items-center justify-center shrink-0">
+                                          {book?.cover ? (
+                                             <img src={book.cover} alt={book.title} className="w-full h-full object-cover" />
+                                          ) : (
+                                             <span className="text-indigo-300 font-black text-xl font-mono uppercase">{book?.title?.charAt(0)}</span>
+                                          )}
                                        </div>
                                        <div>
                                           <h4 className="text-lg font-black text-slate-800 dark:text-white leading-tight mb-1">{book?.title}</h4>
@@ -551,6 +571,51 @@ export default function UserProfile() {
                         ))
                      )}
                   </div>
+               </div>
+
+               {/* My Event Registrations - Live Updates */}
+               <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6 md:col-span-2">
+                  <h3 className="text-xl font-black text-slate-800 font-bengali flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+                           <Activity className="w-6 h-6" />
+                        </div>
+                        আমার ইভেন্ট আবেদনসমূহ
+                     </div>
+                     <span className="text-xs font-black text-slate-400 font-mono tracking-widest">{myRegistrations.length}</span>
+                  </h3>
+                  
+                  {myRegistrations.length === 0 ? (
+                     <div className="py-10 text-center bg-slate-50 rounded-[2rem] border border-dashed border-slate-200">
+                        <p className="text-slate-400 font-bold font-bengali">আপনি এখনও কোনো ইভেন্টে আবেদন করেননি</p>
+                        <Link to="/events" className="text-indigo-600 font-black text-sm font-bengali mt-2 inline-block">চলমান ইভেন্ট দেখুন</Link>
+                     </div>
+                  ) : (
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {myRegistrations.map(reg => (
+                           <div key={reg.id} className="p-5 bg-slate-50 rounded-[2rem] border border-slate-100 flex flex-col justify-between group hover:border-indigo-300 transition-all">
+                              <div className="flex justify-between items-start mb-4">
+                                 <div>
+                                    <h4 className="font-black text-slate-800 font-bengali leading-tight mb-1">{reg.event?.title || 'Unknown Event'}</h4>
+                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{reg.event?.type}</p>
+                                 </div>
+                                 <span className={cn(
+                                    "text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest border",
+                                    reg.status === 'approved' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                                    reg.status === 'rejected' ? "bg-rose-50 text-rose-600 border-rose-100" :
+                                    "bg-amber-50 text-amber-600 border-amber-100"
+                                 )}>
+                                    {reg.status || 'Pending'}
+                                 </span>
+                              </div>
+                              <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-200/50">
+                                 <span className="text-[10px] font-bold text-slate-400 font-sans">#E{(reg.registeredAt?.seconds || Date.now()).toString().slice(-6)}</span>
+                                 <Link to={`/events?eventId=${reg.eventId}`} className="text-[11px] font-black text-indigo-600 font-bengali hover:underline">বিস্তারিত দেখুন</Link>
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  )}
                </div>
             </div>
          </div>

@@ -145,7 +145,7 @@ export default function ManageIssues() {
         } else setIssues(checkCache('admin_issues_cache'));
 
         if (booksSnap) {
-          const docs = booksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const docs = booksSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), cover: doc.data().cover || doc.data().imageUrl }));
           setBooks(docs);
           setCache('admin_books_cache', docs);
         } else setBooks(checkCache('admin_books_cache'));
@@ -1157,7 +1157,7 @@ export default function ManageIssues() {
 
         <div className="space-y-4">
           <AnimatePresence mode="popLayout">
-            {groupedIssues.map((group, idx) => {
+            {groupedIssues.map((group: any, idx) => {
               const member = group.member;
               
               return (
@@ -1202,8 +1202,8 @@ export default function ManageIssues() {
                               {/* Book Info */}
                               <div className="flex-1 flex gap-3.5">
                                 <div className="w-14 h-20 md:w-16 md:h-24 rounded-lg overflow-hidden bg-white flex-shrink-0 border border-slate-200 shadow-sm">
-                                  {book?.imageUrl ? (
-                                     <img src={book.imageUrl} alt={book.title} className="w-full h-full object-cover" />
+                                  {book?.cover ? (
+                                     <img src={book.cover} alt={book.title} className="w-full h-full object-cover" />
                                   ) : (
                                      <div className="w-full h-full flex items-center justify-center bg-slate-100">
                                         <BookOpen className="w-5 h-5 md:w-6 md:h-6 text-slate-300" />

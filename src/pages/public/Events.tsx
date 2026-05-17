@@ -5,7 +5,6 @@ import { Calendar, Clock, MapPin, Printer, CheckCircle, ArrowRight, Sparkles, Za
 import { useAuth } from '../../store/AuthContext';
 import { toast } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
-import { useReactToPrint } from 'react-to-print';
 import { Helmet } from 'react-helmet-async';
 import { sendSMS } from '../../lib/sms';
 
@@ -36,6 +35,7 @@ interface Event {
   customFields?: CustomField[];
   smsTemplate?: string;
   targetUserPhone?: string;
+  guidelines?: string;
 }
 
 export default function Events() {
@@ -69,14 +69,50 @@ export default function Events() {
     status: 'Active' as const,
     image: '',
     requiredDocuments: [] as string[],
-    customQuestions: [] as string[]
+    customQuestions: [] as string[],
+    customFields: [] as CustomField[],
+    isScholarship: false,
+    smsTemplate: '',
+    targetUserPhone: '',
+    guidelines: ''
   });
+  const [eventImageFile, setEventImageFile] = useState<File | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
-  const handlePrint = useReactToPrint({
-    contentRef: printRef,
-    documentTitle: `লাইব্রেরি-ইভেন্ট-স্লিপ-${selectedEvent?.title}`,
-  });
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Print Slip</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+            <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
+          </head>
+          <body>
+            ${printRef.current?.innerHTML || ''}
+            <script>
+              JsBarcode("#barcode", "${currentSerial.toString().padStart(4, '0')}", {
+                format: "CODE128",
+                width: 2,
+                height: 40,
+                displayValue: true,
+                fontSize: 14,
+                margin: 10
+              });
+              setTimeout(() => {
+                window.print();
+                window.close();
+              }, 800);
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    } else {
+      toast.error('Please allow pop-ups to print');
+    }
+  };
 
   useEffect(() => {
     fetchEvents();
@@ -129,13 +165,49 @@ export default function Events() {
     
     setLoading(true);
     try {
-      await addDoc(collection(db, 'events'), {
+      let imageUrl = newEvent.image;
+      if (eventImageFile) {
+         const fileRef = ref(storage, `events/${Date.now()}_${eventImageFile.name}`);
+         await uploadBytes(fileRef, eventImageFile);
+         imageUrl = await getDownloadURL(fileRef);
+      }
+
+      const docRef = await addDoc(collection(db, 'events'), {
         ...newEvent,
+        image: imageUrl,
         creatorId: user.id,
         createdAt: serverTimestamp()
       });
       toast.success("ইভেন্ট সফলভাবে তৈরি হয়েছে!");
+      
+      const newEventData = {
+        id: docRef.id,
+        ...newEvent,
+        image: imageUrl,
+        creatorId: user.id,
+        createdAt: new Date().toISOString()
+      } as any;
+      
+      setEvents(prev => [...prev, newEventData].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+      
       setShowCreateModal(false);
+      setNewEvent({
+        title: '',
+        description: '',
+        date: '',
+        deadline: '',
+        type: 'সাংস্কৃতিক',
+        status: 'Active',
+        image: '',
+        requiredDocuments: [],
+        customQuestions: [],
+        customFields: [],
+        isScholarship: false,
+        smsTemplate: '',
+        targetUserPhone: '',
+        guidelines: ''
+      });
+      setEventImageFile(null);
       fetchEvents();
     } catch (error) {
       toast.error("ইভেন্ট তৈরি করতে সমস্যা হয়েছে");
@@ -146,29 +218,44 @@ export default function Events() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) {
-      toast.error("রেজিস্ট্রেশন করতে দয়া করে লগইন করুন");
+    if (!selectedEvent) return;
+    
+    let finalName = applicantName;
+    let finalPhone = applicantPhone;
+
+    if (selectedEvent.customFields) {
+      const nameField = selectedEvent.customFields.find(f => f.label.toLowerCase().includes('name') || f.label.includes('নাম'));
+      const phoneField = selectedEvent.customFields.find(f => f.label.toLowerCase().includes('phone') || f.label.toLowerCase().includes('mobile') || f.label.includes('মোবাইল') || f.label.includes('ফোন') || f.label.toLowerCase().includes('number'));
+      
+      if (!finalName && nameField) finalName = customFieldValues[nameField.id] || '';
+      if (!finalPhone && phoneField) finalPhone = customFieldValues[phoneField.id] || '';
+    }
+
+    if (!finalName || !finalPhone) {
+      toast.error("দয়া করে নাম এবং মোবাইল নম্বর প্রদান করুন");
       return;
     }
-    if (!selectedEvent) return;
 
     setRegistering(true);
     try {
       let registrationData: any = {
         eventId: selectedEvent.id,
-        userId: user.id,
-        userName: applicantName,
-        userPhone: applicantPhone,
+        userId: user?.id || 'anonymous',
+        userName: finalName,
+        userPhone: finalPhone,
         registeredAt: serverTimestamp(),
         createdAt: serverTimestamp(),
       };
 
-      // Handle Scholarship Documents & Answers (Legacy)
-      if (selectedEvent.isScholarship) {
+      setApplicantName(finalName);
+      setApplicantPhone(finalPhone);
+
+      // Handle Scholarship/Medical Documents & Answers
+      if (selectedEvent.isScholarship || selectedEvent.type === 'মেডিকেল ইভেন্ট') {
         // Upload Files
         const documentUrls: Record<string, string> = {};
         for (const [docName, file] of Object.entries(scholarshipFiles)) {
-          const fileRef = ref(storage, `scholarships/${selectedEvent.id}/${user.id}/${docName}_${Date.now()}`);
+          const fileRef = ref(storage, `scholarships/${selectedEvent.id}/${user?.id || 'anon'}_${Date.now()}/${docName}`);
           await uploadBytes(fileRef, file);
           const url = await getDownloadURL(fileRef);
           documentUrls[docName] = url;
@@ -186,8 +273,9 @@ export default function Events() {
       if (selectedEvent.customFields && selectedEvent.customFields.length > 0) {
          const formattedAnswers: Record<string, { label: string, value: string }> = {};
          selectedEvent.customFields.forEach(field => {
-            formattedAnswers[field.label] = {
-               label: field.label,
+            const safeKey = field.id || Date.now().toString() + Math.random().toString(36).slice(2);
+            formattedAnswers[safeKey] = {
+               label: field.label || 'Unknown Field',
                value: customFieldValues[field.id] || ''
             };
          });
@@ -198,7 +286,30 @@ export default function Events() {
       try {
          const regQuery = query(collection(db, 'event_registrations'), where('eventId', '==', selectedEvent.id));
          const snapshot = await getDocs(regQuery);
-         registrationData.serialNumber = snapshot.size + 1;
+         
+         let isDepartmental = false;
+         let departmentValue = '';
+         if (selectedEvent.type === 'মেডিকেল ক্যাম্পেইন' && selectedEvent.customFields) {
+            const deptField = selectedEvent.customFields.find(f => f.label.toLowerCase().includes('dept') || f.label.toLowerCase().includes('বিভাগ'));
+            if (deptField && customFieldValues[deptField.id]) {
+                isDepartmental = true;
+                departmentValue = customFieldValues[deptField.id].toLowerCase().trim();
+            }
+         }
+
+         if (isDepartmental && departmentValue) {
+             const deptDocs = snapshot.docs.filter(doc => {
+                 const data = doc.data();
+                 if (!data.customFieldAnswers) return false;
+                 return Object.values(data.customFieldAnswers).some((ans: any) => 
+                     (ans.label.toLowerCase().includes('dept') || ans.label.toLowerCase().includes('বিভাগ')) && 
+                     String(ans.value).toLowerCase().trim() === departmentValue
+                 );
+             });
+             registrationData.serialNumber = deptDocs.length + 1;
+         } else {
+             registrationData.serialNumber = snapshot.size + 1;
+         }
       } catch (err) {
          registrationData.serialNumber = 1;
       }
@@ -207,10 +318,16 @@ export default function Events() {
       await addDoc(collection(db, 'event_registrations'), registrationData);
       
       // Handle Auto SMS
-      if (selectedEvent.smsTemplate && applicantPhone) {
-         const message = selectedEvent.smsTemplate
-             .replace(/{name}/g, applicantName || user.name || '')
-             .replace(/{serial}/g, registrationData.serialNumber.toString());
+      if (applicantPhone) {
+         let message = '';
+         if (selectedEvent.smsTemplate) {
+            message = selectedEvent.smsTemplate
+                 .replace(/{name}/g, applicantName || user.name || '')
+                 .replace(/{serial}/g, registrationData.serialNumber.toString());
+         } else {
+            message = `ধন্যবাদ ${applicantName || ''}, আপনার সিরিয়াল নাম্বার ${registrationData.serialNumber}। ${selectedEvent.title}-এ আপনাকে স্বাগতম!`;
+         }
+         
          try {
              await sendSMS(applicantPhone, message);
          } catch (e) {
@@ -401,13 +518,27 @@ export default function Events() {
                      <label className="block text-base font-bold text-slate-900 font-bengali mb-4 transition-colors">ইভেন্টের ধরন</label>
                      <select 
                        value={newEvent.type} 
-                       onChange={e => setNewEvent({...newEvent, type: e.target.value})} 
+                       onChange={e => {
+                         const type = e.target.value;
+                         let newCustomFields: any[] = [];
+                         if (type === 'মেডিকেল ক্যাম্পেইন') {
+                            newCustomFields = [
+                               { id: 'field_' + Date.now() + 1, label: 'Patient Name', type: 'text', required: true },
+                               { id: 'field_' + Date.now() + 2, label: 'Mobile Number', type: 'text', required: true },
+                               { id: 'field_' + Date.now() + 3, label: 'Gender', type: 'select', required: true, options: 'Male, Female, Other' },
+                               { id: 'field_' + Date.now() + 4, label: 'Age (DOB)', type: 'date', required: true, calculateAge: true },
+                               { id: 'field_' + Date.now() + 5, label: 'Dept', type: 'text', required: true }
+                            ];
+                         }
+                         setNewEvent({...newEvent, type, customFields: newCustomFields, isScholarship: type === 'Scholarship' || type === 'QuestionAnswer' || type === 'বৃত্তি' || type === 'প্রশ্ন উত্তর'});
+                       }} 
                        className="w-full px-0 py-3 bg-transparent border-b-2 border-slate-200 group-focus-within:border-[#673ab7] outline-none transition-all font-bengali font-bold text-slate-700"
                      >
                         <option>বৃত্তি পরীক্ষা</option>
                         <option>সাংস্কৃতিক</option>
                         <option>রচনা প্রতিযোগিতা</option>
                         <option>সেমিনার</option>
+                        <option>মেডিকেল ক্যাম্পেইন</option>
                         <option>অন্যান্য</option>
                      </select>
                   </div>
@@ -451,14 +582,36 @@ export default function Events() {
 
                   {/* Image */}
                   <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm group">
-                     <label className="block text-base font-bold text-slate-900 font-bengali mb-4 transition-colors">ইমেজ ইউআরএল (ঐচ্ছিক)</label>
-                     <input 
-                       type="url" 
-                       value={newEvent.image} 
-                       onChange={e=>setNewEvent({...newEvent, image: e.target.value})} 
-                       placeholder="https://images.unsplash.com/..." 
-                       className="w-full px-0 py-3 bg-transparent border-b-2 border-slate-200 group-focus-within:border-[#673ab7] outline-none transition-all font-sans font-bold text-sm" 
+                     <label className="block text-base font-bold text-slate-900 font-bengali mb-4 transition-colors">ইভেন্ট কভার ইমেজ (ঐচ্ছিক, Max 2MB) বা লিংক</label>
+                     <input
+                       type="url"
+                       value={newEvent.image || ''}
+                       onChange={(e) => {
+                         setNewEvent({ ...newEvent, image: e.target.value });
+                         setEventImageFile(null);
+                       }}
+                       className="w-full px-0 py-3 border-b-2 border-slate-100 focus:border-[#673ab7] outline-none font-sans text-sm transition-all mb-4"
+                       placeholder="ইমেজের ডাইরেক্ট লিংক দিন (অথবা নিচে থেকে ফাইল আপলোড করুন)"
                      />
+                     <input 
+                       type="file" 
+                       accept="image/*"
+                       onChange={e => {
+                         const file = e.target.files?.[0];
+                         if (file) {
+                           if (file.size > 2 * 1024 * 1024) {
+                             toast.error('ইমেজের সাইজ 2MB এর বেশি হতে পারবে না');
+                             e.target.value = '';
+                             return;
+                           }
+                           setEventImageFile(file);
+                         }
+                       }} 
+                       className="w-full px-0 py-3 bg-transparent outline-none transition-all font-sans font-bold text-sm" 
+                     />
+                    {newEvent.image && !eventImageFile && (
+                       <p className="text-xs text-green-600 mt-2">ইতিমধ্যে একটি ছবি বা লিংক দেওয়া আছে। পরিবর্তন করতে নতুন ছবি নির্বাচন বা লিংক দিন।</p>
+                    )}
                   </div>
 
                   {/* Floating Submit Button (similar to screenshot) */}
@@ -501,14 +654,18 @@ export default function Events() {
 
                     <div className="space-y-6 sm:space-y-8">
                        <div className="bg-slate-50 p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2rem] border border-slate-100 space-y-5 sm:space-y-6">
-                          <div className="flex flex-col gap-2 pb-4 border-b border-slate-200/60 text-left">
-                             <label className="text-sm font-black text-slate-400 uppercase tracking-widest font-bengali">আবেদনকারীর নাম</label>
-                             <input type="text" required value={applicantName} onChange={e=>setApplicantName(e.target.value)} placeholder="আবেদনকারীর নাম" className="w-full bg-white px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold text-base" />
-                          </div>
-                          <div className="flex flex-col gap-2 pb-4 border-b border-slate-200/60 text-left">
-                             <label className="text-sm font-black text-slate-400 uppercase tracking-widest font-bengali">মোবাইল নম্বর</label>
-                             <input type="text" required value={applicantPhone} onChange={e=>setApplicantPhone(e.target.value)} placeholder="017........" className="w-full bg-white px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold text-base" />
-                          </div>
+                          {(!selectedEvent.isScholarship && (!selectedEvent.customFields || selectedEvent.customFields.length === 0)) && (
+                             <>
+                               <div className="flex flex-col gap-2 pb-4 border-b border-slate-200/60 text-left">
+                                  <label className="text-sm font-black text-slate-400 uppercase tracking-widest font-bengali">আবেদনকারীর নাম <span className="text-rose-500">*</span></label>
+                                  <input type="text" required value={applicantName} onChange={e=>setApplicantName(e.target.value)} placeholder="আবেদনকারীর নাম" className="w-full bg-white px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold text-base" />
+                               </div>
+                               <div className="flex flex-col gap-2 pb-4 border-b border-slate-200/60 text-left">
+                                  <label className="text-sm font-black text-slate-400 uppercase tracking-widest font-bengali">মোবাইল নম্বর <span className="text-rose-500">*</span></label>
+                                  <input type="text" required value={applicantPhone} onChange={e=>setApplicantPhone(e.target.value)} placeholder="017........" className="w-full bg-white px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold text-base" />
+                               </div>
+                             </>
+                          )}
                           <div className="flex justify-between items-center pb-4 border-b border-slate-200/60">
                              <span className="text-sm font-black text-slate-400 uppercase tracking-widest font-bengali">ইভেন্টের ধরন:</span>
                              <span className="font-black text-indigo-600 font-bengali">{selectedEvent.type}</span>
@@ -522,7 +679,7 @@ export default function Events() {
                         {selectedEvent.isScholarship && (
                           <div className="space-y-6 sm:space-y-8">
                             <h4 className="font-black text-slate-800 font-bengali text-base sm:text-lg border-b pb-3 sm:pb-4">
-                              {selectedEvent.type === 'QuestionAnswer' ? 'প্রশ্নোত্তর আবেদন ফরম' : 'শিক্ষাবৃত্তি আবেদন ফরম'}
+                              {selectedEvent.type === 'QuestionAnswer' ? 'প্রশ্নোত্তর আবেদন ফরম' : selectedEvent.type === 'মেডিকেল ক্যাম্পেইন' ? 'মেডিকেল ক্যাম্পেইন আবেদন ফরম' : 'শিক্ষাবৃত্তি আবেদন ফরম'}
                             </h4>
                             
                             <div className="space-y-5 sm:space-y-6">
@@ -564,25 +721,35 @@ export default function Events() {
 
                         {selectedEvent.customFields && selectedEvent.customFields.length > 0 && (
                           <div className="space-y-5 sm:space-y-6">
-                             {selectedEvent.customFields.map((field) => (
-                               <div key={field.id} className="flex flex-col gap-1.5 sm:gap-2 text-left">
+                             {!(selectedEvent.customFields.some(f => f.label.toLowerCase().includes('name') || f.label.includes('নাম'))) && (
+                               <div className="flex flex-col gap-1.5 sm:gap-2 text-left">
                                  <label className="text-xs sm:text-sm font-black text-slate-700 font-bengali">
-                                    {field.label} {field.required && <span className="text-rose-500">*</span>}
+                                    আবেদনকারীর নাম <span className="text-rose-500">*</span>
                                  </label>
-                                 
-                                 {field.type === 'text' && (
-                                   <input type="text" required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold text-base" />
-                                 )}
+                                 <input type="text" required value={applicantName} onChange={e=>setApplicantName(e.target.value)} placeholder="আবেদনকারীর নাম" className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold text-base" />
+                               </div>
+                             )}
 
-                                 {field.type === 'number' && (
-                                   <input type="number" required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold text-base" />
-                                 )}
+                             {selectedEvent.customFields.map((field, idx) => (
+                               <React.Fragment key={field.id}>
+                                 <div className="flex flex-col gap-1.5 sm:gap-2 text-left">
+                                   <label className="text-xs sm:text-sm font-black text-slate-700 font-bengali">
+                                      {field.label} {field.required && <span className="text-rose-500">*</span>}
+                                   </label>
+                                   
+                                   {field.type === 'text' && (
+                                     <input type="text" required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold text-base" />
+                                   )}
 
-                                 {field.type === 'textarea' && (
-                                   <textarea required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold min-h-[100px] text-base" />
-                                 )}
+                                   {field.type === 'number' && (
+                                     <input type="number" required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold text-base" />
+                                   )}
 
-                                 {field.type === 'select' && (
+                                   {field.type === 'textarea' && (
+                                     <textarea required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold min-h-[100px] text-base" />
+                                   )}
+
+                                   {field.type === 'select' && (
                                    <div className="relative">
                                      <select required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold appearance-none text-base">
                                         <option value="">নির্বাচন করুন</option>
@@ -609,8 +776,29 @@ export default function Events() {
                                      )}
                                    </div>
                                  )}
+                                 
+                                 {/* Inject phone right after first element if it's missing entirely from the custom fields */}
+                                 {idx === 0 && !(selectedEvent.customFields.some(f => f.label.toLowerCase().includes('phone') || f.label.toLowerCase().includes('mobile') || f.label.includes('মোবাইল') || f.label.includes('ফোন') || f.label.toLowerCase().includes('number'))) && (
+                                   <div className="flex flex-col gap-1.5 sm:gap-2 text-left mt-5 sm:mt-6">
+                                     <label className="text-xs sm:text-sm font-black text-slate-700 font-bengali">
+                                        মোবাইল নম্বর <span className="text-rose-500">*</span>
+                                     </label>
+                                     <input type="text" required value={applicantPhone} onChange={e=>setApplicantPhone(e.target.value)} placeholder="017........" className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold text-base" />
+                                   </div>
+                                 )}
                                </div>
+                               </React.Fragment>
                              ))}
+                             
+                             {/* If there were 0 elements for some reason, inject phone field at the very end */}
+                             {selectedEvent.customFields.length === 0 && !(selectedEvent.customFields.some(f => f.label.toLowerCase().includes('phone') || f.label.toLowerCase().includes('mobile') || f.label.includes('মোবাইল') || f.label.includes('ফোন') || f.label.toLowerCase().includes('number'))) && (
+                                 <div className="flex flex-col gap-1.5 sm:gap-2 text-left">
+                                   <label className="text-xs sm:text-sm font-black text-slate-700 font-bengali">
+                                      মোবাইল নম্বর <span className="text-rose-500">*</span>
+                                   </label>
+                                   <input type="text" required value={applicantPhone} onChange={e=>setApplicantPhone(e.target.value)} placeholder="017........" className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold text-base" />
+                                 </div>
+                             )}
                           </div>
                         )}
                        
@@ -618,16 +806,20 @@ export default function Events() {
                         <h4 className="font-black text-emerald-700 mb-3 font-bengali flex items-center gap-3 text-lg">
                           <Clock size={22} /> ইভেন্ট গাইডলাইনসমূহ
                         </h4>
-                        <ul className="space-y-3 text-emerald-600 font-bengali font-bold text-sm">
-                          <li className="flex items-start gap-3">
-                            <CheckCircle size={18} className="mt-0.5 flex-shrink-0" />
-                            <span>নির্দিষ্ট সময়ের ৩০ মিনিট আগে উপস্থিত থাকতে হবে</span>
-                          </li>
-                          <li className="flex items-start gap-3">
-                            <CheckCircle size={18} className="mt-0.5 flex-shrink-0" />
-                            <span>রেজিস্ট্রেশন স্লিপটি অবশ্যই সাথে আনতে হবে (পিডিএফ)</span>
-                          </li>
-                        </ul>
+                        <div className="text-emerald-600 font-bengali font-bold text-sm whitespace-pre-line">
+                          {selectedEvent.guidelines || (
+                            <ul className="space-y-3">
+                              <li className="flex items-start gap-3">
+                                <CheckCircle size={18} className="mt-0.5 flex-shrink-0" />
+                                <span>নির্দিষ্ট সময়ের ৩০ মিনিট আগে উপস্থিত থাকতে হবে</span>
+                              </li>
+                              <li className="flex items-start gap-3">
+                                <CheckCircle size={18} className="mt-0.5 flex-shrink-0" />
+                                <span>রেজিস্ট্রেশন স্লিপটি অবশ্যই সাথে আনতে হবে (পিডিএফ)</span>
+                              </li>
+                            </ul>
+                          )}
+                        </div>
                       </div>
 
                       <div className="flex flex-col sm:flex-row gap-4 pt-4">
@@ -658,9 +850,14 @@ export default function Events() {
                       <CheckCircle size={48} />
                     </motion.div>
                     <h2 className="text-4xl font-black text-slate-900 mb-4 font-bengali">স্বাগতম! সফলভাবে নিবন্ধিত</h2>
-                    <p className="text-slate-500 font-bengali font-medium mb-12 text-lg">
+                    <p className="text-slate-500 font-bengali font-medium mb-8 text-lg">
                       আপনার রেজিস্ট্রেশন স্লিপটি ডাউনলোড করে নিন। ইভেন্টের দিন এটি প্রদর্শন বাধ্যতামূলক।
                     </p>
+                    
+                    <div className="bg-slate-50 rounded-2xl p-6 max-w-sm mx-auto mb-8 border border-slate-200">
+                        <span className="text-xs font-bold text-slate-400 font-bengali uppercase tracking-widest block mb-2">আপনার সিরিয়াল নাম্বার</span>
+                        <p className="text-4xl font-black text-indigo-600 font-sans tracking-tight">#{currentSerial}</p>
+                    </div>
                     
                     {/* Printable area */}
                     <div className="hidden">
@@ -685,7 +882,8 @@ export default function Events() {
                                </div>
                                <div>
                                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">SERIAL NUMBER / ID</span>
-                                  <p className="text-xl font-bold font-sans">#E{currentSerial.toString().padStart(4, '0')} (-{Math.random().toString(36).substr(2, 4).toUpperCase()})</p>
+                                  <p className="text-xl font-bold font-sans">#E{currentSerial.toString().padStart(4, '0')}</p>
+                                  <svg id="barcode" className="mt-2 text-left"></svg>
                                 </div>
                             </div>
                             

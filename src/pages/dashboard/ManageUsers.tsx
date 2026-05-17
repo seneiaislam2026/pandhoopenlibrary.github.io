@@ -49,7 +49,8 @@ import {
   LogOut,
   Key,
   MessageCircle,
-  Phone
+  Phone,
+  BookOpen
 } from "lucide-react";
 
 import { sendSMS } from "../../lib/sms";
@@ -156,7 +157,7 @@ export default function ManageUsers() {
         ]);
 
         if (booksSnap) {
-          const docs = booksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const docs = booksSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), cover: doc.data().cover || doc.data().imageUrl }));
           setBooks(docs);
           setCache('admin_books_cache', docs);
         } else setBooks(checkCache('admin_books_cache'));
@@ -1511,9 +1512,18 @@ const handleAddUser = async (e: React.FormEvent) => {
                        const book = books.find(b => b.id === i.bookId);
                        return (
                          <div key={i.id} className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-100 shadow-sm transition-all hover:border-indigo-200">
-                            <div>
-                              <p className="font-bold text-sm text-slate-800">{book?.title || 'Unknown'}</p>
-                              <p className="text-[10px] text-indigo-600 font-black">CODE: {book?.bookCode}</p>
+                            <div className="flex gap-3 items-center">
+                              <div className="w-10 h-14 rounded-lg bg-slate-50 overflow-hidden flex items-center justify-center border border-slate-100 shrink-0">
+                                 {book?.cover ? (
+                                    <img src={book.cover} alt={book.title} className="w-full h-full object-cover" />
+                                 ) : (
+                                    <BookOpen className="w-4 h-4 text-slate-300" />
+                                 )}
+                              </div>
+                              <div>
+                                <p className="font-bold text-sm text-slate-800">{book?.title || 'Unknown'}</p>
+                                <p className="text-[10px] text-indigo-600 font-black">CODE: {book?.bookCode}</p>
+                              </div>
                             </div>
                             <button 
                               onClick={async () => {

@@ -38,7 +38,7 @@ export default function ManageShopBooks() {
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'shop-books'), (snapshot) => {
-      setBooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ShopBook[]);
+      setBooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), cover: doc.data().cover || doc.data().imageUrl })) as ShopBook[]);
     });
     return () => unsubscribe();
   }, []);

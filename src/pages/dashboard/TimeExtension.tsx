@@ -30,7 +30,7 @@ export default function TimeExtension() {
         );
 
         setIssues(activeIssues);
-        setBooks(booksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setBooks(booksSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), cover: doc.data().cover || doc.data().imageUrl })));
         setLoading(false);
       } catch (err) {
         console.error("Error fetching issued books:", err);

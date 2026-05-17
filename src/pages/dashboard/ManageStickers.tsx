@@ -60,7 +60,7 @@ export default function ManageStickers() {
     const fetchBooks = async () => {
       try {
         const booksSnap = await getDocs(collection(db, 'books'));
-        const fetchedBooks = booksSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const fetchedBooks = booksSnap.docs.map(d => ({ id: d.id, ...d.data(), cover: d.data().cover || d.data().imageUrl }));
         setBooks(fetchedBooks);
         sessionStorage.setItem('admin_books_cache', JSON.stringify(fetchedBooks));
         sessionStorage.setItem('admin_books_time', Date.now().toString());

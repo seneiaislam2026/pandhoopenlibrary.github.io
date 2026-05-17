@@ -27,7 +27,7 @@ export default function UserBooks() {
 
         setIssues(issuesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         setPreBookings(preSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        setBooks(booksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setBooks(booksSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), cover: doc.data().cover || doc.data().imageUrl })));
         setLoading(false);
       } catch (err) {
         console.error("Error fetching user books:", err);
@@ -247,8 +247,12 @@ export default function UserBooks() {
                       return (
                         <div key={pb.id} className="bg-white p-6 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 hover:shadow-lg transition-shadow">
                           <div className="flex gap-4 items-start mb-6">
-                            <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-500 flex items-center justify-center shrink-0">
-                               <BookOpen className="w-6 h-6" />
+                            <div className="w-12 h-16 rounded-xl bg-indigo-50 overflow-hidden border border-indigo-100 flex items-center justify-center shrink-0">
+                               {book?.cover ? (
+                                  <img src={book.cover} alt={book.title} className="w-full h-full object-cover" />
+                               ) : (
+                                  <BookOpen className="w-6 h-6 text-indigo-500" />
+                               )}
                             </div>
                             <div className="flex-1 pt-1">
                                <div className="flex justify-between items-start gap-2">

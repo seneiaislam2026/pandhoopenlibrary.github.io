@@ -30,7 +30,7 @@ export default function ManagePreBookings() {
       console.error("ManagePreBookings bookings error:", error);
     });
     const unsubBooks = onSnapshot(collection(db, "books"), (snapshot) => {
-      setBooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setBooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), cover: doc.data().cover || doc.data().imageUrl })));
     }, (error) => {
       console.error("ManagePreBookings books error:", error);
     });

@@ -7,7 +7,6 @@ import toast from 'react-hot-toast';
 import { Helmet } from 'react-helmet-async';
 import { useAuth } from '../../store/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { useReactToPrint } from 'react-to-print';
 
 interface ShopBook {
   id: string;
@@ -33,9 +32,31 @@ export default function BuyBooks() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const printRef = useRef<HTMLDivElement>(null);
-  const handlePrint = useReactToPrint({
-    contentRef: printRef,
-  });
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Print Receipt</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+          </head>
+          <body>
+            ${printRef.current?.innerHTML || ''}
+            <script>
+              setTimeout(() => {
+                window.print();
+                window.close();
+              }, 500);
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    } else {
+      toast.error('Please allow pop-ups to print');
+    }
+  };
 
   const [books, setBooks] = useState<ShopBook[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +96,7 @@ export default function BuyBooks() {
 
         const { getDocs } = await import('firebase/firestore');
         const snapshot = await getDocs(collection(db, 'shop-books'));
-        const booksData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ShopBook[];
+        const booksData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), cover: doc.data().cover || doc.data().imageUrl })) as ShopBook[];
         setBooks(booksData);
         sessionStorage.setItem('shop_books_cache', JSON.stringify(booksData));
         sessionStorage.setItem('shop_books_cache_time', Date.now().toString());
@@ -297,9 +318,17 @@ export default function BuyBooks() {
                       className="w-full h-full object-cover origin-bottom transform group-hover:scale-105 transition-transform duration-700 ease-out" 
                     />
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-6 text-slate-300">
-                       <BookOpen size={48} className="opacity-20 mb-3" />
-                       <span className="text-xs font-semibold text-center font-bengali opacity-40 px-2 line-clamp-2 uppercase tracking-wide">{book.title}</span>
+                    <div className="w-full h-full bg-[#f8f9fa] relative flex flex-col group-hover:scale-105 transition-transform duration-700 ease-out origin-bottom cover-standoff">
+                      <div className="absolute top-0 bottom-0 left-2 w-1 bg-gradient-to-r from-black/5 to-transparent z-10" />
+                      <div className="absolute top-0 bottom-0 left-6 w-[2px] bg-black/5 z-10" />
+                      <div className="absolute inset-0 opacity-[0.02] mix-blend-multiply" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23000000' fill-opacity='1' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E\")" }} />
+                      <div className="flex-1 flex flex-col items-center justify-center p-4 text-center z-20 mt-4">
+                        <div className="w-16 h-16 rounded-full border border-slate-200 bg-white flex items-center justify-center mb-4 shadow-sm opacity-70">
+                          <BookOpen strokeWidth={1} className="w-8 h-8 text-slate-300" />
+                        </div>
+                        <span className="text-sm font-black text-slate-500 font-bengali px-2 line-clamp-3 leading-snug">{book.title}</span>
+                        <span className="text-[10px] font-bold text-slate-400 font-bengali mt-3 opacity-80">{book.author}</span>
+                      </div>
                     </div>
                   )}
                   
@@ -421,7 +450,15 @@ export default function BuyBooks() {
                     cart.map(item => (
                       <div key={item.bookId} className="flex gap-6 items-center">
                          <div className="w-24 h-32 rounded-2xl overflow-hidden flex-shrink-0 shadow-lg border border-slate-100 bg-slate-50">
-                            {item.cover ? <img src={item.cover} referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <BookOpen size={24} className="m-auto opacity-10 mt-12" />}
+                            {item.cover ? <img src={item.cover} referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : (
+                               <div className="w-full h-full bg-[#f8f9fa] relative flex flex-col">
+                                  <div className="absolute top-0 bottom-0 left-1.5 w-[2px] bg-black/5 z-10" />
+                                  <div className="flex-1 flex flex-col items-center justify-center p-2 text-center z-20">
+                                     <BookOpen strokeWidth={1} className="w-5 h-5 text-slate-300 mb-1" />
+                                     <span className="text-[7px] font-black text-slate-400 font-bengali line-clamp-2">{item.title}</span>
+                                  </div>
+                               </div>
+                            )}
                          </div>
                          <div className="flex-1">
                             <h4 className="font-black text-slate-900 font-bengali mb-1 leading-tight">{item.title}</h4>

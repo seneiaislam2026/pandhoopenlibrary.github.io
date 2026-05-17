@@ -145,7 +145,7 @@ const BookFormModal = React.memo(({ initialData, editingId, onClose, onSubmit, i
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col justify-end sm:justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-       <motion.div initial={{ y: "100%", sm: {y: 0, scale: 0.9}, opacity: 0 }} animate={{ y: 0, sm: {scale: 1}, opacity: 1 }} className="bg-white rounded-t-3xl sm:rounded-[2.5rem] shadow-2xl w-full max-w-lg max-h-[85vh] sm:max-h-[90vh] overflow-hidden flex flex-col mt-auto sm:mt-0 pb-safe">
+       <motion.div initial={{ y: "100%", opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white rounded-t-3xl sm:rounded-[2.5rem] shadow-2xl w-full max-w-lg max-h-[85vh] sm:max-h-[90vh] overflow-hidden flex flex-col mt-auto sm:mt-0 pb-safe">
           <div className="p-4 sm:p-8 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
              <h3 className="text-xl sm:text-2xl font-black text-slate-800 font-bengali">{editingId ? 'বই আপডেট' : 'নতুন বই যুক্ত'}</h3>
              <button type="button" onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={20} className="text-slate-400" /></button>
@@ -331,7 +331,7 @@ export default function ManageBooks() {
           return;
         }
         const snapshot = await getDocs(collection(db, 'books'));
-        const booksData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Book[];
+        const booksData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), cover: doc.data().cover || doc.data().imageUrl })) as Book[];
         setBooks(booksData);
         try {
           sessionStorage.setItem('admin_books_cache', JSON.stringify(booksData));
