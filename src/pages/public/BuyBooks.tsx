@@ -280,7 +280,7 @@ export default function BuyBooks() {
           </div>
         ) : (
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-6 md:gap-8">
-            {React.useMemo(() => filtered.map((book, index) => (
+            {filtered.map((book, index) => (
               <div
                 key={book.id}
                 className="group flex flex-col bg-white overflow-hidden rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-100 transition-all duration-300 transform-gpu relative"
@@ -342,7 +342,7 @@ export default function BuyBooks() {
                    </div>
                 </div>
               </div>
-            )), [filtered])}
+            ))}
           </div>
         )}
 

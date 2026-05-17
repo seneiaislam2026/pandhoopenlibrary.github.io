@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BookOpen, Search, Clock, CheckCircle2, Star, Sparkles, Filter, X, Info, Tag, User as UserIcon, Book as BookIcon } from 'lucide-react';
 import { useAuth } from '../../store/AuthContext';
@@ -260,7 +260,7 @@ export default function Books() {
           <div 
             className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-6"
           >
-            {React.useMemo(() => filtered.slice(0, visibleCount).map((book) => (
+            {filtered.slice(0, visibleCount).map((book) => (
               <div
                 key={book.id}
                 className="bg-white rounded-2xl border border-slate-200/60 hover:border-indigo-200 flex flex-col h-full cursor-pointer overflow-hidden transition-colors"
@@ -314,7 +314,7 @@ export default function Books() {
                   </button>
                 </div>
               </div>
-            )), [filtered, visibleCount, prebooking, requestedBooks])}
+            ))}
           </div>
         )}
 

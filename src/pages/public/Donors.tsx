@@ -338,7 +338,7 @@ export default function Donors() {
               
               {/* Mobile View */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:hidden">
-                {React.useMemo(() => [...donations].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()), [donations]).map(d => (
+                {[...donations].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(d => (
                    <div key={d.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex justify-between items-center transition-colors">
                       <div>
                         <h4 className="font-bold text-slate-900 dark:text-slate-200 font-bengali text-lg leading-loose mb-1">{d.name || 'বেনামী'}</h4>
@@ -368,7 +368,7 @@ export default function Donors() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100/50 dark:divide-slate-700/50">
-                      {React.useMemo(() => [...donations].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()), [donations]).map(d => (
+                      {[...donations].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(d => (
                         <tr key={d.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-700/50 transition-colors">
                           <td className="p-5 font-bold text-slate-900 dark:text-slate-200 font-bengali leading-relaxed">{d.name || 'বেনামী'}</td>
                           <td className="p-5 text-slate-500 dark:text-slate-400 text-sm font-mono font-medium">

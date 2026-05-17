@@ -1271,7 +1271,11 @@ export default function ManageEvents() {
                            </button>
                         </>
                      )}
-                     <button onClick={() => setViewApplicants(null)} className="p-2 bg-slate-100 text-slate-500 hover:text-slate-900 rounded-full transition-colors ml-2">
+                     <a href={`/events?eventId=${viewApplicants}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl text-sm font-bold font-bengali hover:bg-emerald-100 transition-colors shadow-sm whitespace-nowrap">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        আবেদন যোগ
+                     </a>
+                     <button onClick={() => setViewApplicants(null)} className="p-2 bg-slate-100 text-slate-500 hover:text-slate-900 rounded-full transition-colors ml-2 shrink-0">
                         <X size={20} />
                      </button>
                   </div>

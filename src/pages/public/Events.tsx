@@ -84,12 +84,14 @@ export default function Events() {
 
   const fetchEvents = async () => {
     try {
-      const q = query(collection(db, 'events'), where('status', 'in', ['Active', 'Upcoming']), orderBy('date', 'asc'));
+      const q = query(collection(db, 'events'), where('status', 'in', ['Active', 'Upcoming']));
       const querySnapshot = await getDocs(q);
       let fetchedEvents = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Event[];
+      
+      fetchedEvents.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       
       // Filter targeted events out if user doesn't match
       if (user?.role !== 'admin' && user?.role !== 'subadmin' && user?.role !== 'visitor_admin') {
@@ -100,6 +102,20 @@ export default function Events() {
       }
 
       setEvents(fetchedEvents);
+
+      // Auto-open modal if eventId is in URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const eventIdFromUrl = urlParams.get('eventId');
+      if (eventIdFromUrl) {
+         const targetEvent = fetchedEvents.find(e => e.id === eventIdFromUrl);
+         if (targetEvent) {
+            setSelectedEvent(targetEvent);
+            if (user) {
+               setApplicantName(user.name);
+               setApplicantPhone(user.phone || '');
+            }
+         }
+      }
     } catch (error) {
       console.error("Error fetching events:", error);
     } finally {
@@ -483,15 +499,15 @@ export default function Events() {
                       <p className="text-slate-500 font-bengali text-lg font-medium">অংশগ্রহণের জন্য তথ্যগুলো নিশ্চিত করুন</p>
                     </div>
 
-                    <div className="space-y-8">
-                       <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 space-y-6">
+                    <div className="space-y-6 sm:space-y-8">
+                       <div className="bg-slate-50 p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2rem] border border-slate-100 space-y-5 sm:space-y-6">
                           <div className="flex flex-col gap-2 pb-4 border-b border-slate-200/60 text-left">
                              <label className="text-sm font-black text-slate-400 uppercase tracking-widest font-bengali">আবেদনকারীর নাম</label>
-                             <input type="text" required value={applicantName} onChange={e=>setApplicantName(e.target.value)} placeholder="আবেদনকারীর নাম লিখুন" className="w-full bg-white px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold" />
+                             <input type="text" required value={applicantName} onChange={e=>setApplicantName(e.target.value)} placeholder="আবেদনকারীর নাম" className="w-full bg-white px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold text-base" />
                           </div>
                           <div className="flex flex-col gap-2 pb-4 border-b border-slate-200/60 text-left">
                              <label className="text-sm font-black text-slate-400 uppercase tracking-widest font-bengali">মোবাইল নম্বর</label>
-                             <input type="text" required value={applicantPhone} onChange={e=>setApplicantPhone(e.target.value)} placeholder="017........" className="w-full bg-white px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold" />
+                             <input type="text" required value={applicantPhone} onChange={e=>setApplicantPhone(e.target.value)} placeholder="017........" className="w-full bg-white px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold text-base" />
                           </div>
                           <div className="flex justify-between items-center pb-4 border-b border-slate-200/60">
                              <span className="text-sm font-black text-slate-400 uppercase tracking-widest font-bengali">ইভেন্টের ধরন:</span>
@@ -504,15 +520,15 @@ export default function Events() {
                        </div>
                       
                         {selectedEvent.isScholarship && (
-                          <div className="space-y-8">
-                            <h4 className="font-black text-slate-800 font-bengali text-lg border-b pb-4">
+                          <div className="space-y-6 sm:space-y-8">
+                            <h4 className="font-black text-slate-800 font-bengali text-base sm:text-lg border-b pb-3 sm:pb-4">
                               {selectedEvent.type === 'QuestionAnswer' ? 'প্রশ্নোত্তর আবেদন ফরম' : 'শিক্ষাবৃত্তি আবেদন ফরম'}
                             </h4>
                             
-                            <div className="space-y-6">
+                            <div className="space-y-5 sm:space-y-6">
                               {(selectedEvent.requiredDocuments || []).filter(docTemplate => docTemplate.trim() !== '').map((docName) => (
                                 <div key={docName} className="space-y-2">
-                                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">
+                                  <label className="block text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">
                                     {docName} আপলোড করুন (ছবি বা পিডিএফ)
                                   </label>
                                   <input
@@ -524,20 +540,20 @@ export default function Events() {
                                         setScholarshipFiles(prev => ({ ...prev, [docName]: file }));
                                       }
                                     }}
-                                    className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-sm font-bengali file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-black file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100"
+                                    className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl outline-none text-xs sm:text-sm font-bengali file:mr-2 sm:file:mr-4 file:py-1.5 sm:file:py-2 file:px-3 sm:file:px-4 file:rounded-full file:border-0 file:text-[10px] sm:file:text-xs file:font-black file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100"
                                   />
                                 </div>
                               ))}
 
                               {(selectedEvent.customQuestions || []).filter(q => q.trim() !== '').map((q) => (
                                 <div key={q} className="space-y-2">
-                                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">
+                                  <label className="block text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">
                                     {q}
                                   </label>
                                   <textarea
                                     value={scholarshipAnswers[q] || ''}
                                     onChange={(e) => setScholarshipAnswers(prev => ({ ...prev, [q]: e.target.value }))}
-                                    className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-bengali font-bold h-24"
+                                    className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-bengali font-bold h-20 sm:h-24 text-base"
                                     placeholder="আপনার উত্তর এখানে লিখুন..."
                                   />
                                 </div>
@@ -547,28 +563,28 @@ export default function Events() {
                         )}
 
                         {selectedEvent.customFields && selectedEvent.customFields.length > 0 && (
-                          <div className="space-y-6">
+                          <div className="space-y-5 sm:space-y-6">
                              {selectedEvent.customFields.map((field) => (
-                               <div key={field.id} className="flex flex-col gap-2 text-left">
-                                 <label className="text-sm font-black text-slate-700 font-bengali">
+                               <div key={field.id} className="flex flex-col gap-1.5 sm:gap-2 text-left">
+                                 <label className="text-xs sm:text-sm font-black text-slate-700 font-bengali">
                                     {field.label} {field.required && <span className="text-rose-500">*</span>}
                                  </label>
                                  
                                  {field.type === 'text' && (
-                                   <input type="text" required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold" />
+                                   <input type="text" required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold text-base" />
                                  )}
 
                                  {field.type === 'number' && (
-                                   <input type="number" required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold" />
+                                   <input type="number" required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold text-base" />
                                  )}
 
                                  {field.type === 'textarea' && (
-                                   <textarea required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold min-h-[100px]" />
+                                   <textarea required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold min-h-[100px] text-base" />
                                  )}
 
                                  {field.type === 'select' && (
                                    <div className="relative">
-                                     <select required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold appearance-none">
+                                     <select required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold appearance-none text-base">
                                         <option value="">নির্বাচন করুন</option>
                                         {field.options?.split(',').map((opt, i) => <option key={i} value={opt.trim()}>{opt.trim()}</option>)}
                                      </select>
@@ -587,9 +603,9 @@ export default function Events() {
                                            val = `${val} (বয়স: ${age} বছর)`;
                                         }
                                         setCustomFieldValues(prev => ({ ...prev, [field.id]: val }))
-                                     }} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold" />
+                                     }} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold text-base" />
                                      {field.calculateAge && customFieldValues[field.id] && customFieldValues[field.id].includes('(বয়স:') && (
-                                        <p className="mt-2 text-sm text-indigo-600 font-bold font-bengali text-right">{customFieldValues[field.id].split('(')[1]?.replace(')', '')}</p>
+                                        <p className="mt-1.5 sm:mt-2 text-xs sm:text-sm text-indigo-600 font-bold font-bengali text-right">{customFieldValues[field.id].split('(')[1]?.replace(')', '')}</p>
                                      )}
                                    </div>
                                  )}
