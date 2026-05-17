@@ -26,7 +26,6 @@ export default function Register() {
   const [address, setAddress] = useState("");
   const [username, setUsername] = useState(prefill?.username || "");
   const [password, setPassword] = useState("");
-  const [payAtLibrary, setPayAtLibrary] = useState(false);
   const [paymentNumber, setPaymentNumber] = useState("");
   const [trxId, setTrxId] = useState("");
   const [error, setError] = useState("");
@@ -78,9 +77,9 @@ export default function Register() {
         memberId: memberId,
         email: email,
         verified: true,
-        paymentMethod: payAtLibrary ? 'library' : 'online',
-        paymentNumber: payAtLibrary ? null : paymentNumber,
-        trxId: payAtLibrary ? null : trxId,
+        paymentMethod: 'online',
+        paymentNumber: paymentNumber,
+        trxId: trxId,
         feeAmount: 50
       };
 
@@ -139,80 +138,66 @@ export default function Register() {
           </p>
         </div>
 
-        {/* Payment Section */}
-        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 mt-6 space-y-4">
-          <div className="flex items-start gap-3">
-            <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">Registration Fee: ৳50</h4>
-              <p className="mt-1 text-xs text-slate-500 font-bengali leading-relaxed">
-                সদস্য হওয়ার জন্য ৫০ টাকা ফি প্রযোজ্য। আপনি চাইলে লাইব্রেরিতে এসে জমা দিতে পারেন অথবা অনলাইনে পাঠাতে পারেন।
-              </p>
-            </div>
-          </div>
+        {/* Payment Section (Bkash Only) */}
+        <div className="mt-8">
+          <div className="bg-gradient-to-br from-[#E2136E]/10 to-white border border-[#E2136E]/20 rounded-[1.5rem] p-5 shadow-sm relative overflow-hidden">
+             
+             {/* Decorative Background */}
+             <div className="absolute -top-10 -right-10 w-32 h-32 bg-[#E2136E]/5 rounded-full blur-2xl"></div>
 
-          <div className="grid grid-cols-2 gap-3 mt-3">
-            <button
-              type="button"
-              onClick={() => setPayAtLibrary(false)}
-              className={`p-3 rounded-xl border text-sm font-semibold transition-all flex flex-col items-center justify-center gap-2 ${!payAtLibrary ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
-            >
-              <Send className="w-5 h-5" />
-              Online Payment
-            </button>
-            <button
-              type="button"
-              onClick={() => setPayAtLibrary(true)}
-              className={`p-3 rounded-xl border text-sm font-semibold transition-all flex flex-col items-center justify-center gap-2 ${payAtLibrary ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
-            >
-              <User className="w-5 h-5" />
-              Pay at Library
-            </button>
-          </div>
+             <div className="relative z-10">
+                <div className="flex items-center gap-3 mb-5">
+                   <div className="w-12 h-12 bg-[#E2136E] text-white rounded-2xl flex items-center justify-center shadow-lg shadow-[#E2136E]/20">
+                      <ShieldCheck size={24} />
+                   </div>
+                   <div>
+                     <h4 className="font-black text-[#E2136E] text-lg font-bengali">সদস্য নিবন্ধন ফি: ৫০ টাকা</h4>
+                     <p className="text-xs font-bold text-slate-500 font-bengali mt-0.5" style={{ lineHeight: '1.6' }}>বিকাশ সেন্ড মানি (Personal) করে ফর্মটি পূরণ করুন</p>
+                   </div>
+                </div>
 
-          {!payAtLibrary && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              className="pt-3 border-t border-slate-200 space-y-4 overflow-hidden"
-            >
-              <div className="bg-white border border-slate-100 p-4 rounded-xl text-center">
-                <p className="text-xs text-slate-500 uppercase tracking-widest font-black mb-1">Make Payment To</p>
-                <div className="font-mono text-lg font-bold text-slate-900">01570206953 <span className="text-xs text-slate-400 font-sans tracking-normal ml-1">(bKash/Nagad/Rocket)</span></div>
-              </div>
-              
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" htmlFor="paymentNumber">
-                    Sender Number <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    id="paymentNumber"
-                    type="text"
-                    required={!payAtLibrary}
-                    value={paymentNumber}
-                    onChange={(e) => setPaymentNumber(e.target.value)}
-                    className="block w-full px-4 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 sm:text-sm font-mono"
-                    placeholder="01XXXXXXXXX"
-                  />
+                <div className="bg-white border border-[#E2136E]/10 p-4 rounded-xl flex items-center justify-between mb-5 shadow-sm">
+                   <div>
+                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1 font-bengali">বিকাশ নম্বর</p>
+                      <p className="text-xl font-black text-slate-800 font-mono tracking-wider">01570206953</p>
+                   </div>
+                   <div className="bg-[#E2136E]/10 text-[#E2136E] px-3 py-1 rounded-lg text-xs font-black tracking-widest">
+                      bKash
+                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" htmlFor="trxId">
-                    Transaction ID (TrxID) <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    id="trxId"
-                    type="text"
-                    required={!payAtLibrary}
-                    value={trxId}
-                    onChange={(e) => setTrxId(e.target.value)}
-                    className="block w-full px-4 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 sm:text-sm font-mono uppercase"
-                    placeholder="8NXXXXXX..."
-                  />
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-black text-slate-600 mb-1.5 font-bengali" htmlFor="paymentNumber">
+                      যে নম্বর থেকে পাঠিয়েছেন <span className="text-[#E2136E]">*</span>
+                    </label>
+                    <input
+                      id="paymentNumber"
+                      type="text"
+                      required
+                      value={paymentNumber}
+                      onChange={(e) => setPaymentNumber(e.target.value)}
+                      className="block w-full px-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-[#E2136E]/20 focus:border-[#E2136E] text-sm font-mono transition-all"
+                      placeholder="01XXXXXXXXX"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-black text-slate-600 mb-1.5 font-bengali" htmlFor="trxId">
+                      ট্রানজেকশন আইডি <span className="text-[#E2136E]">*</span>
+                    </label>
+                    <input
+                      id="trxId"
+                      type="text"
+                      required
+                      value={trxId}
+                      onChange={(e) => setTrxId(e.target.value)}
+                      className="block w-full px-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-[#E2136E]/20 focus:border-[#E2136E] text-sm font-mono transition-all uppercase"
+                      placeholder="8X0XXXXXXX"
+                    />
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          )}
+             </div>
+          </div>
         </div>
         
         <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
@@ -224,15 +209,15 @@ export default function Register() {
           )}
           
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5" htmlFor="name">
-              Full Name
+            <label className="block text-xs font-black text-slate-700 mb-1.5 font-bengali" htmlFor="name">
+              পূর্ণ নাম
             </label>
             <input
               id="name"
               name="name"
               type="text"
               required
-              className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 focus:bg-white transition-colors sm:text-sm font-bengali"
+              className="appearance-none block w-full px-4 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 focus:bg-white transition-colors text-sm font-bengali font-bold"
               placeholder="আপনার পূর্ণ নাম"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -240,31 +225,31 @@ export default function Register() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5" htmlFor="phone">
-              Phone Number
+            <label className="block text-xs font-black text-slate-700 mb-1.5 font-bengali" htmlFor="phone">
+              মোবাইল নম্বর
             </label>
             <input
               id="phone"
               name="phone"
               type="text"
               required
-              className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 focus:bg-white transition-colors sm:text-sm font-bengali"
-              placeholder="উদা: 01XXXXXXXXX"
+              className="appearance-none block w-full px-4 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 focus:bg-white transition-colors text-sm font-mono font-bold"
+              placeholder="01XXXXXXXXX"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5" htmlFor="address">
-              Address
+            <label className="block text-xs font-black text-slate-700 mb-1.5 font-bengali" htmlFor="address">
+              ঠিকানা
             </label>
             <textarea
               id="address"
               name="address"
               required
               rows={2}
-              className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 focus:bg-white transition-colors sm:text-sm font-bengali"
+              className="appearance-none block w-full px-4 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 focus:bg-white transition-colors text-sm font-bengali font-bold resize-none"
               placeholder="আপনার পূর্ণ ঠিকানা..."
               value={address}
               onChange={(e) => setAddress(e.target.value)}
@@ -272,32 +257,32 @@ export default function Register() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5" htmlFor="username">
-              Username
+            <label className="block text-xs font-black text-slate-700 mb-1.5 font-bengali" htmlFor="username">
+              ইউজারনেম (ইংরেজিতে)
             </label>
             <input
               id="username"
               name="username"
               type="text"
               required
-              className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 focus:bg-white transition-colors sm:text-sm font-bengali"
-              placeholder="উদা: minhaz2026"
+              className="appearance-none block w-full px-4 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 focus:bg-white transition-colors text-sm font-mono font-bold"
+              placeholder="minhaz2026"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5" htmlFor="password">
-              Password
+            <label className="block text-xs font-black text-slate-700 mb-1.5 font-bengali" htmlFor="password">
+              পাসওয়ার্ড
             </label>
             <input
               id="password"
               name="password"
               type="password"
               required
-              className="appearance-none block w-full px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 focus:bg-white transition-colors sm:text-sm font-bengali"
-              placeholder="একটি শক্তিশালী পাসওয়ার্ড দিন"
+              className="appearance-none block w-full px-4 py-2.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 focus:bg-white transition-colors text-sm font-mono font-bold"
+              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
@@ -307,19 +292,19 @@ export default function Register() {
             <button
               type="submit"
               disabled={loading}
-              className="group relative w-full flex justify-center items-center py-3.5 px-4 border border-transparent text-sm font-semibold rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 focus:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              className="group w-full flex justify-center items-center py-3.5 px-4 rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 focus:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed transition-all font-bengali font-bold tracking-wide shadow-md hover:shadow-lg active:scale-95"
             >
-              {loading ? 'Submitting...' : 'Register as Reader'}
+              {loading ? 'অপেক্ষা করুন...' : 'সদস্য হিসেবে রেজিস্ট্রেশন করুন'}
               {!loading && <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />}
             </button>
           </div>
         </form>
 
-        <div className="mt-8 text-center text-sm">
-          <p className="text-slate-500">
-            Already a member?{' '}
-            <Link to="/login" className="font-semibold text-indigo-600 hover:text-indigo-500 transition-colors">
-              Log in instead
+        <div className="mt-8 text-center text-sm font-bengali">
+          <p className="text-slate-500 font-medium tracking-wide">
+            ইতিমধ্যেই সদস্য?{' '}
+            <Link to="/login" className="font-bold text-indigo-600 hover:text-indigo-500 transition-colors">
+              লগইন করুন
             </Link>
           </p>
         </div>

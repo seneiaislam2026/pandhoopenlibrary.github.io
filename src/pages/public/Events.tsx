@@ -7,9 +7,19 @@ import { toast } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
 import { useReactToPrint } from 'react-to-print';
 import { Helmet } from 'react-helmet-async';
+import { sendSMS } from '../../lib/sms';
 
 import { storage } from '../../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+
+interface CustomField {
+  id: string;
+  label: string;
+  type: 'text' | 'number' | 'date' | 'select' | 'textarea';
+  required: boolean;
+  options?: string;
+  calculateAge?: boolean;
+}
 
 interface Event {
   id: string;
@@ -23,6 +33,8 @@ interface Event {
   isScholarship?: boolean;
   requiredDocuments?: string[];
   customQuestions?: string[];
+  customFields?: CustomField[];
+  smsTemplate?: string;
   targetUserPhone?: string;
 }
 
@@ -43,6 +55,10 @@ export default function Events() {
   // Scholarship Application State
   const [scholarshipAnswers, setScholarshipAnswers] = useState<Record<string, string>>({});
   const [scholarshipFiles, setScholarshipFiles] = useState<Record<string, File>>({});
+  
+  // Custom form state
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
+  const [currentSerial, setCurrentSerial] = useState(1);
 
   const [newEvent, setNewEvent] = useState({
     title: '',
@@ -131,7 +147,7 @@ export default function Events() {
         createdAt: serverTimestamp(),
       };
 
-      // Handle Scholarship Documents & Answers
+      // Handle Scholarship Documents & Answers (Legacy)
       if (selectedEvent.isScholarship) {
         // Upload Files
         const documentUrls: Record<string, string> = {};
@@ -150,7 +166,42 @@ export default function Events() {
         };
       }
 
+      // Add modern custom fields
+      if (selectedEvent.customFields && selectedEvent.customFields.length > 0) {
+         const formattedAnswers: Record<string, { label: string, value: string }> = {};
+         selectedEvent.customFields.forEach(field => {
+            formattedAnswers[field.label] = {
+               label: field.label,
+               value: customFieldValues[field.id] || ''
+            };
+         });
+         registrationData.customFieldAnswers = formattedAnswers;
+      }
+
+      // Generate a Serial Number
+      try {
+         const regQuery = query(collection(db, 'event_registrations'), where('eventId', '==', selectedEvent.id));
+         const snapshot = await getDocs(regQuery);
+         registrationData.serialNumber = snapshot.size + 1;
+      } catch (err) {
+         registrationData.serialNumber = 1;
+      }
+      setCurrentSerial(registrationData.serialNumber);
+
       await addDoc(collection(db, 'event_registrations'), registrationData);
+      
+      // Handle Auto SMS
+      if (selectedEvent.smsTemplate && applicantPhone) {
+         const message = selectedEvent.smsTemplate
+             .replace(/{name}/g, applicantName || user.name || '')
+             .replace(/{serial}/g, registrationData.serialNumber.toString());
+         try {
+             await sendSMS(applicantPhone, message);
+         } catch (e) {
+             console.error('Failed to send SMS', e);
+         }
+      }
+
       toast.success(selectedEvent.isScholarship ? "আবেদন সফল হয়েছে!" : "রেজিস্ট্রেশন সফল হয়েছে!");
       setHasRegistered(true);
     } catch (error) {
@@ -414,17 +465,17 @@ export default function Events() {
       {/* Registration Modal - Bold Redesign */}
       <AnimatePresence>
         {selectedEvent && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-6 bg-slate-900/60 backdrop-blur-md">
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 40 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 40 }}
-              className="bg-white w-full max-w-2xl rounded-[3.5rem] shadow-2xl relative z-10 overflow-hidden"
+              className="bg-white w-full h-full sm:h-auto max-w-2xl sm:rounded-[3.5rem] shadow-2xl relative z-10 overflow-hidden flex flex-col"
             >
-              <div className="p-10 md:p-16 overflow-y-auto max-h-[90vh]">
+              <div className="p-6 md:p-16 overflow-y-auto flex-1 sm:max-h-[90vh]">
                 {!hasRegistered ? (
                   <form onSubmit={handleRegister}>
-                    <div className="mb-12 text-center">
+                    <div className="mb-12 text-center mt-8 sm:mt-0">
                        <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
                          <Zap size={36} className="fill-indigo-100" />
                        </div>
@@ -492,6 +543,58 @@ export default function Events() {
                                 </div>
                               ))}
                             </div>
+                          </div>
+                        )}
+
+                        {selectedEvent.customFields && selectedEvent.customFields.length > 0 && (
+                          <div className="space-y-6">
+                             {selectedEvent.customFields.map((field) => (
+                               <div key={field.id} className="flex flex-col gap-2 text-left">
+                                 <label className="text-sm font-black text-slate-700 font-bengali">
+                                    {field.label} {field.required && <span className="text-rose-500">*</span>}
+                                 </label>
+                                 
+                                 {field.type === 'text' && (
+                                   <input type="text" required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold" />
+                                 )}
+
+                                 {field.type === 'number' && (
+                                   <input type="number" required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold" />
+                                 )}
+
+                                 {field.type === 'textarea' && (
+                                   <textarea required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold min-h-[100px]" />
+                                 )}
+
+                                 {field.type === 'select' && (
+                                   <div className="relative">
+                                     <select required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold appearance-none">
+                                        <option value="">নির্বাচন করুন</option>
+                                        {field.options?.split(',').map((opt, i) => <option key={i} value={opt.trim()}>{opt.trim()}</option>)}
+                                     </select>
+                                   </div>
+                                 )}
+
+                                 {field.type === 'date' && (
+                                   <div>
+                                     <input type="date" required={field.required} value={customFieldValues[field.id]?.split(' ')[0] || ''} onChange={e => {
+                                        let val = e.target.value;
+                                        if (field.calculateAge && val) {
+                                           const birthDate = new Date(val);
+                                           const diff_ms = Date.now() - birthDate.getTime();
+                                           const age_dt = new Date(diff_ms); 
+                                           const age = Math.abs(age_dt.getUTCFullYear() - 1970);
+                                           val = `${val} (বয়স: ${age} বছর)`;
+                                        }
+                                        setCustomFieldValues(prev => ({ ...prev, [field.id]: val }))
+                                     }} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold" />
+                                     {field.calculateAge && customFieldValues[field.id] && customFieldValues[field.id].includes('(বয়স:') && (
+                                        <p className="mt-2 text-sm text-indigo-600 font-bold font-bengali text-right">{customFieldValues[field.id].split('(')[1]?.replace(')', '')}</p>
+                                     )}
+                                   </div>
+                                 )}
+                               </div>
+                             ))}
                           </div>
                         )}
                        
@@ -565,8 +668,8 @@ export default function Events() {
                                   <p className="text-xl font-bold font-sans">{new Date(selectedEvent.date).toLocaleDateString()}</p>
                                </div>
                                <div>
-                                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">SECURE ID</span>
-                                  <p className="text-xl font-bold font-sans">#E-{Math.random().toString(36).substr(2, 6).toUpperCase()}</p>
+                                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">SERIAL NUMBER / ID</span>
+                                  <p className="text-xl font-bold font-sans">#E{currentSerial.toString().padStart(4, '0')} (-{Math.random().toString(36).substr(2, 4).toUpperCase()})</p>
                                 </div>
                             </div>
                             
@@ -578,6 +681,20 @@ export default function Events() {
                                           <div key={q}>
                                               <p className="text-xs font-bold text-slate-500 mb-1">{q}</p>
                                               <p className="text-sm font-bold text-slate-900">{scholarshipAnswers[q] || 'N/A'}</p>
+                                          </div>
+                                       ))}
+                                   </div>
+                               </div>
+                            )}
+
+                            {selectedEvent.customFields && selectedEvent.customFields.length > 0 && (
+                               <div className="mt-8 pt-8 border-t-2 border-slate-100">
+                                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">REGISTRATION DETAILS</span>
+                                   <div className="space-y-4">
+                                       {selectedEvent.customFields.map(field => (
+                                          <div key={field.id}>
+                                              <p className="text-xs font-bold text-slate-500 mb-1">{field.label}</p>
+                                              <p className="text-sm font-bold text-slate-900">{customFieldValues[field.id] || 'N/A'}</p>
                                           </div>
                                        ))}
                                    </div>

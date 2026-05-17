@@ -8,6 +8,15 @@ import { useAuth } from '../../store/AuthContext';
 import { Link } from 'react-router-dom';
 import Select from 'react-select';
 
+interface CustomField {
+  id: string;
+  label: string;
+  type: 'text' | 'number' | 'date' | 'select' | 'textarea';
+  required: boolean;
+  options?: string;
+  calculateAge?: boolean;
+}
+
 interface Event {
   id: string;
   title: string;
@@ -21,6 +30,8 @@ interface Event {
   isScholarship?: boolean;
   requiredDocuments?: string[];
   customQuestions?: string[];
+  customFields?: CustomField[];
+  smsTemplate?: string;
   targetUserPhone?: string;
 }
 
@@ -41,11 +52,14 @@ export default function ManageEvents() {
     isScholarship: false,
     requiredDocuments: [] as string[],
     customQuestions: [] as string[],
+    customFields: [] as CustomField[],
+    smsTemplate: '',
     targetUserPhone: ''
   });
   const [viewApplicants, setViewApplicants] = useState<string | null>(null);
   const [applicants, setApplicants] = useState<any[]>([]);
   const [loadingApplicants, setLoadingApplicants] = useState(false);
+  const [selectedApplicants, setSelectedApplicants] = useState<string[]>([]);
   const [users, setUsers] = useState<any[]>([]);
 
   useEffect(() => {
@@ -97,9 +111,11 @@ export default function ManageEvents() {
       const querySnapshot = await getDocs(q);
       const fetchedApplicants = querySnapshot.docs.map(doc => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
+        status: doc.data().status || 'pending'
       }));
       setApplicants(fetchedApplicants);
+      setSelectedApplicants([]);
     } catch (error) {
       console.error("Error fetching applicants:", error);
       toast.error("আবেদনকারী লোড করতে সমস্যা হয়েছে");
@@ -182,6 +198,8 @@ export default function ManageEvents() {
         isScholarship: false,
         requiredDocuments: [],
         customQuestions: [],
+        customFields: [],
+        smsTemplate: '',
         targetUserPhone: ''
       });
       setShowAddForm(false);
@@ -200,6 +218,8 @@ export default function ManageEvents() {
       isScholarship: !!event.isScholarship,
       requiredDocuments: event.requiredDocuments || [],
       customQuestions: event.customQuestions || [],
+      customFields: event.customFields || [],
+      smsTemplate: event.smsTemplate || '',
       targetUserPhone: event.targetUserPhone || ''
     });
     setEditEventId(event.id);
@@ -225,6 +245,198 @@ export default function ManageEvents() {
       fetchEvents();
     } catch (error) {
       console.error("Error updating status:", error);
+    }
+  };
+
+  const updateApplicantStatus = async (appId: string, newStatus: string) => {
+    try {
+      await updateDoc(doc(db, 'event_registrations', appId), { status: newStatus });
+      setApplicants(prev => prev.map(a => a.id === appId ? { ...a, status: newStatus } : a));
+      toast.success("আবেদনকারীর স্ট্যাটাস আপডেট করা হয়েছে");
+    } catch (e) {
+      toast.error("স্ট্যাটাস আপডেট করতে সমস্যা হয়েছে");
+    }
+  };
+
+  const handlePrintSelected = () => {
+    const listToPrint = selectedApplicants.length > 0 
+       ? applicants.filter(a => selectedApplicants.includes(a.id))
+       : applicants;
+    
+    if (listToPrint.length === 0) return toast.error("প্রিন্ট করার জন্য কিছু নেই");
+
+    const eventName = events.find(e => e.id === viewApplicants)?.title || 'আবেদনকারী তালিকা';
+    const html = `
+      <html>
+        <head>
+          <title>${eventName} - সকল আবেদনকারী</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;700;900&display=swap');
+            body { font-family: 'Noto Sans Bengali', sans-serif; margin: 0; padding: 40px; color: #1e293b; }
+            .header { text-align: center; margin-bottom: 40px; border-bottom: 3px solid #0f172a; padding-bottom: 20px; }
+            h1 { margin: 0; font-size: 32px; font-weight: 900; }
+            h2 { color: #4f46e5; margin-top: 10px; }
+            table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+            th, td { border: 1px solid #e2e8f0; padding: 12px; text-align: left; }
+            th { background: #f8fafc; font-weight: 900; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body onload="setTimeout(() => window.print(), 500)">
+          <div class="header">
+            <h1>পানধোয়া উন্মুক্ত পাঠাগার</h1>
+            <h2>${eventName} - আবেদনকারীদের তালিকা</h2>
+            <p>মোট আবেদনকারী (প্রিন্ট): ${listToPrint.length} জন</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>ক্রমিক (Serial)</th>
+                <th>নাম</th>
+                <th>মোবাইল নম্বর</th>
+                <th>আবেদনের সময়</th>
+                <th>ট্র্যাকিং আইডি</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${listToPrint.map((app, idx) => `
+                <tr>
+                  <td>${app.serialNumber || idx + 1}</td>
+                  <td>${app.userName}</td>
+                  <td>${app.userPhone}</td>
+                  <td>${new Date(app.registeredAt?.seconds * 1000).toLocaleString('bn-BD')}</td>
+                  <td>#E${(app.registeredAt?.seconds || Date.now()).toString().slice(-6)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(html);
+      printWindow.document.close();
+    }
+  };
+
+  const handlePrintMedicalPads = () => {
+    const listToPrint = selectedApplicants.length > 0 
+       ? applicants.filter(a => selectedApplicants.includes(a.id))
+       : applicants;
+    
+    if (listToPrint.length === 0) return toast.error("প্রিন্ট করার জন্য কিছু নেই");
+
+    const pagesHtml = listToPrint.map(app => {
+        let age = '';
+        let gender = '';
+        if (app.customFieldAnswers) {
+            Object.values(app.customFieldAnswers).forEach((f: any) => {
+               if (f.label.toLowerCase().includes('age') || f.label.includes('বয়স')) age = f.value;
+               if (f.label.toLowerCase().includes('gender') || f.label.toLowerCase().includes('sex') || f.label.includes('লিঙ্গ')) gender = f.value;
+            });
+        }
+        
+        const serialStr = app.serialNumber 
+           ? app.serialNumber.toString().padStart(4, '0') 
+           : (app.registeredAt?.seconds?.toString().slice(-6) || '1000');
+           
+        const patientId = `F-${serialStr}`;
+
+        return `
+          <div class="pad-container">
+             <div class="header">
+                <h2>PAN DHOA LIBRARY FREE MEDICAL CAMPAIGN</h2>
+                <p>Senalia-1344, Ashulia, Savar, Dhaka</p>
+                <p>Department of General Info & Data Collection</p>
+                <p style="font-size: 14px; font-weight: normal;">Tel: 01570206953, 01736190886</p>
+             </div>
+             <table class="info-table">
+                <tr>
+                   <td class="label">Patient's ID</td>
+                   <td class="value">: ${patientId}</td>
+                   <td rowspan="2" class="barcode-cell" style="text-align: right;">
+                       <svg class="barcode" jsbarcode-value="${patientId}" jsbarcode-width="1.5" jsbarcode-height="35" jsbarcode-displayvalue="true" jsbarcode-margin="0"></svg>
+                   </td>
+                </tr>
+                <tr>
+                   <td class="label">Date</td>
+                   <td class="value">: ${new Date().toLocaleDateString('en-GB')}</td>
+                </tr>
+             </table>
+             <table class="info-table" style="margin-top: -10px;">
+                <tr>
+                   <td class="label" style="width: 15%;">Patient's Name</td>
+                   <td class="value" colspan="5">: <strong>${app.userName}</strong></td>
+                </tr>
+                <tr>
+                   <td class="label">Age</td>
+                   <td class="value">: ${age || '....'}</td>
+                   <td class="label" style="width: 15%;">Gender</td>
+                   <td class="value" style="width: 15%;">: ${gender || '....'}</td>
+                   <td class="label" style="width: 15%;">Phone</td>
+                   <td class="value">: ${app.userPhone || '....'}</td>
+                </tr>
+             </table>
+             
+             <div class="report-title">MEDICAL REPORT / CAMPAIGN FINDINGS</div>
+             
+             <div class="findings">
+                <p><strong>Findings:</strong></p>
+                <ul style="min-height: 250px;">
+                   <li>...........................................................................................</li>
+                   <li>...........................................................................................</li>
+                   <li>...........................................................................................</li>
+                </ul>
+             </div>
+             
+             <div class="signature">
+                <div class="sig-line"></div>
+                <div class="sig-title">Doctor's Signature & Date</div>
+             </div>
+          </div>
+        `;
+    }).join('');
+
+    const html = `
+      <html>
+        <head>
+          <title>Medical Pads Print</title>
+          <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+          <style>
+             @import url('https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap');
+             @media print {
+               @page { size: A4; margin: 0; }
+               body { background: white; margin: 0; padding: 0; }
+               .pad-container { height: 100vh; page-break-after: always; padding: 40px; box-sizing: border-box; }
+             }
+             body { font-family: 'Times New Roman', serif; background: #e2e8f0; margin: 0; padding: 20px; }
+             .pad-container { background: white; max-width: 800px; margin: 0 auto 20px; padding: 50px; border: 1px solid #ccc; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative;}
+             .header { text-align: center; margin-bottom: 20px; }
+             .header h2 { margin: 0; font-size: 22px; text-transform: uppercase; letter-spacing: 1px; }
+             .header p { margin: 4px 0; font-size: 16px; font-weight: bold;}
+             .info-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+             .info-table td { padding: 6px; border: 1px solid #000; font-size: 15px;}
+             .info-table .label { font-weight: normal; width: 15%; }
+             .info-table .value { font-weight: bold; }
+             .barcode-cell { border-top: 1px solid #000; border-right: 1px solid #000; padding: 5px; }
+             .report-title { text-align: center; font-size: 18px; font-weight: bold; text-decoration: underline; margin: 30px 0; }
+             .findings p { margin: 10px 0; font-size: 16px; font-style: italic;}
+             .findings ul { line-height: 2.5; list-style-type: disc; margin-left: 20px; }
+             .signature { position: absolute; bottom: 80px; right: 50px; text-align: center;}
+             .sig-line { border-top: 1px solid #000; width: 200px; margin-bottom: 5px; }
+             .sig-title { font-size: 14px; font-weight: bold; }
+          </style>
+        </head>
+        <body onload="JsBarcode('.barcode').init(); setTimeout(() => window.print(), 1000)">
+           ${pagesHtml}
+        </body>
+      </html>
+    `;
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(html);
+      printWindow.document.close();
     }
   };
 
@@ -255,7 +467,7 @@ export default function ManageEvents() {
           <table>
             <thead>
               <tr>
-                <th>ক্রমিক</th>
+                <th>ক্রমিক (Serial)</th>
                 <th>নাম</th>
                 <th>মোবাইল নম্বর</th>
                 <th>আবেদনের সময়</th>
@@ -265,7 +477,7 @@ export default function ManageEvents() {
             <tbody>
               ${applicants.map((app, idx) => `
                 <tr>
-                  <td>${idx + 1}</td>
+                  <td>${app.serialNumber || idx + 1}</td>
                   <td>${app.userName}</td>
                   <td>${app.userPhone}</td>
                   <td>${new Date(app.registeredAt?.seconds * 1000).toLocaleString('bn-BD')}</td>
@@ -497,13 +709,25 @@ export default function ManageEvents() {
                   <p class="info-value">${new Date(app.registeredAt?.seconds * 1000).toLocaleString('bn-BD')}</p>
                 </div>
                 <div class="info-item">
-                  <div class="info-label">সিস্টেম ট্র্যাকিং আইডি</div>
-                  <p class="info-value" style="font-family: monospace;">#E${app.registeredAt?.seconds.toString().slice(-6)}</p>
+                  <div class="info-label">সিস্টেম ট্র্যাকিং আইডি / সিরিয়াল</div>
+                  <p class="info-value" style="font-family: monospace;">#E${(app.registeredAt?.seconds || Date.now()).toString().slice(-6)} ${app.serialNumber ? `<span style="font-size: 11px; color: #64748b;">(Serial: ${app.serialNumber})</span>` : ''}</p>
                 </div>
               </div>
             </div>
 
-            ${app.answers ? `
+            ${app.customFieldAnswers ? `
+              <div class="section">
+                <div class="section-title">রেজিস্ট্রেশন ফরমের তথ্য</div>
+                ${Object.values(app.customFieldAnswers).map((field: any) => `
+                  <div class="qa-box">
+                    <p class="q-text">${field.label}</p>
+                    <p class="a-text">${field.value as string || '<span style="color:#94a3b8;font-style:italic;">উত্তর প্রদান করা হয়নি</span>'}</p>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+
+            ${app.answers && Object.keys(app.answers).length > 0 ? `
               <div class="section">
                 <div class="section-title">সংগৃহীত তথ্য ও প্রশ্নোত্তর</div>
                 ${Object.entries(app.answers).map(([q, a]) => `
@@ -767,6 +991,118 @@ export default function ManageEvents() {
                     </motion.div>
                   )}
 
+                  {/* Advanced Form Builder (Campaign & Others) */}
+                  <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm mt-4">
+                    <label className="block text-base font-bold text-slate-900 font-bengali mb-6 border-l-4 border-indigo-500 pl-4">রেজিস্ট্রেশন ফরম বিল্ডার (Registration Form)</label>
+                    <div className="space-y-6">
+                      {formData.customFields.map((field, idx) => (
+                        <div key={idx} className="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-col gap-4">
+                           <div className="flex justify-between items-center bg-slate-100 p-2 rounded-lg">
+                             <span className="font-bold text-sm text-slate-500 font-bengali">ফিল্ড #{idx + 1}</span>
+                             <button
+                                type="button"
+                                onClick={() => {
+                                  const newFields = formData.customFields.filter((_, i) => i !== idx);
+                                  setFormData({ ...formData, customFields: newFields });
+                                }}
+                                className="text-rose-500 text-sm font-bold font-bengali"
+                             >
+                               ডিলিট
+                             </button>
+                           </div>
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <input
+                                placeholder="ফিল্ডের নাম (যেমন: বয়স, বিভাগ)"
+                                value={field.label}
+                                onChange={e => {
+                                  const newFields = [...formData.customFields];
+                                  newFields[idx].label = e.target.value;
+                                  setFormData({ ...formData, customFields: newFields });
+                                }}
+                                className="w-full px-4 py-2.5 rounded-lg border border-slate-200 focus:border-[#673ab7] outline-none font-bengali"
+                              />
+                              <select
+                                value={field.type}
+                                onChange={e => {
+                                  const newFields = [...formData.customFields];
+                                  newFields[idx].type = e.target.value as any;
+                                  setFormData({ ...formData, customFields: newFields });
+                                }}
+                                className="w-full px-4 py-2.5 rounded-lg border border-slate-200 focus:border-[#673ab7] outline-none font-bengali"
+                              >
+                                <option value="text">শর্ট টেক্সট (Short Text)</option>
+                                <option value="number">নাম্বার (Number)</option>
+                                <option value="date">তারিখ (Date)</option>
+                                <option value="select">সিলেক্ট (Dropdown)</option>
+                                <option value="textarea">লং টেক্সট (Textarea)</option>
+                              </select>
+                           </div>
+                           {field.type === 'select' && (
+                             <input
+                                placeholder="অপশনগুলো কমা (,) দিয়ে লিখুন"
+                                value={field.options || ''}
+                                onChange={e => {
+                                  const newFields = [...formData.customFields];
+                                  newFields[idx].options = e.target.value;
+                                  setFormData({ ...formData, customFields: newFields });
+                                }}
+                                className="w-full px-4 py-2.5 rounded-lg border border-slate-200 focus:border-[#673ab7] outline-none font-bengali text-sm"
+                             />
+                           )}
+                           {field.type === 'date' && (
+                             <label className="flex items-center gap-2 text-sm text-slate-700 font-bengali font-bold">
+                                <input
+                                  type="checkbox"
+                                  checked={field.calculateAge || false}
+                                  onChange={e => {
+                                    const newFields = [...formData.customFields];
+                                    newFields[idx].calculateAge = e.target.checked;
+                                    setFormData({ ...formData, customFields: newFields });
+                                  }}
+                                  className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-600"
+                                />
+                                অটো বয়স ক্যালকুলেশন করুন (স্মার্ট)
+                             </label>
+                           )}
+                           <label className="flex items-center gap-2 text-sm text-slate-700 font-bold font-bengali mt-2">
+                              <input
+                                type="checkbox"
+                                checked={field.required}
+                                onChange={e => {
+                                  const newFields = [...formData.customFields];
+                                  newFields[idx].required = e.target.checked;
+                                  setFormData({ ...formData, customFields: newFields });
+                                }}
+                                className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-600"
+                              />
+                              বাধ্যতামূলক ফিল্ড (Required)
+                           </label>
+                        </div>
+                      ))}
+                      <button
+                         type="button"
+                         onClick={() => {
+                           const newId = 'field_' + Date.now();
+                           setFormData({ ...formData, customFields: [...formData.customFields, { id: newId, label: '', type: 'text', required: true }] });
+                         }}
+                         className="w-full py-4 rounded-xl border-2 border-dashed border-indigo-200 text-indigo-600 font-bold font-bengali hover:bg-indigo-50 transition-all flex items-center justify-center gap-2"
+                      >
+                         <Plus size={20} /> নতুন ফর্ম ফিল্ড যোগ করুন
+                      </button>
+                    </div>
+
+                    <div className="mt-8 pt-6 border-t border-slate-100">
+                       <label className="block text-base font-bold text-slate-900 font-bengali mb-4 border-l-4 border-indigo-500 pl-4">রেজিস্ট্রেশন কনফার্মেশন এসএমএস (SMS Template)</label>
+                       <p className="text-xs text-slate-500 mb-3 font-bengali">অপশনাল। যদি ফিল্ড ফাঁকা না থাকে, ইউজার রেজিস্টার করলে অটো এই মেসেজ যাবে। <br/><br/>উপলব্ধ ভ্যারিয়েবল: <span className="font-mono bg-slate-100 px-1 rounded text-slate-700">{'{name}'}</span>, <span className="font-mono bg-slate-100 px-1 rounded text-slate-700">{'{serial}'}</span></p>
+                       <textarea
+                         value={formData.smsTemplate || ''}
+                         onChange={e => setFormData({ ...formData, smsTemplate: e.target.value })}
+                         className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-[#673ab7] outline-none min-h-[120px] font-bengali"
+                         placeholder="যেমন: ধন্যবাদ {name}, আপনার সিরিয়াল নাম্বার {serial}। পানধোঁয়া ফ্রি মেডিকেল ক্যাম্পেইনে আপনাকে স্বাগতম।"
+                       />
+                    </div>
+                  </div>
+
                   {/* Submission Row */}
                   <div className="sticky bottom-8 left-0 right-0 py-6 px-8 bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl flex justify-between items-center z-10 mx-auto max-w-2xl">
                     <button
@@ -903,16 +1239,41 @@ export default function ManageEvents() {
         {viewApplicants && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setViewApplicants(null)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative bg-white w-full max-w-4xl rounded-[2rem] shadow-2xl p-8 overflow-y-auto max-h-[90vh]">
-               <div className="flex justify-between items-center mb-8">
-                  <h2 className="text-2xl font-black text-slate-800 font-bengali">আবেদনকারীদের তালিকা</h2>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative bg-white w-full max-w-5xl rounded-[2rem] shadow-2xl p-8 overflow-y-auto max-h-[90vh]">
+               <div className="flex justify-between items-start mb-6">
+                  <div>
+                    <h2 className="text-2xl font-black text-slate-800 font-bengali">আবেদনকারীদের তালিকা</h2>
+                    {applicants.length > 0 && (
+                      <div className="flex gap-4 mt-4">
+                         <div className="bg-slate-50 px-4 py-2 border border-slate-200 rounded-xl text-center">
+                            <p className="text-xs text-slate-500 font-black uppercase font-bengali">মোট আবেদন</p>
+                            <p className="text-xl font-bold text-slate-800">{applicants.length}</p>
+                         </div>
+                         <div className="bg-amber-50 px-4 py-2 border border-amber-200 rounded-xl text-center">
+                            <p className="text-xs text-amber-600 font-black uppercase font-bengali">অপেক্ষমান</p>
+                            <p className="text-xl font-bold text-amber-700">{applicants.filter(a => a.status === 'pending').length}</p>
+                         </div>
+                         <div className="bg-emerald-50 px-4 py-2 border border-emerald-200 rounded-xl text-center">
+                            <p className="text-xs text-emerald-600 font-black uppercase font-bengali">অনুমোদিত</p>
+                            <p className="text-xl font-bold text-emerald-700">{applicants.filter(a => a.status === 'approved').length}</p>
+                         </div>
+                      </div>
+                    )}
+                  </div>
                   <div className="flex items-center gap-4">
                      {applicants.length > 0 && (
-                        <button onClick={handlePrintAllApplicants} className="flex items-center gap-2 bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl text-sm font-bold font-bengali hover:bg-indigo-100 transition-colors">
-                           <Printer size={16} /> একত্রে প্রিন্ট করুন
-                        </button>
+                        <>
+                           <button onClick={handlePrintSelected} className="flex items-center gap-2 bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl text-sm font-bold font-bengali hover:bg-indigo-100 transition-colors shadow-sm">
+                              <Printer size={16} /> তালিকা প্রিন্ট
+                           </button>
+                           <button onClick={handlePrintMedicalPads} className="flex items-center gap-2 bg-pink-50 text-pink-600 px-4 py-2 rounded-xl text-sm font-bold font-bengali hover:bg-pink-100 transition-colors shadow-sm">
+                              <Printer size={16} /> প্যাড প্রিন্ট (মেডিকেল)
+                           </button>
+                        </>
                      )}
-                     <button onClick={() => setViewApplicants(null)} className="text-slate-400 hover:text-slate-600">বন্ধ করুন</button>
+                     <button onClick={() => setViewApplicants(null)} className="p-2 bg-slate-100 text-slate-500 hover:text-slate-900 rounded-full transition-colors ml-2">
+                        <X size={20} />
+                     </button>
                   </div>
                </div>
 
@@ -921,54 +1282,96 @@ export default function ManageEvents() {
                ) : applicants.length === 0 ? (
                  <div className="text-center py-10 text-slate-500 font-bengali">কোন আবেদনকারী পাওয়া যায়নি</div>
                ) : (
-                 <div className="space-y-6">
+                 <div className="space-y-4">
+                   <div className="flex items-center gap-3 px-4 py-2 border-b border-slate-100 sticky top-0 bg-white z-10 w-full mb-4">
+                      <input 
+                         type="checkbox" 
+                         className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                         checked={selectedApplicants.length === applicants.length && applicants.length > 0}
+                         onChange={(e) => {
+                            if (e.target.checked) setSelectedApplicants(applicants.map(a => a.id));
+                            else setSelectedApplicants([]);
+                         }}
+                      />
+                      <span className="text-sm font-bold text-slate-700 font-bengali">সব নির্বাচন করুন ({selectedApplicants.length} টি নির্বাচিত)</span>
+                   </div>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    {applicants.map((app) => (
-                     <div key={app.id} className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                        <div className="flex justify-between mb-4">
-                           <div>
-                              <h4 className="font-bold text-slate-800 font-bengali text-lg leading-[1.8] mb-1">{app.userName}</h4>
-                              <p className="text-sm text-slate-500">{app.userPhone}</p>
+                     <div key={app.id} className="p-5 bg-white border border-slate-200 rounded-2xl hover:border-indigo-300 transition-colors flex gap-4">
+                        <div className="pt-1 select-none">
+                           <input 
+                              type="checkbox"
+                              className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                              checked={selectedApplicants.includes(app.id)}
+                              onChange={(e) => {
+                                 if (e.target.checked) setSelectedApplicants([...selectedApplicants, app.id]);
+                                 else setSelectedApplicants(selectedApplicants.filter(id => id !== app.id));
+                              }}
+                           />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                           <div className="flex justify-between items-start mb-3">
+                              <div>
+                                 <h4 className="font-bold text-slate-800 font-bengali text-lg leading-tight mb-0.5 truncate">{app.userName}</h4>
+                                 <p className="text-sm text-slate-500 font-mono tracking-wide mt-1">{app.userPhone}</p>
+                              </div>
+                              <div className="flex flex-col items-end gap-2 shrink-0">
+                                 <span className="text-[10px] text-slate-400 font-medium bg-slate-100 px-2 py-1 rounded-md">{new Date(app.registeredAt?.seconds * 1000).toLocaleString('bn-BD')}</span>
+                                 <select 
+                                   value={app.status || 'pending'} 
+                                   onChange={(e) => updateApplicantStatus(app.id, e.target.value)}
+                                   className="text-xs font-bold border border-slate-200 rounded-md px-2 py-1 outline-none font-bengali cursor-pointer bg-slate-50 text-slate-600"
+                                 >
+                                    <option value="pending">অপেক্ষমান</option>
+                                    <option value="approved">অনুমোদিত</option>
+                                    <option value="rejected">বাতিল</option>
+                                 </select>
+                              </div>
                            </div>
-                           <div className="flex flex-col items-end gap-2">
-                              <span className="text-xs text-slate-400">{new Date(app.registeredAt?.seconds * 1000).toLocaleString('bn-BD')}</span>
-                              <button 
-                                 onClick={() => handlePrintApplicant(app)}
-                                 className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-xs font-bold transition-colors font-bengali"
-                              >
-                                 <Printer size={14} /> প্রিন্ট করুন
-                              </button>
+                           
+                           {app.customFieldAnswers && Object.keys(app.customFieldAnswers).length > 0 && (
+                             <div className="mb-3 space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                                {Object.values(app.customFieldAnswers).map((field: any) => (
+                                  <div key={field.label} className="grid grid-cols-3 gap-2">
+                                     <p className="text-[11px] text-slate-500 font-bengali truncate" title={field.label}>{field.label}</p>
+                                     <p className="text-[12px] font-semibold text-slate-700 font-bengali col-span-2 truncate">{field.value || '-'}</p>
+                                  </div>
+                                ))}
+                             </div>
+                           )}
+
+                           <div className="flex flex-wrap justify-end gap-2 mt-3 pt-3 border-t border-slate-100">
+                             <button 
+                                onClick={() => { window.location.href = `tel:${app.userPhone}`; }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-xs font-bold transition-colors font-sans"
+                             >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                                Phone
+                             </button>
+                             <button 
+                                onClick={() => {
+                                  const iframe = document.createElement('iframe');
+                                  iframe.style.display = 'none';
+                                  iframe.src = `sip:${app.userPhone}`;
+                                  document.body.appendChild(iframe);
+                                  setTimeout(() => document.body.removeChild(iframe), 2000);
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-lg text-xs font-bold transition-colors font-sans"
+                             >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                                Zoiper
+                             </button>
+                             <button 
+                                onClick={() => handlePrintApplicant(app)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-xs font-bold transition-colors font-bengali"
+                             >
+                                <Printer size={14} /> সাধারণ প্রিন্ট
+                             </button>
                            </div>
                         </div>
-                        
-                        {app.answers && (
-                          <div className="mb-4 space-y-2">
-                             <p className="text-xs font-bold text-indigo-600 uppercase font-bengali">প্রশ্নোত্তর:</p>
-                             {Object.entries(app.answers).map(([q, a]: any) => (
-                               <div key={q} className="bg-white p-3 rounded-lg border border-slate-100">
-                                  <p className="text-xs text-slate-400 font-bengali">{q}</p>
-                                  <p className="text-sm font-bold text-slate-700 font-bengali">{a}</p>
-                               </div>
-                             ))}
-                          </div>
-                        )}
-
-                        {app.documents && (
-                           <div className="flex flex-wrap gap-2">
-                              {Object.entries(app.documents).map(([name, url]: any) => (
-                                <a
-                                  key={name}
-                                  href={url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-slate-900 transition-colors"
-                                >
-                                  <FileText size={14} /> {name} (ডাউনলোড)
-                                </a>
-                              ))}
-                           </div>
-                        )}
                      </div>
                    ))}
+                   </div>
                  </div>
                )}
             </motion.div>

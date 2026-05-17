@@ -49,6 +49,7 @@ import {
   LogOut,
   Key,
   MessageCircle,
+  Phone
 } from "lucide-react";
 
 import { sendSMS } from "../../lib/sms";
@@ -112,6 +113,8 @@ export default function ManageUsers() {
   });
 
   const [selectedUser, setSelectedUser] = useState<LibUser | null>(null);
+  const [callConfirmUser, setCallConfirmUser] = useState<LibUser | null>(null);
+  const [callingUser, setCallingUser] = useState(false);
   const [userIssues, setUserIssues] = useState<any[]>([]);
   const [allIssues, setAllIssues] = useState<any[]>([]);
   const [userRequests, setUserRequests] = useState<any[]>([]);
@@ -146,7 +149,7 @@ export default function ManageUsers() {
 
         const [booksSnap, usersSnap, issuesSnap, reqSnap, preBSnap] = await Promise.all([
           checkCache('admin_books_cache') ? null : getDocs(collection(db, "books")),
-          checkCache('admin_users_cache') ? null : getDocs(query(collection(db, "users"), orderBy("memberId", "asc"))),
+          checkCache('admin_users_cache') ? null : getDocs(collection(db, "users")),
           checkCache('admin_issues_cache') ? null : getDocs(collection(db, "issues")),
           checkCache('admin_memberreqs_cache') ? null : getDocs(collection(db, "member-requests")),
           checkCache('admin_preb_cache') ? null : getDocs(collection(db, "pre-bookings"))
@@ -748,6 +751,7 @@ const handleAddUser = async (e: React.FormEvent) => {
     if (filterType === "overdue") return hasOverdueBooks;
     if (filterType === "active") return u.status === "active";
     if (filterType === "inactive") return u.status === "inactive";
+    if (filterType === "pending") return u.status === "pending";
     if (filterType === "frequent-late") return lateReturnCount >= 5;
     if (filterType === "blocked") return u.borrowBlocked || hasOverdueBooks || lateReturnCount >= 5;
     
@@ -775,6 +779,8 @@ const handleAddUser = async (e: React.FormEvent) => {
   if (filterType === 'best') {
     filtered = filtered.slice(0, 5);
   }
+
+  // make call removed as per user request
 
   const printUsersData = () => {
     const printWindow = window.open('', '_blank');
@@ -1078,7 +1084,7 @@ const handleAddUser = async (e: React.FormEvent) => {
           </div>
           
           <div className="flex flex-wrap gap-2 mt-6">
-            {[{id:'all',l:'সব'},{id:'active',l:'সক্রিয়'},{id:'inactive',l:'নিষ্ক্রিয়'},{id:'overdue',l:'মেয়াদোত্তীর্ণ (বই)'},{id:'blocked',l:'ব্লকড'},{id:'best',l:'সেরা পাঠক'}].map((btn) => (
+            {[{id:'all',l:'সব'},{id:'active',l:'সক্রিয়'},{id:'inactive',l:'নিষ্ক্রিয়'},{id:'pending',l:'অপেক্ষমান'},{id:'overdue',l:'মেয়াদোত্তীর্ণ (বই)'},{id:'blocked',l:'ব্লকড'},{id:'best',l:'সেরা পাঠক'}].map((btn) => (
               <button
                 key={btn.id}
                 onClick={() => setFilterType(btn.id)}
@@ -1172,7 +1178,12 @@ const handleAddUser = async (e: React.FormEvent) => {
                   <div className="bg-slate-50/50 rounded-2xl p-4 space-y-2 border border-slate-50">
                     <div className="flex justify-between items-center">
                       <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest font-bengali">মোবাইল</span>
-                      <span className="text-xs font-bold text-slate-700">{u.phone || 'N/A'}</span>
+                      <span 
+                        className={`text-xs font-bold ${u.phone ? 'text-indigo-600 cursor-pointer hover:underline' : 'text-slate-700'}`}
+                        onClick={() => u.phone && setCallConfirmUser(u)}
+                      >
+                        {u.phone || 'N/A'}
+                      </span>
                     </div>
                     {u.borrowBlocked && (
                       <div className="pt-2 border-t border-slate-100">
@@ -1218,7 +1229,7 @@ const handleAddUser = async (e: React.FormEvent) => {
                         <MessageCircle className="w-4 h-4" />
                       </a>
                       <button
-                        onClick={() => { setEditUser(u); setEditFormData({ name: u.name, role: u.role, status: u.status, phone: u.phone || "", isMonthlyDonor: !!u.isMonthlyDonor, password: "", borrowBlocked: !!u.borrowBlocked, blockedReason: u.blockedReason || "", memberId: u.memberId || "", hasGiftSubscription: !!u.hasGiftSubscription, giftSubscriptionDuration: u.giftSubscriptionDuration || 0, subadminAccess: u.subadminAccess || [] }); }}
+                        onClick={() => { setEditUser(u); setEditFormData({ name: u.name, role: u.role, status: u.status === 'pending' ? 'active' : u.status, phone: u.phone || "", isMonthlyDonor: !!u.isMonthlyDonor, password: "", borrowBlocked: !!u.borrowBlocked, blockedReason: u.blockedReason || "", memberId: u.memberId || "", hasGiftSubscription: !!u.hasGiftSubscription, giftSubscriptionDuration: u.giftSubscriptionDuration || 0, subadminAccess: u.subadminAccess || [] }); }}
                         className="aspect-square bg-white border border-slate-200 p-3 rounded-2xl text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm active:scale-90"
                         title="প্রোফাইল সম্পাদন করুন"
                       >
@@ -1655,6 +1666,52 @@ const handleAddUser = async (e: React.FormEvent) => {
                 </button>
               </div>
             </form>
+          </motion.div>
+        </div>
+      )}
+
+      {callConfirmUser && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-[2rem] max-w-sm w-full p-6 shadow-2xl relative">
+            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4 mx-auto">
+              <Phone size={24} />
+            </div>
+            <h3 className="text-xl font-black text-slate-800 mb-2 font-bengali text-center">সদস্যকে কল করুন</h3>
+            <p className="text-sm font-bold text-slate-500 mb-6 font-bengali text-center">আপনি কি <span className="text-indigo-600">{callConfirmUser.name}</span> কে <span className="font-mono text-slate-700 bg-slate-100 px-1.5 rounded">{callConfirmUser.phone}</span> নাম্বারে কল করতে চান?</p>
+            
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setCallConfirmUser(null)}
+                className="flex-1 py-3 rounded-xl font-bold font-bengali text-slate-500 border-2 border-slate-100 hover:bg-slate-50 transition-colors"
+                disabled={callingUser}
+              >
+                বাতিল
+              </button>
+              <button 
+                onClick={() => {
+                  window.location.href = `tel:${callConfirmUser.phone}`;
+                  setCallConfirmUser(null);
+                }}
+                disabled={callingUser}
+                className="flex-1 py-3 rounded-xl font-bold font-bengali bg-blue-500 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-600 disabled:opacity-50 flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+              >
+                Phone
+              </button>
+              <button 
+                onClick={() => {
+                  const iframe = document.createElement('iframe');
+                  iframe.style.display = 'none';
+                  iframe.src = `sip:${callConfirmUser.phone}`;
+                  document.body.appendChild(iframe);
+                  setTimeout(() => document.body.removeChild(iframe), 2000);
+                  setCallConfirmUser(null);
+                }}
+                disabled={callingUser}
+                className="flex-1 py-3 rounded-xl font-bold font-bengali bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 disabled:opacity-50 flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+              >
+                Zoiper
+              </button>
+            </div>
           </motion.div>
         </div>
       )}

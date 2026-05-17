@@ -40,6 +40,7 @@ export default function BuyBooks() {
   const [books, setBooks] = useState<ShopBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showCart, setShowCart] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
@@ -86,6 +87,13 @@ export default function BuyBooks() {
     };
     fetchBooks();
   }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const addToCart = (book: ShopBook) => {
     setCart(prev => {
@@ -178,9 +186,9 @@ export default function BuyBooks() {
   };
 
   const filtered = useMemo(() => books.filter(b => 
-    b.title.toLowerCase().includes(search.toLowerCase()) || 
-    b.author.toLowerCase().includes(search.toLowerCase())
-  ), [books, search]);
+    b.title.toLowerCase().includes(debouncedSearch.toLowerCase()) || 
+    b.author.toLowerCase().includes(debouncedSearch.toLowerCase())
+  ), [books, debouncedSearch]);
 
   return (
     <div className="bg-white min-h-screen">
@@ -272,18 +280,10 @@ export default function BuyBooks() {
           </div>
         ) : (
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-6 md:gap-8">
-            {filtered.map((book, index) => (
-              <motion.div
+            {React.useMemo(() => filtered.map((book, index) => (
+              <div
                 key={book.id}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ 
-                  delay: Math.min(index * 0.05, 0.4),
-                  duration: 0.5,
-                  ease: [0.16, 1, 0.3, 1] 
-                }}
-                className="group flex flex-col bg-white overflow-hidden rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-100 transition-all duration-300 relative"
+                className="group flex flex-col bg-white overflow-hidden rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-100 transition-all duration-300 transform-gpu relative"
               >
                 {/* Image Container */}
                 <div className="relative aspect-[3/4] bg-slate-50 overflow-hidden w-full">
@@ -291,6 +291,8 @@ export default function BuyBooks() {
                     <img 
                       src={book.cover} 
                       alt={book.title} 
+                      loading="lazy"
+                      decoding="async"
                       referrerPolicy="no-referrer" 
                       className="w-full h-full object-cover origin-bottom transform group-hover:scale-105 transition-transform duration-700 ease-out" 
                     />
@@ -339,8 +341,8 @@ export default function BuyBooks() {
                      </button>
                    </div>
                 </div>
-              </motion.div>
-            ))}
+              </div>
+            )), [filtered])}
           </div>
         )}
 

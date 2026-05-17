@@ -21,6 +21,7 @@ export default function BookRequests() {
   const [requests, setRequests] = useState<BookRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({ bookTitle: '', authorName: '' });
+  const [usersMap, setUsersMap] = useState<Record<string, string>>({});
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'subadmin' || user?.role === 'visitor_admin';
 
@@ -30,18 +31,39 @@ export default function BookRequests() {
     let q;
     if (isAdmin) {
       q = collection(db, "book-requests");
+      
+      // Fetch users for phone number mapping
+      const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+         const umap: Record<string, string> = {};
+         snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.phone) umap[doc.id] = data.phone;
+         });
+         setUsersMap(umap);
+      });
+      
+      const unsub = onSnapshot(q, (snapshot) => {
+        setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BookRequest[]);
+        setLoading(false);
+      }, (error) => {
+        console.error("BookRequests snapshot error:", error);
+        setLoading(false);
+      });
+      return () => {
+         unsub();
+         unsubUsers();
+      };
     } else {
       q = query(collection(db, "book-requests"), where("userId", "==", user.id));
+      const unsub = onSnapshot(q, (snapshot) => {
+        setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BookRequest[]);
+        setLoading(false);
+      }, (error) => {
+        console.error("BookRequests snapshot error:", error);
+        setLoading(false);
+      });
+      return () => unsub();
     }
-    
-    const unsub = onSnapshot(q, (snapshot) => {
-      setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BookRequest[]);
-      setLoading(false);
-    }, (error) => {
-      console.error("BookRequests snapshot error:", error);
-      setLoading(false);
-    });
-    return () => unsub();
   }, [user, isAdmin]);
 
   const handleRequest = async (e: React.FormEvent) => {
@@ -396,6 +418,31 @@ export default function BookRequests() {
                                 >
                                     <Trash2 className="w-4 h-4" />
                                 </button>
+                            )}
+
+                            {isAdmin && usersMap[req.userId] && (
+                                <div className="flex items-center gap-1 border-l border-slate-100 pl-3">
+                                   <button 
+                                      onClick={() => { window.location.href = `tel:${usersMap[req.userId]}`; }}
+                                      className="flex items-center gap-1 p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition"
+                                      title="ফোন করুন"
+                                   >
+                                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                                   </button>
+                                   <button 
+                                      onClick={() => {
+                                        const iframe = document.createElement('iframe');
+                                        iframe.style.display = 'none';
+                                        iframe.src = `sip:${usersMap[req.userId]}`;
+                                        document.body.appendChild(iframe);
+                                        setTimeout(() => document.body.removeChild(iframe), 2000);
+                                      }}
+                                      className="flex items-center gap-1 p-2 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition"
+                                      title="Zoiper কল"
+                                   >
+                                      <span className="font-bold text-xs uppercase tracking-tight">Zoiper</span>
+                                   </button>
+                                </div>
                             )}
                         </div>
                    </motion.div>

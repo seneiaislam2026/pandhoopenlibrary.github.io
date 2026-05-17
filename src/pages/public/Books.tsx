@@ -44,6 +44,13 @@ export default function Books() {
     }
   }, [selectedBook]);
 
+  const categories = useMemo(() => {
+    return ['All', ...Array.from(new Set(books.map(b => b.category).filter(c => c)))].map(c => ({
+      value: c as string,
+      label: c === 'All' ? 'সকল বিভাগ' : c as string
+    }));
+  }, [books]);
+
   // Debounce search input to prevent lag
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -194,10 +201,7 @@ export default function Books() {
             
             <div className="w-full md:w-72 relative z-50">
               <Select
-                options={['All', ...Array.from(new Set(books.map(b => b.category).filter(c => c)))].map(c => ({
-                  value: c,
-                  label: c === 'All' ? 'সকল বিভাগ' : c
-                }))}
+                options={categories}
                 value={{ 
                   value: categoryFilter, 
                   label: categoryFilter === 'All' ? 'সকল বিভাগ' : categoryFilter 
@@ -253,31 +257,16 @@ export default function Books() {
             ))}
           </div>
         ) : (
-          <motion.div 
-            initial="hidden"
-            animate="show"
-            variants={{
-              hidden: { opacity: 0 },
-              show: {
-                opacity: 1,
-                transition: {
-                  staggerChildren: 0.05
-                }
-              }
-            }}
+          <div 
             className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-6"
           >
-            {filtered.slice(0, visibleCount).map((book) => (
-              <motion.div
+            {React.useMemo(() => filtered.slice(0, visibleCount).map((book) => (
+              <div
                 key={book.id}
-                variants={{
-                  hidden: { opacity: 0, y: 20 },
-                  show: { opacity: 1, y: 0 }
-                }}
-                className="bg-white rounded-2xl border border-slate-200 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col h-full cursor-pointer relative overflow-hidden"
+                className="bg-white rounded-2xl border border-slate-200/60 hover:border-indigo-200 flex flex-col h-full cursor-pointer overflow-hidden transition-colors"
                 onClick={() => setSelectedBook(book)}
               >
-                <div className="relative h-[220px] sm:h-[280px] w-full shrink-0 bg-slate-100 border-b border-slate-100 p-2">
+                <div className="relative h-[220px] sm:h-[280px] w-full shrink-0 bg-slate-50 border-b border-slate-100 p-3 sm:p-4 flex items-center justify-center">
                   {book.cover ? (
                     <img 
                       src={book.cover} 
@@ -285,7 +274,7 @@ export default function Books() {
                       loading="lazy" 
                       decoding="async"
                       referrerPolicy="no-referrer" 
-                      className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500" 
+                      className="w-full h-full object-contain drop-shadow-sm" 
                     />
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center p-4 text-slate-200">
@@ -294,8 +283,8 @@ export default function Books() {
                     </div>
                   )}
                   <div className="absolute top-2 right-2">
-                    <span className={`px-2 py-1 rounded-md text-[9px] font-bold font-bengali shadow-sm backdrop-blur-md ${
-                      book.status === 'Available' ? 'bg-emerald-500/90 text-white' : 'bg-rose-500/90 text-white'
+                    <span className={`px-2 py-1 rounded-md text-[9px] font-bold font-bengali shadow-sm ${
+                      book.status === 'Available' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
                     }`}>
                       {book.status === 'Available' ? 'এভেইলেবল' : 'বুকড'}
                     </span>
@@ -324,9 +313,9 @@ export default function Books() {
                     </span>
                   </button>
                 </div>
-              </motion.div>
-            ))}
-          </motion.div>
+              </div>
+            )), [filtered, visibleCount, prebooking, requestedBooks])}
+          </div>
         )}
 
         {!loading && filtered.length > visibleCount && (

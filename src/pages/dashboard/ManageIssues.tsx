@@ -743,11 +743,19 @@ export default function ManageIssues() {
   const handleRejectExtend = async (id: string) => {
     if (!window.confirm("আপনি কি নিশ্চিত যে সময় বৃদ্ধির রিকোয়েস্ট বাতিল করতে চান?")) return;
     try {
-      await updateDoc(doc(db, "issues", id), {
+      const updates = {
         extendRequested: false,
         adminNote: "সময় বৃদ্ধির রিকোয়েস্ট বাতিল করা হয়েছে। দয়া করে বইটি দ্রুত ফেরত দিন।",
         updatedAt: serverTimestamp()
+      };
+      await updateDoc(doc(db, "issues", id), updates);
+      
+      setIssues(prev => {
+        const updated = prev.map(iss => iss.id === id ? { ...iss, ...updates } : iss);
+        updateIssuesCache(updated);
+        return updated;
       });
+      
       toast.success('রিকোয়েস্ট বাতিল করা হয়েছে।');
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `issues/${id}`);
@@ -767,15 +775,25 @@ export default function ManageIssues() {
     try {
       const currentExpected = new Date(currentDateStr);
       currentExpected.setDate(currentExpected.getDate() + extendDays);
+      const newDateIso = currentExpected.toISOString();
       const bdDate = currentExpected.toLocaleDateString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486));
       
-      await updateDoc(doc(db, "issues", id), {
+      const updates = {
         extendRequested: false,
-        expectedReturnDate: currentExpected.toISOString(),
-        adminNote: `সময় বৃদ্ধির রিকোয়েস্ট অনুমোদিত হয়েছে। নতুন তারিখ: ${bdDate}`,
+        expectedReturnDate: newDateIso,
+        adminNote: `সময় বৃদ্ধি করা হয়েছে। নতুন তারিখ: ${bdDate}`,
         autoAlertSent: false,
         updatedAt: serverTimestamp()
+      };
+
+      await updateDoc(doc(db, "issues", id), updates);
+      
+      setIssues(prev => {
+        const updated = prev.map(iss => iss.id === id ? { ...iss, extendRequested: false, expectedReturnDate: newDateIso, adminNote: `সময় বৃদ্ধি করা হয়েছে। নতুন তারিখ: ${bdDate}`, autoAlertSent: false } : iss);
+        updateIssuesCache(updated);
+        return updated;
       });
+      
       toast.success('সময় বৃদ্ধি করা হয়েছে।');
 
       setExtendConfig(null);
@@ -802,6 +820,18 @@ export default function ManageIssues() {
     const term = search.toLowerCase();
     return (book?.bookCode?.toLowerCase()?.includes(term) || book?.title?.toLowerCase()?.includes(term) || user?.memberId?.toLowerCase()?.includes(term) || user?.name?.toLowerCase()?.includes(term));
   });
+
+  const groupedIssues = Object.values(filteredIssues.reduce((acc, issue) => {
+    if (!acc[issue.userId]) {
+      acc[issue.userId] = {
+        userId: issue.userId,
+        member: users.find(u => u.id === issue.userId),
+        issues: []
+      };
+    }
+    acc[issue.userId].issues.push(issue);
+    return acc;
+  }, {} as Record<string, { userId: string, member: any, issues: any[] }>));
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 font-bengali">
@@ -1127,158 +1157,173 @@ export default function ManageIssues() {
 
         <div className="space-y-4">
           <AnimatePresence mode="popLayout">
-            {filteredIssues.map((i, idx) => {
-              const book = books.find(b => b.id === i.bookId);
-              const member = users.find(u => u.id === i.userId);
-              const isOverdue = (i.status === 'ISSUED' || i.status === 'Issued') && new Date(i.expectedReturnDate) < new Date();
+            {groupedIssues.map((group, idx) => {
+              const member = group.member;
               
               return (
                 <motion.div 
-                  key={i.id}
+                  key={group.userId}
                   layout
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ delay: idx * 0.03 }}
-                  className="bg-white rounded-[1.5rem] p-4 md:p-5 border border-slate-100 shadow-sm hover:shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all flex flex-col relative overflow-hidden group"
+                  className="bg-white rounded-[1.5rem] p-5 md:p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col relative overflow-hidden group"
                 >
                   {/* Left border indicator */}
-                  <div className={`absolute left-0 top-0 bottom-0 w-1.5 transition-colors ${i.status === 'Returned' ? 'bg-emerald-400' : isOverdue ? 'bg-rose-400' : 'bg-indigo-400'}`}></div>
+                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-400"></div>
 
                   <div className="pl-2">
-                    {/* Header: Status and Issue ID */}
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 ${i.status === 'Returned' ? 'bg-emerald-50 text-emerald-600' : isOverdue ? 'bg-rose-50 text-rose-600' : 'bg-indigo-50 text-indigo-600'}`}>
-                          {i.status === 'Returned' ? 'ফেরত দেওয়া হয়েছে' : isOverdue ? 'ওভারডিউ' : 'ইস্যুকৃত'}
-                        </span>
+                    {/* User Profile Header */}
+                    <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-50">
+                      <div className="w-12 h-12 bg-indigo-50 rounded-full border border-indigo-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                        {member?.photoURL ? (
+                           <img src={member.photoURL} alt={member.name} className="w-full h-full object-cover" />
+                        ) : (
+                           <UserCircle className="w-8 h-8 text-indigo-300" />
+                        )}
                       </div>
-                      <span className="text-[11px] font-black tracking-tighter text-slate-300 group-hover:text-slate-400 transition-colors">#{i.id.slice(-6).replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}</span>
+                      <div className="flex-1">
+                        <p className="text-[10px] font-black text-slate-400 tracking-widest uppercase mb-0.5">সদস্যের তথ্য</p>
+                        <h4 className="text-base md:text-lg font-black text-slate-800 leading-tight line-clamp-1">{member?.name || 'অজানা সদস্য'}</h4>
+                        <p className="text-[11px] font-bold text-indigo-500 mt-0.5">ID: #{member?.memberId?.replace(/[0-9]/g, (w: string) => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}</p>
+                      </div>
                     </div>
 
-                    {/* Body: Book & Member */}
-                    <div className="flex flex-col md:flex-row gap-5">
-                      {/* Book Info */}
-                      <div className="flex-1 flex gap-3.5">
-                        <div className="w-14 h-20 md:w-16 md:h-24 rounded-lg overflow-hidden bg-slate-50 flex-shrink-0 border border-slate-100 shadow-sm">
-                          {book?.imageUrl ? (
-                             <img src={book.imageUrl} alt={book.title} className="w-full h-full object-cover" />
-                          ) : (
-                             <div className="w-full h-full flex items-center justify-center">
-                                <BookOpen className="w-5 h-5 md:w-6 md:h-6 text-slate-300" />
-                             </div>
-                          )}
-                        </div>
-                        <div className="flex flex-col justify-center py-1">
-                          <h4 className="text-base md:text-lg font-black text-slate-800 leading-tight mb-1">{book?.title || 'অজানা বই'}</h4>
-                          <div className="text-[11px] md:text-sm font-medium text-slate-500 mb-2 line-clamp-1">{book?.author || 'অজানা লেখক'}</div>
-                          
-                          <div className="flex flex-wrap gap-2 mt-auto">
-                             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-50 rounded text-[10px] md:text-[11px] font-bold text-slate-500 border border-slate-100">
-                               <ScanLine className="w-3 h-3 text-slate-400" />
-                               {book?.bookCode?.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}
-                             </span>
-                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] md:text-[11px] font-bold ${isOverdue ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-500'}`}>
-                               <Clock className="w-3 h-3 opacity-70" />
-                               ফেরত: {new Date(i.expectedReturnDate).toLocaleDateString('bn-BD').replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486))}
-                             </span>
+                    {/* Issued Books List */}
+                    <div className="space-y-4">
+                      {group.issues.map((i: any) => {
+                        const book = books.find(b => b.id === i.bookId);
+                        const isOverdue = (i.status === 'ISSUED' || i.status === 'Issued') && new Date(i.expectedReturnDate) < new Date();
+
+                        return (
+                          <div key={i.id} className="relative bg-slate-50 border border-slate-100 rounded-xl p-4 transition hover:bg-slate-100/50">
+                            <div className="flex flex-col md:flex-row gap-5">
+                              {/* Book Info */}
+                              <div className="flex-1 flex gap-3.5">
+                                <div className="w-14 h-20 md:w-16 md:h-24 rounded-lg overflow-hidden bg-white flex-shrink-0 border border-slate-200 shadow-sm">
+                                  {book?.imageUrl ? (
+                                     <img src={book.imageUrl} alt={book.title} className="w-full h-full object-cover" />
+                                  ) : (
+                                     <div className="w-full h-full flex items-center justify-center bg-slate-100">
+                                        <BookOpen className="w-5 h-5 md:w-6 md:h-6 text-slate-300" />
+                                     </div>
+                                  )}
+                                </div>
+                                <div className="flex flex-col justify-center py-1 flex-1">
+                                  <div className="flex items-center justify-between gap-2 mb-1">
+                                    <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest flex items-center shrink-0 ${i.status === 'Returned' ? 'bg-emerald-100 text-emerald-700' : isOverdue ? 'bg-rose-100 text-rose-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                                      {i.status === 'Returned' ? 'ফেরত দেওয়া হয়েছে' : isOverdue ? 'ওভারডিউ' : 'ইস্যুকৃত'}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-slate-400">#{i.id.slice(-6).replace(/[0-9]/g, (w: string) => String.fromCharCode(w.charCodeAt(0) + 2486))}</span>
+                                  </div>
+
+                                  <h5 className="text-sm md:text-base font-black text-slate-800 leading-tight mb-1">{book?.title || 'অজানা বই'}</h5>
+                                  <div className="text-[11px] font-medium text-slate-500 mb-2 line-clamp-1">{book?.author || 'অজানা লেখক'}</div>
+                                  
+                                  <div className="flex flex-wrap gap-2 mt-auto">
+                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-white rounded text-[10px] font-bold text-slate-500 border border-slate-200 shadow-sm">
+                                       <ScanLine className="w-3 h-3 text-slate-400" />
+                                       {book?.bookCode?.replace(/[0-9]/g, (w: string) => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}
+                                     </span>
+                                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold shadow-sm ${isOverdue ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-white text-slate-600 border border-slate-200'}`}>
+                                       <Clock className="w-3 h-3 opacity-70" />
+                                       ফেরত: {i.expectedReturnDate ? new Date(i.expectedReturnDate).toLocaleDateString('bn-BD').replace(/[0-9]/g, (w: string) => String.fromCharCode(w.charCodeAt(0) + 2486)) : 'N/A'}
+                                     </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Actions for individual issue */}
+                            <div className="mt-4 pt-3 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-2">
+                               <div className="flex items-center gap-2">
+                                  <button 
+                                    onClick={() => {
+                                      setEditId(i.id);
+                                      setNote(i.adminNote || '');
+                                    }}
+                                    className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-colors shadow-sm"
+                                    title="নোট"
+                                  >
+                                    <MessageSquare className="w-3.5 h-3.5" />
+                                  </button>
+                                  {(i.status === 'ISSUED' || i.status === 'Issued') && (
+                                    <button 
+                                      onClick={() => handleAcceptExtend(i.id, i.expectedReturnDate)}
+                                      className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-amber-600 hover:border-amber-200 hover:bg-amber-50 transition-colors shadow-sm"
+                                      title="সময় বৃদ্ধি করুন"
+                                    >
+                                      <Clock className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                  <button 
+                                    onClick={() => handleDeleteIssue(i.id)}
+                                    className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-colors shadow-sm"
+                                    title="ডিলিট"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  
+                                  {(i.status === 'ISSUED' || i.status === 'Issued') && isOverdue && member?.phone && (
+                                    <button 
+                                      onClick={() => handleAlert(i.id, member.phone)}
+                                      className="flex items-center justify-center gap-1.5 bg-rose-50 text-rose-600 border border-rose-100 px-3 h-8 rounded-lg font-bold text-[10px] hover:bg-rose-100 transition shadow-sm"
+                                    >
+                                      <BellRing className="w-3" /> রিমাইন্ডার
+                                    </button>
+                                  )}
+                               </div>
+
+                               {(i.status === 'ISSUED' || i.status === 'Issued') && (
+                                  <button 
+                                    onClick={() => handleReturn(i.id)}
+                                    className="flex items-center justify-center gap-1.5 bg-indigo-600 text-white px-4 h-8 rounded-lg font-bold text-[11px] hover:bg-indigo-700 transition shadow-sm active:scale-95"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> বই ফেরত
+                                  </button>
+                               )}
+                            </div>
+
+                            {/* Extension Request Banner */}
+                            {i.extendRequested && (
+                              <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-inner">
+                                <div className="flex items-center gap-2">
+                                  <div className="bg-amber-100 p-1 rounded-full text-amber-600">
+                                     <Clock className="w-3.5 h-3.5" />
+                                  </div>
+                                  <div>
+                                    <p className="text-[11px] font-bold text-amber-900 leading-tight">সময় বৃদ্ধির রিকোয়েস্ট</p>
+                                    <p className="text-[9px] font-medium text-amber-700">সদস্য বইটি ফেরত দেয়ার সময় বাড়াতে চাচ্ছেন।</p>
+                                  </div>
+                                </div>
+                                <div className="flex gap-2">
+                                   <button onClick={() => handleAcceptExtend(i.id, i.expectedReturnDate)} className="px-3 py-1.5 bg-amber-500 text-white rounded text-[10px] font-bold hover:bg-amber-600 shadow-sm active:scale-95 transition-all">অনুমোদন</button>
+                                   <button onClick={() => handleRejectExtend(i.id)} className="px-3 py-1.5 bg-white text-rose-600 border border-slate-200 rounded text-[10px] font-bold hover:bg-rose-50 hover:border-rose-200 active:scale-95 shadow-sm transition-all">বাতিল</button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Edit Note Overlay for individual issue */}
+                            {editId === i.id && (
+                              <div className="absolute inset-0 z-10 bg-white/95 backdrop-blur-sm p-4 rounded-xl flex flex-col justify-center animate-in fade-in zoom-in-95">
+                                <div className="flex items-center justify-between mb-3">
+                                  <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
+                                     <MessageSquare className="w-3 h-3 text-indigo-500" /> নোট
+                                  </p>
+                                  <button onClick={() => setEditId(null)} className="p-1 text-slate-400 hover:text-rose-500 rounded bg-rose-50/0 hover:bg-rose-50 transition"><X className="w-4 h-4" /></button>
+                                </div>
+                                <div className="flex gap-2">
+                                   <input className="flex-1 bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-0 px-3 py-2 rounded-lg text-xs font-bold font-bengali" placeholder="কিছু লিখুন..." value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleUpdateNote(i.id); }} autoFocus />
+                                   <button onClick={() => handleUpdateNote(i.id)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-xs hover:bg-indigo-700 transition flex items-center gap-1.5 shadow-sm"><Save className="w-3 h-3" /> সেভ</button>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      </div>
-
-                      {/* Divider */}
-                      <div className="hidden md:block w-px bg-slate-100 my-2"></div>
-                      <div className="md:hidden h-px w-full bg-slate-50"></div>
-
-                      {/* Member Info */}
-                      <div className="md:w-56 flex items-center gap-3 py-1">
-                        <div className="w-10 h-10 md:w-11 md:h-11 bg-indigo-50 rounded-full border border-indigo-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
-                          {member?.photoURL ? (
-                             <img src={member.photoURL} alt={member.name} className="w-full h-full object-cover" />
-                          ) : (
-                             <UserCircle className="w-5 h-5 md:w-6 md:h-6 text-indigo-300" />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-[9px] md:text-[10px] font-black text-slate-300 tracking-widest uppercase mb-0.5">সদস্যের তথ্য</p>
-                          <h5 className="text-sm font-bold text-slate-800 leading-tight line-clamp-1">{member?.name || 'অজানা'}</h5>
-                          <p className="text-[10px] font-bold text-indigo-500 mt-0.5">ID: #{member?.memberId?.replace(/[0-9]/g, w => String.fromCharCode(w.charCodeAt(0) + 2486)) || 'N/A'}</p>
-                        </div>
-                      </div>
+                        );
+                      })}
                     </div>
                   </div>
-
-                  {/* Spacer to push actions to bottom if needed, though with flex-col it stacks naturally */}
-                  <div className="mt-4 md:mt-5 pt-4 border-t border-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pl-2">
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
-                      <button 
-                        onClick={() => {
-                          setEditId(i.id);
-                          setNote(i.adminNote || '');
-                        }}
-                        className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-colors shadow-sm"
-                        title="নোট"
-                      >
-                        <MessageSquare className="w-4 h-4 md:w-4 md:h-4" />
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteIssue(i.id)}
-                        className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-colors shadow-sm"
-                        title="ডিলিট"
-                      >
-                        <Trash2 className="w-4 h-4 md:w-4 md:h-4" />
-                      </button>
-                      
-                      {(i.status === 'ISSUED' || i.status === 'Issued') && isOverdue && (
-                        <button 
-                          onClick={() => handleAlert(i.id, member?.phone || '')}
-                          className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-rose-50 text-rose-600 border border-rose-100 px-3 h-9 md:h-10 rounded-xl font-bold text-[11px] md:text-xs hover:bg-rose-100 transition shadow-sm ml-2"
-                        >
-                          <BellRing className="w-3.5 h-3.5" /> রিমাইন্ডার
-                        </button>
-                      )}
-                    </div>
-
-                    {(i.status === 'ISSUED' || i.status === 'Issued') && (
-                      <button 
-                        onClick={() => handleReturn(i.id)}
-                        className="w-full sm:w-auto flex items-center justify-center gap-1.5 bg-indigo-600 text-white px-6 h-10 md:h-11 rounded-xl font-bold text-xs md:text-sm hover:bg-indigo-700 transition shadow-[0_4px_14px_0_rgb(79,70,229,0.39)] hover:shadow-[0_6px_20px_rgba(79,70,229,0.23)] hover:-translate-y-0.5 active:translate-y-0"
-                      >
-                        <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5" /> বই ফেরত
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Edit Note Overlay */}
-                  {editId === i.id && (
-                    <div className="absolute inset-0 z-10 bg-white/95 backdrop-blur-sm p-6 flex flex-col justify-center animate-in fade-in zoom-in-95">
-                      <div className="flex items-center justify-between mb-4">
-                        <p className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                           <MessageSquare className="w-4 h-4 text-indigo-500" />
-                           লেনদেন নোট
-                        </p>
-                        <button onClick={() => setEditId(null)} className="p-1.5 text-slate-400 hover:text-rose-500 rounded-full hover:bg-rose-50 transition"><X className="w-5 h-5" /></button>
-                      </div>
-                      <div className="flex flex-col sm:flex-row gap-3">
-                         <input 
-                            className="flex-1 bg-slate-50 border-2 border-slate-200 focus:border-indigo-500 focus:ring-0 px-4 py-3 rounded-xl text-sm font-bold font-bengali transition-all" 
-                            placeholder="কিছু লিখুন..."
-                            value={note}
-                            onChange={(e) => setNote(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleUpdateNote(i.id);
-                            }}
-                            autoFocus
-                         />
-                         <button 
-                            onClick={() => handleUpdateNote(i.id)}
-                            className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-indigo-700 transition flex items-center justify-center gap-2 shadow-md w-full sm:w-auto"
-                         >
-                            <Save className="w-4 h-4" /> সংরক্ষণ করুন
-                         </button>
-                      </div>
-                    </div>
-                  )}
                 </motion.div>
               );
             })}

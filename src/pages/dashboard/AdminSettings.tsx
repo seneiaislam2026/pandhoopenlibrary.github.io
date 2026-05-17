@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarHeart, Users, FileText, Settings as SettingsIcon, Image as ImageIcon, CheckCircle, UploadCloud, Shield, Trash2, Bell, MessageSquare, ShieldAlert, UserX, Clock, LayoutGrid, Tags, ScanFace, X, Camera as CameraIcon, Package, Download } from 'lucide-react';
+import { CalendarHeart, Users, FileText, Settings as SettingsIcon, Image as ImageIcon, CheckCircle, UploadCloud, Shield, Trash2, Bell, MessageSquare, ShieldAlert, UserX, Clock, LayoutGrid, Tags, ScanFace, X, Camera as CameraIcon, Package, Download, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import Select from 'react-select';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { sendSMS } from '../../lib/sms';
 
 const availableSubadminRoutes = [
   { name: 'সদস্য ব্যবস্থাপনা (Users)', path: '/dashboard/users' },
@@ -36,6 +37,8 @@ export default function AdminSettings() {
   const [subadminAccess, setSubadminAccess] = useState<string[]>([]);
   const [aiToken, setAiToken] = useState<string>('');
   const [smsToken, setSmsToken] = useState<string>('');
+  const [callToken, setCallToken] = useState<string>('');
+  const [callSenderId, setCallSenderId] = useState<string>('');
   const [smsSenderId, setSmsSenderId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -50,7 +53,13 @@ export default function AdminSettings() {
   const [inaugurationMessage, setInaugurationMessage] = useState('জ্ঞান ও প্রযুক্তির আলোয় আলোকিত হোক আমাদের সমাজ। পাঠাগারের এই নতুন যাত্রায় আপনাকে স্বাগতম। আসুন, বইয়ের পাতায় খুঁজি নতুন এক পৃথিবী।');
   const [inaugurationButtonText, setInaugurationButtonText] = useState('অটোমেশন উদ্বোধন');
   const [inaugurationTargetUsers, setInaugurationTargetUsers] = useState<string[]>([]);
-  const [allUsersList, setAllUsersList] = useState<{value: string, label: string}[]>([]);
+  const [allUsersList, setAllUsersList] = useState<{value: string, label: string, phone?: string}[]>([]);
+
+  // Custom SMS State
+  const [customSmsMessage, setCustomSmsMessage] = useState('');
+  const [customSmsTargetUsers, setCustomSmsTargetUsers] = useState<string[]>([]);
+  const [customSmsSending, setCustomSmsSending] = useState(false);
+  const [customSmsTargetType, setCustomSmsTargetType] = useState<'all' | 'specific'>('specific');
 
   // AI Scanner State
   const [showAiScanner, setShowAiScanner] = useState(false);
@@ -75,6 +84,8 @@ export default function AdminSettings() {
           setSubadminAccess(data.subadminAccess || []);
           setAiToken(data.sysToken || '');
           setSmsToken(data.smsToken || '');
+          setCallToken(data.callToken || '');
+          setCallSenderId(data.callSenderId || '');
           setSmsSenderId(data.smsSenderId || '');
           setCustomGreetingEnabled(data.customGreetingEnabled || false);
           setCustomGreetingTitle(data.customGreetingTitle || '');
@@ -97,7 +108,8 @@ export default function AdminSettings() {
         const usersSnap = await getDocs(collection(db, 'users'));
         const users = usersSnap.docs.map(doc => ({
           value: doc.id,
-          label: `${doc.data().firstName || ''} ${doc.data().lastName || ''} - ${doc.data().phone || doc.data().memberId || ''}`.trim()
+          label: `${doc.data().firstName || ''} ${doc.data().lastName || ''} - ${doc.data().phone || doc.data().memberId || ''}`.trim(),
+          phone: doc.data().phone || ''
         }));
         setAllUsersList(users);
       } catch (err) {
@@ -334,6 +346,8 @@ export default function AdminSettings() {
         subadminAccess, 
         sysToken: aiToken, 
         smsToken, 
+        callToken,
+        callSenderId,
         smsSenderId,
         customGreetingEnabled,
         customGreetingTitle,
@@ -351,6 +365,52 @@ export default function AdminSettings() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleCustomSmsSend = async () => {
+    if (!customSmsMessage.trim()) {
+      return toast.error('দয়া করে এসএমএস এর বিষয়বস্তু লিখুন।');
+    }
+    
+    let targetPhones: string[] = [];
+    
+    if (customSmsTargetType === 'all') {
+      targetPhones = allUsersList.filter(u => u.phone).map(u => u.phone!);
+    } else {
+      if (customSmsTargetUsers.length === 0) {
+        return toast.error('দয়া করে সদস্য নির্বাচন করুন।');
+      }
+      targetPhones = allUsersList
+        .filter(u => customSmsTargetUsers.includes(u.value) && u.phone)
+        .map(u => u.phone!);
+    }
+    
+    if (targetPhones.length === 0) {
+      return toast.error('নির্বাচিত সদস্যদের কোনো মোবাইল নম্বর পাওয়া যায়নি।');
+    }
+
+    const confirmSend = window.confirm(`আপনি কি সত্যিই ${targetPhones.length} জন সদস্যকে এসএমএস পাঠাতে চান?`);
+    if (!confirmSend) return;
+
+    setCustomSmsSending(true);
+    const toastId = toast.loading(`${targetPhones.length} জনকে এসএমএস পাঠানো হচ্ছে...`);
+    
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const phone of targetPhones) {
+      try {
+        const res = await sendSMS(phone, customSmsMessage);
+        if (res) successCount++;
+        else failCount++;
+      } catch (err) {
+        failCount++;
+      }
+    }
+    
+    setCustomSmsSending(false);
+    toast.success(`এসএমএস পাঠানো সম্পন্ন হয়েছে। সফল: ${successCount}, ব্যর্থ: ${failCount}`, { id: toastId });
+    if (successCount > 0) setCustomSmsMessage('');
   };
 
   const downloadBookListPDF = async (category: string | 'all') => {
@@ -1002,6 +1062,37 @@ export default function AdminSettings() {
                 এই ঘরগুলো ফাঁকা রাখলে ডিফল্ট API কী ব্যবহার হবে, যা কাজ নাও করতে পারে।
              </p>
          </div>
+
+         <div className="relative z-10 mb-8 pt-8 border-t border-slate-200">
+             <div className="flex items-center gap-4 mb-4">
+                 <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center border border-rose-100">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                 </div>
+                 <div>
+                    <h2 className="text-xl font-black font-bengali text-slate-800">Voice Call API সেটআপ</h2>
+                    <p className="text-slate-500 font-bengali text-sm mt-1">অটোমেটিক কল দেয়ার জন্য API Key এবং Caller Number দিন।</p>
+                 </div>
+             </div>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input
+                   type="password"
+                   placeholder="Voice Call API Key"
+                   value={callToken}
+                   onChange={e => setCallToken(e.target.value)}
+                   className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none text-sm font-mono"
+                />
+                <input
+                   type="text"
+                   placeholder="Caller Number (Optional)"
+                   value={callSenderId}
+                   onChange={e => setCallSenderId(e.target.value)}
+                   className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none text-sm font-mono"
+                />
+             </div>
+             <p className="text-xs text-slate-400 mt-2">
+                সদস্যদের বই ফেরতের অটোমেটিক কল রিমাইন্ডার দেয়ার জন্য এটি ব্যবহৃত হবে। API Key না দিলে এটি কাজ করবে না।
+             </p>
+         </div>
          
          <div className="relative z-10 mb-8 pt-8 border-t border-slate-200">
              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-indigo-50 p-6 rounded-3xl border border-indigo-100">
@@ -1033,6 +1124,106 @@ export default function AdminSettings() {
                 {saving ? 'সেভ করা হচ্ছে...' : 'সেটিং সেভ করুন'}
                 {!saving && <CheckCircle className="w-5 h-5" />}
              </button>
+         </div>
+      </div>
+
+      {/* Custom SMS Sending Section */}
+      <div className="mt-8 bg-white rounded-3xl border border-slate-200 shadow-sm p-8 relative overflow-hidden">
+         <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-[80px] -mr-32 -mt-32"></div>
+         
+         <div className="relative z-10 flex items-center gap-4 mb-6">
+            <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center border border-indigo-100 shadow-sm">
+               <Send size={24} />
+            </div>
+            <div>
+               <h2 className="text-2xl font-black font-bengali text-slate-800">কাস্টম এসএমএস (Custom SMS)</h2>
+               <p className="text-slate-500 font-bengali text-sm mt-1">সব ইউজার বা নির্দিষ্ট ইউজারদের সিলেক্ট করে আপনার ইচ্ছামতো এসএমএস পাঠান।</p>
+            </div>
+         </div>
+
+         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest font-bengali mb-1.5 block">প্রাপক নির্বাচন করুন</label>
+                <div className="flex bg-slate-50 border border-slate-200 rounded-xl p-1 w-fit mb-3">
+                    <button 
+                       type="button"
+                       onClick={() => setCustomSmsTargetType('Specific' as any) || setCustomSmsTargetType('specific')}
+                       className={`px-4 py-2 rounded-lg text-sm font-bold font-bengali transition-colors ${customSmsTargetType === 'specific' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}
+                    >
+                       নির্দিষ্ট সদস্য
+                    </button>
+                    <button 
+                       type="button"
+                       onClick={() => setCustomSmsTargetType('all')}
+                       className={`px-4 py-2 rounded-lg text-sm font-bold font-bengali transition-colors ${customSmsTargetType === 'all' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}
+                    >
+                       সবাইকে পাঠান
+                    </button>
+                </div>
+              </div>
+
+              <AnimatePresence>
+                {customSmsTargetType === 'specific' && (
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <Select
+                       isMulti
+                       options={allUsersList.filter(u => u.phone)}
+                       value={allUsersList.filter(u => customSmsTargetUsers.includes(u.value))}
+                       onChange={(selected: any) => setCustomSmsTargetUsers(selected ? selected.map((s: any) => s.value) : [])}
+                       placeholder="সদস্য খুঁজুন এবং সিলেক্ট করুন..."
+                       className="font-bengali text-sm"
+                       classNames={{
+                          control: () => '!bg-white !border-slate-200 !rounded-xl !p-1 !shadow-sm hover:!border-indigo-300',
+                          multiValue: () => '!bg-indigo-50 !rounded-lg',
+                          multiValueLabel: () => '!text-indigo-700 !font-bold',
+                          multiValueRemove: () => '!text-indigo-400 hover:!text-rose-500 hover:!bg-rose-50 rounded-r-lg',
+                          menu: () => '!rounded-xl !shadow-lg border border-slate-100',
+                          option: (state) => `${state.isFocused ? '!bg-indigo-50 !text-indigo-700' : '!text-slate-600'} !font-medium`
+                       }}
+                    />
+                    <p className="text-[10px] text-slate-400 mt-2">* শুধুমাত্র যাদের মোবাইল নম্বর যুক্ত আছে তাদের দেখানো হচ্ছে।</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest font-bengali mb-1.5 block">এসএমএস মেসেজ</label>
+                <textarea
+                  value={customSmsMessage}
+                  onChange={e => setCustomSmsMessage(e.target.value)}
+                  placeholder="আপনার মেসেজ এখানে লিখুন..."
+                  className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl focus:ring-2 focus:ring-indigo-500/50 outline-none font-medium font-bengali text-sm h-32 resize-none"
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={handleCustomSmsSend}
+                  disabled={customSmsSending || !customSmsMessage.trim()}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold font-bengali transition active:scale-95 shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {customSmsSending ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      পাঠানো হচ্ছে...
+                    </>
+                  ) : (
+                    <>
+                      <Send size={18} />
+                      এসএমএস পাঠান
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
          </div>
       </div>
 

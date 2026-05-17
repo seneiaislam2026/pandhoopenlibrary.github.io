@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth } from '../../store/AuthContext';
-import { Search, Plus, Edit2, Trash2, BookOpen, ShieldAlert, Download, X, Layers, Users, CheckCircle, Clock, Hash } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, BookOpen, ShieldAlert, Download, X, Layers, Users, CheckCircle, Clock, Hash, Image as ImageIcon, Upload, Link, AlertCircle } from 'lucide-react';
 import { onSnapshot, collection, doc, setDoc, deleteDoc, updateDoc, addDoc, query, where, getDocs, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
-import { db, auth } from '../../lib/firebase';
+import { db, auth, storage } from '../../lib/firebase';
 import { firebaseService } from '../../services/firebaseService';
 import toast from 'react-hot-toast';
 import Select from 'react-select';
@@ -168,6 +169,104 @@ const BookFormModal = React.memo(({ initialData, editingId, onClose, onSubmit, i
                 <label className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">লেখকের নাম</label>
                 <input type="text" required value={formData.author} onChange={e=>setFormData({...formData, author: e.target.value})} className="w-full px-3 py-2 sm:px-4 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-indigo-500/50 outline-none font-bold font-bengali text-sm sm:text-base" />
              </div>
+
+             {/* Image Upload/Link Section */}
+             <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <div className="flex items-center justify-between">
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-bengali">বইয়ের কভার ইমেজ</label>
+                   <div className="flex bg-white p-1 rounded-lg border border-slate-200">
+                      <button 
+                        type="button"
+                        onClick={() => setFormData({...formData, _inputType: 'upload'})}
+                        className={`px-3 py-1.5 rounded-md text-[10px] font-black transition-all flex items-center gap-1.5 ${(!formData._inputType || formData._inputType === 'upload') ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      >
+                        <Upload size={12} /> আপলোড
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => setFormData({...formData, _inputType: 'link'})}
+                        className={`px-3 py-1.5 rounded-md text-[10px] font-black transition-all flex items-center gap-1.5 ${formData._inputType === 'link' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      >
+                        <Link size={12} /> লিঙ্ক
+                      </button>
+                   </div>
+                </div>
+
+                {(!formData._inputType || formData._inputType === 'upload') ? (
+                  <div className="space-y-3">
+                     <div 
+                        onClick={() => document.getElementById('coverUpload')?.click()}
+                        className="group relative h-32 bg-white border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500 hover:bg-indigo-50/30 transition-all overflow-hidden"
+                     >
+                        {formData.cover ? (
+                          <>
+                            <img src={formData.cover} alt="Preview" className="w-full h-full object-contain p-2" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                               <p className="text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                                  <ImageIcon size={14} /> পরিবর্তন করুন
+                               </p>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="p-3 bg-slate-50 rounded-full text-slate-400 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors">
+                               <Upload size={20} />
+                            </div>
+                            <p className="mt-2 text-[10px] font-bold text-slate-400 group-hover:text-indigo-600">ক্লিক করে ইমেজ সিলেক্ট করুন</p>
+                            <p className="text-[9px] text-slate-300">সর্বোচ্চ ২ মেগাবাইট</p>
+                          </>
+                        )}
+                        <input 
+                           id="coverUpload" 
+                           type="file" 
+                           accept="image/*" 
+                           className="hidden" 
+                           onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              
+                              if (file.size > 2 * 1024 * 1024) {
+                                 return toast.error('ফাইল সাইজ ২ মেগাবাইটের বেশি হওয়া যাবে না।');
+                              }
+
+                              const loadingToast = toast.loading('ইমেজ আপলোড হচ্ছে...');
+                              try {
+                                 const storageRef = ref(storage, `book_covers/${Date.now()}_${file.name}`);
+                                 const snapshot = await uploadBytes(storageRef, file);
+                                 const url = await getDownloadURL(snapshot.ref);
+                                 setFormData({...formData, cover: url});
+                                 toast.success('ইমেজ আপলোড সফল হয়েছে', { id: loadingToast });
+                              } catch (err) {
+                                 console.error(err);
+                                 toast.error('আপলোড ব্যর্থ হয়েছে', { id: loadingToast });
+                              }
+                           }}
+                        />
+                     </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                     <input 
+                        type="url" 
+                        value={formData.cover || ''} 
+                        onChange={e=>setFormData({...formData, cover: e.target.value})} 
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/50 outline-none font-bold text-xs" 
+                        placeholder="ইমেজ লিঙ্ক পেস্ট করুন (https://...)" 
+                     />
+                     {formData.cover && (
+                        <div className="h-24 bg-white rounded-xl border border-slate-200 p-2 flex items-center gap-3">
+                           <img src={formData.cover} alt="Preview" className="h-full w-auto rounded-lg object-cover shadow-sm" />
+                           <div className="flex-1 overflow-hidden">
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">প্রিভিউ</p>
+                              <p className="text-[10px] text-slate-500 truncate">{formData.cover}</p>
+                           </div>
+                           <button type="button" onClick={() => setFormData({...formData, cover: ''})} className="p-1.5 text-slate-300 hover:text-rose-500 transition-colors"><Trash2 size={14} /></button>
+                        </div>
+                     )}
+                  </div>
+                )}
+             </div>
+
              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6">
                 <div className="space-y-1.5">
                    <label className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">ক্যাটাগরি</label>
@@ -395,32 +494,36 @@ export default function ManageBooks() {
     } catch (e) { toast.error('ব্যর্থ হয়েছে।'); }
   };
 
-  const handleSubmit = async (submittedData: any) => {
-     setIsSubmitting(true);
-     try {
-       const code = submittedData.bookCode?.trim() || generateBookCode(submittedData.category || 'অন্যান্য');
-       const payload = { ...submittedData, bookCode: code, updatedAt: serverTimestamp() };
-       if (editingId) {
-         await updateDoc(doc(db, 'books', editingId), payload);
-         setBooks(prev => {
-            const updated = prev.map(b => b.id === editingId ? { ...b, ...payload } : b);
+   const handleSubmit = async (submittedData: any) => {
+      setIsSubmitting(true);
+      try {
+        const { _inputType, ...cleanData } = submittedData;
+        const code = cleanData.bookCode?.trim() || generateBookCode(cleanData.category || 'অন্যান্য');
+        const payload = { ...cleanData, bookCode: code, updatedAt: serverTimestamp() };
+        if (editingId) {
+          await updateDoc(doc(db, 'books', editingId), payload);
+          setBooks(prev => {
+             const updated = prev.map(b => b.id === editingId ? { ...b, ...payload } : b);
+             updateCache(updated);
+             return updated;
+          });
+        } else {
+          const ref = doc(collection(db, 'books'));
+          await setDoc(ref, { ...payload, id: ref.id, createdAt: serverTimestamp() });
+          setBooks(prev => {
+            const updated = [...prev, { ...payload, id: ref.id } as Book];
             updateCache(updated);
             return updated;
-         });
-       } else {
-         const ref = doc(collection(db, 'books'));
-         await setDoc(ref, { ...payload, id: ref.id, createdAt: serverTimestamp() });
-         setBooks(prev => {
-           const updated = [...prev, { ...payload, id: ref.id } as Book];
-           updateCache(updated);
-           return updated;
-         });
-       }
-       toast.success('সফল হয়েছে।');
-       setShowModal(false);
-     } catch (e) { toast.error('ত্রুটি।'); }
-     finally { setIsSubmitting(false); }
-  };
+          });
+        }
+        toast.success('সফল হয়েছে।');
+        setShowModal(false);
+      } catch (e) { 
+        console.error(e);
+        toast.error('ত্রুটি।'); 
+      }
+      finally { setIsSubmitting(false); }
+   };
 
   const [visibleCount, setVisibleCount] = useState(24);
   const handleObserver = useCallback((node: any) => {
