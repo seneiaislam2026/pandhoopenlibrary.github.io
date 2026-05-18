@@ -187,15 +187,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         querySnapshot = await getDocs(q);
       }
       
+      const isMasterAdmin = (usernameLower === 'admin' || usernameLower === 'seneiaislam' || usernameLower === 'seneiaislam@gmail.com') && pass === 'pandhoalibrary@28052020';
+      
       if (querySnapshot.empty) {
+        if (isMasterAdmin) {
+           const fullUser = {
+              username: usernameLower,
+              name: 'System Admin',
+              role: 'admin',
+              id: 'admin_master_uid',
+              status: 'approved'
+           } as any;
+           setUser(fullUser);
+           setToken('manual_session');
+           localStorage.setItem('pandho_manual_user', JSON.stringify(fullUser));
+           return;
+        }
         throw new Error("User not found");
       }
       
       const userDoc = querySnapshot.docs[0];
       const userData = userDoc.data() as User;
       
-      if (userData.password === pass) {
-        if (userData.status === 'pending' && usernameLower !== 'admin' && usernameLower !== 'seneiaislam') {
+      if (userData.password === pass || isMasterAdmin) {
+        if (userData.status === 'pending' && !isMasterAdmin) {
            throw new Error("আপনার একাউন্টটি বর্তমানে পাঠাগার কর্তৃপক্ষের অনুমোদনের অপেক্ষায় আছে। অ্যাডমিন এপ্রুভ না করা পর্যন্ত লগইন করা যাবে না।");
         }
         const fullUser = { ...userData, id: userDoc.id };

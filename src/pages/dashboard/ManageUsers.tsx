@@ -196,8 +196,12 @@ export default function ManageUsers() {
   }, []);
 
   const updateUsersCache = (newUsers: LibUser[]) => {
-    sessionStorage.setItem('admin_users_cache', JSON.stringify(newUsers));
-    sessionStorage.setItem('admin_users_cache_time', Date.now().toString());
+    try {
+      sessionStorage.setItem('admin_users_cache', JSON.stringify(newUsers));
+      sessionStorage.setItem('admin_users_cache_time', Date.now().toString());
+    } catch (e) {
+      console.warn('Quota exceeded for sessionStorage', e);
+    }
   };
 
   useEffect(() => {

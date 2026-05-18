@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, getDocs, addDoc, orderBy, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { Calendar, Clock, MapPin, Printer, CheckCircle, ArrowRight, Sparkles, Zap, Award, FileText, X } from 'lucide-react';
+import { Calendar, Clock, MapPin, Printer, CheckCircle, ArrowRight, Sparkles, Zap, Award, FileText, X, Copy } from 'lucide-react';
 import { useAuth } from '../../store/AuthContext';
 import { toast } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
@@ -36,6 +36,8 @@ interface Event {
   smsTemplate?: string;
   targetUserPhone?: string;
   guidelines?: string;
+  hasQuota?: boolean;
+  quota?: number;
 }
 
 export default function Events() {
@@ -49,6 +51,11 @@ export default function Events() {
   
   const [applicantName, setApplicantName] = useState('');
   const [applicantPhone, setApplicantPhone] = useState('');
+
+  // Quota states
+  const [quotaChecking, setQuotaChecking] = useState(false);
+  const [isQuotaFull, setIsQuotaFull] = useState(false);
+  const [currentRegCount, setCurrentRegCount] = useState(0);
 
   const isAdmin = user?.role === 'admin' || user?.subadminAccess?.includes('/dashboard/events');
 
@@ -120,12 +127,35 @@ export default function Events() {
 
   const fetchEvents = async () => {
     try {
-      const q = query(collection(db, 'events'), where('status', 'in', ['Active', 'Upcoming']));
+      const q = query(collection(db, 'events'));
       const querySnapshot = await getDocs(q);
-      let fetchedEvents = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Event[];
+      const now = new Date();
+      
+      let fetchedEvents = querySnapshot.docs.map(doc => {
+        const data = doc.data() as Event;
+        const eventDate = new Date(data.date);
+        const deadline = new Date(data.deadline);
+        
+        let autoStatus = data.status;
+        
+        // Auto-close only if deadline passed
+        if (now > deadline) {
+          autoStatus = 'Closed';
+        } else if (data.status === 'Closed') {
+          autoStatus = 'Closed';
+        } else if (!data.status) {
+          autoStatus = now < deadline ? 'Active' : 'Closed';
+        }
+
+        return {
+          ...data,
+          id: doc.id,
+          status: autoStatus
+        };
+      }) as Event[];
+      
+      // Only show Active and Upcoming on public page
+      fetchedEvents = fetchedEvents.filter(ev => ev.status !== 'Closed');
       
       fetchedEvents.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       
@@ -165,16 +195,8 @@ export default function Events() {
     
     setLoading(true);
     try {
-      let imageUrl = newEvent.image;
-      if (eventImageFile) {
-         const fileRef = ref(storage, `events/${Date.now()}_${eventImageFile.name}`);
-         await uploadBytes(fileRef, eventImageFile);
-         imageUrl = await getDownloadURL(fileRef);
-      }
-
       const docRef = await addDoc(collection(db, 'events'), {
         ...newEvent,
-        image: imageUrl,
         creatorId: user.id,
         createdAt: serverTimestamp()
       });
@@ -183,7 +205,6 @@ export default function Events() {
       const newEventData = {
         id: docRef.id,
         ...newEvent,
-        image: imageUrl,
         creatorId: user.id,
         createdAt: new Date().toISOString()
       } as any;
@@ -238,6 +259,16 @@ export default function Events() {
 
     setRegistering(true);
     try {
+      // Final Quota Check
+      const regQuery = query(collection(db, 'event_registrations'), where('eventId', '==', selectedEvent.id));
+      const snapshot = await getDocs(regQuery);
+      if (selectedEvent.hasQuota && selectedEvent.quota && snapshot.size >= selectedEvent.quota) {
+          toast.error("দুঃখিত, ইতিমধ্যে কোটা পূর্ণ হয়ে গেছে");
+          setRegistering(false);
+          setSelectedEvent(null);
+          return;
+      }
+
       let registrationData: any = {
         eventId: selectedEvent.id,
         userId: user?.id || 'anonymous',
@@ -320,9 +351,22 @@ export default function Events() {
       // Handle Auto SMS
       if (applicantPhone) {
          let message = '';
-         if (selectedEvent.smsTemplate) {
+         const isMedicalCamp = selectedEvent.type?.includes('মেডিকেল') || selectedEvent.title?.toLowerCase().includes('medical');
+         
+         if (isMedicalCamp) {
+             let deptValue = 'Not Specified';
+             if (selectedEvent.customFields) {
+                const deptField = selectedEvent.customFields.find(f => f.label.toLowerCase().includes('dept') || f.label.toLowerCase().includes('বিভাগ'));
+                if (deptField && customFieldValues[deptField.id]) {
+                   deptValue = customFieldValues[deptField.id];
+                }
+             }
+             const patientId = `FMC${new Date().getFullYear().toString().slice(-2)}${registrationData.serialNumber.toString().padStart(3, '0')}`;
+             
+             message = `Dear ${applicantName || user?.name || 'Patient'},\nYour registration for the Free Medical Camp by Pandhoa Public Library has been confirmed.\n\nPatient ID: ${patientId} | Serial: ${registrationData.serialNumber}\nDoctor Department: ${deptValue}\n\nPlease visit on time and show this SMS at the registration desk.\nThank you.`;
+         } else if (selectedEvent.smsTemplate) {
             message = selectedEvent.smsTemplate
-                 .replace(/{name}/g, applicantName || user.name || '')
+                 .replace(/{name}/g, applicantName || user?.name || '')
                  .replace(/{serial}/g, registrationData.serialNumber.toString());
          } else {
             message = `ধন্যবাদ ${applicantName || ''}, আপনার সিরিয়াল নাম্বার ${registrationData.serialNumber}। ${selectedEvent.title}-এ আপনাকে স্বাগতম!`;
@@ -353,16 +397,16 @@ export default function Events() {
       </Helmet>
 
       {/* Header Area */}
-      <div className="bg-slate-50 border-b border-slate-100 pt-32 pb-20 px-6">
-        <div className="max-w-7xl mx-auto text-center">
+      <div className="bg-slate-50 border-b border-slate-100 pt-12 pb-8 sm:pt-20 sm:pb-12 px-6 text-center">
+        <div className="max-w-7xl mx-auto">
           <motion.h1 
-            initial={{ opacity: 0, y: -20 }}
+            initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-4xl md:text-6xl font-black text-slate-900 mb-6 font-bengali tracking-tight"
+            className="text-3xl md:text-5xl font-black text-slate-900 mb-4 font-bengali tracking-tight"
           >
             ইভেন্ট ও প্রতিযোগিতা
           </motion.h1>
-          <p className="text-xl text-slate-500 font-bengali max-w-2xl mx-auto font-medium">লাইব্রেরির আগামী সকল ইভেন্ট, সাংস্কৃতিক প্রতিযোগিতা এবং বৃত্তি পরীক্ষার বিস্তারিত তথ্য এখানে পাবেন।</p>
+          <p className="text-lg md:text-xl text-slate-500 font-bengali max-w-2xl mx-auto font-medium">লাইব্রেরির সকল ইভেন্ট, সাংস্কৃতিক প্রতিযোগিতা এবং বৃত্তি পরীক্ষার তথ্য এখানে পাবেন।</p>
           
           {user && (
             <motion.button
@@ -378,11 +422,11 @@ export default function Events() {
       </div>
 
       {/* Events Grid */}
-      <div className="max-w-7xl mx-auto px-6 py-20">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-16">
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
             {[1, 2, 3].map(i => (
-              <div key={i} className="animate-pulse bg-slate-50 rounded-3xl h-96"></div>
+              <div key={i} className="animate-pulse bg-slate-50 rounded-2xl h-80"></div>
             ))}
           </div>
         ) : (
@@ -394,66 +438,124 @@ export default function Events() {
               show: {
                 opacity: 1,
                 transition: {
-                  staggerChildren: 0.15
+                  staggerChildren: 0.1
                 }
               }
             }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10"
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6"
           >
             {events.map((event, index) => (
               <motion.div
                 key={event.id}
                 variants={{
-                  hidden: { opacity: 0, y: 30 },
-                  show: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } }
+                  hidden: { opacity: 0, y: 30, scale: 0.95 },
+                  show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } }
                 }}
-                whileHover={{ y: -10, transition: { duration: 0.3 } }}
-                className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden hover:shadow-2xl transition-all group flex flex-col h-full"
+                whileHover={{ y: -8, transition: { duration: 0.3 } }}
+                className="bg-white rounded-[2rem] sm:rounded-[2.5rem] border-[1.5px] border-slate-100/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden hover:shadow-[0_20px_40px_rgb(0,0,0,0.08)] transition-all duration-300 group flex flex-col h-full ring-1 ring-slate-900/5"
               >
-                <div className="relative h-56 overflow-hidden">
-                  <img src={event.image || 'https://images.unsplash.com/photo-1544928147-79a2dbc1f389?q=80&w=1974&auto=format&fit=crop'} alt={event.title} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                  <div className="absolute top-6 left-6">
-                    <motion.span 
-                      whileHover={{ scale: 1.1 }}
-                      className="bg-white/90 backdrop-blur px-4 py-2 rounded-xl text-xs font-black text-indigo-600 font-bengali tracking-[0.15em] shadow-sm uppercase inline-block"
-                    >
-                      {event.type}
-                    </motion.span>
+                <div className="relative w-full aspect-[4/3] sm:aspect-[16/10] overflow-hidden bg-slate-100">
+                  <img src={event.image || 'https://images.unsplash.com/photo-1544928147-79a2dbc1f389?q=80&w=1974&auto=format&fit=crop'} alt={event.title} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out" />
+                  <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-slate-900/60 via-slate-900/20 to-transparent pointer-events-none" />
+                  <div className="absolute top-4 left-4 sm:top-5 sm:left-5 flex flex-wrap gap-2">
+                    {event.status === 'Upcoming' && (
+                      <span className="bg-amber-400/95 backdrop-blur-md px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[10px] sm:text-[11px] font-black text-amber-950 font-bengali tracking-wider shadow-sm uppercase">
+                        আসন্ন
+                      </span>
+                    )}
+                    {event.type && (
+                      <span className="bg-white/95 backdrop-blur-md px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[10px] sm:text-[11px] font-black text-indigo-700 font-bengali tracking-wider shadow-sm uppercase">
+                        {event.type}
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                <div className="p-10 flex flex-col flex-1">
-                   <h3 className="text-2xl font-black text-slate-900 mb-4 font-bengali group-hover:text-indigo-600 transition-colors leading-tight">{event.title}</h3>
-                   <p className="text-slate-500 font-bengali mb-8 line-clamp-3 leading-relaxed font-medium">{event.description}</p>
+                <div className="p-6 sm:p-8 flex flex-col flex-1 relative z-10 bg-white">
+                   <h3 className="text-xl sm:text-2xl font-black text-slate-900 mb-3 font-bengali group-hover:text-indigo-600 transition-colors leading-tight line-clamp-2">{event.title}</h3>
+                   <p className="text-slate-500 font-bengali mb-6 line-clamp-2 leading-relaxed font-medium text-sm sm:text-base">{event.description}</p>
                    
-                   <div className="mt-auto space-y-4">
-                      <div className="flex items-center gap-4 text-slate-500 text-sm font-bold">
-                         <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg group-hover:rotate-12 transition-transform">
-                            <Calendar size={18} />
+                   <div className="mt-auto grid grid-cols-1 gap-3 mb-8">
+                      <div className="flex items-center gap-4 bg-slate-50/80 p-3 sm:p-4 rounded-2xl border border-slate-100/60 transition-colors group-hover:bg-indigo-50/50 group-hover:border-indigo-100/50">
+                         <div className="p-2.5 bg-white shadow-sm rounded-xl text-indigo-600">
+                            <Calendar size={18} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" />
                          </div>
-                         <span className="font-bengali">তারিখ: {new Date(event.date).toLocaleDateString('bn-BD')}</span>
+                         <div>
+                            <p className="text-[10px] font-black tracking-widest text-slate-400 uppercase font-sans mb-0.5">EVENT DATE</p>
+                            <p className="font-bengali font-bold text-slate-800 text-sm sm:text-base">{new Date(event.date).toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                         </div>
                       </div>
-                      <div className="flex items-center gap-4 text-rose-600 text-sm font-bold">
-                         <div className="p-2 bg-rose-50 rounded-lg group-hover:-rotate-12 transition-transform">
-                            <Clock size={18} />
+                      <div className="flex items-center gap-4 bg-rose-50/50 p-3 sm:p-4 rounded-2xl border border-rose-100/60 transition-colors group-hover:bg-rose-50">
+                         <div className="p-2.5 bg-white shadow-sm rounded-xl text-rose-500">
+                            <Clock size={18} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" />
                          </div>
-                         <span className="font-bengali">ডেডলাইন: {new Date(event.deadline).toLocaleDateString('bn-BD')}</span>
+                         <div>
+                            <p className="text-[10px] font-black tracking-widest text-rose-400 uppercase font-sans mb-0.5">REGISTRATION DEADLINE</p>
+                            <p className="font-bengali font-bold text-rose-700 text-sm sm:text-base">{new Date(event.deadline).toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                         </div>
                       </div>
                    </div>
 
-                    <motion.button
-                     whileHover={{ scale: 1.02 }}
-                     whileTap={{ scale: 0.98 }}
-                     onClick={() => {
-                       setSelectedEvent(event);
-                       setApplicantName(user?.name || '');
-                       setApplicantPhone(user?.phone || '');
-                       setHasRegistered(false);
-                     }}
-                     className="mt-10 w-full py-5 rounded-2xl font-black font-bengali text-lg transition-all flex items-center justify-center gap-3 bg-slate-900 text-white hover:bg-indigo-600 shadow-xl shadow-slate-100 group-hover:shadow-indigo-100"
-                   >
-                     রেজিস্ট্রেশন করুন <ArrowRight size={22} />
-                   </motion.button>
+                    <div className="flex gap-3">
+                      <motion.button
+                       whileHover={{ scale: 1.02 }}
+                       whileTap={{ scale: 0.98 }}
+                       onClick={async () => {
+                         // Check quota
+                         let quotaReached = false;
+                         let regCount = 0;
+                         if (event.hasQuota && event.quota && event.quota > 0) {
+                           setQuotaChecking(true);
+                           const toastId = toast.loading("কোটা চেক করা হচ্ছে...");
+                           try {
+                             const regQuery = query(collection(db, 'event_registrations'), where('eventId', '==', event.id));
+                             const snapshot = await getDocs(regQuery);
+                             regCount = snapshot.size;
+                             if (regCount >= event.quota) {
+                               quotaReached = true;
+                               toast.error(`দুঃখিত, এই ইভেন্টের কোটা পূরণ হয়ে গেছে (${event.quota} জন)`, { id: toastId });
+                             } else {
+                               toast.success(`আর মাত্র ${event.quota - regCount} টি সিট বাকি আছে!`, { id: toastId });
+                             }
+                           } catch (err) {
+                             console.error("Quota check failed", err);
+                             toast.dismiss(toastId);
+                           }
+                           setQuotaChecking(false);
+                         }
+
+                         setIsQuotaFull(quotaReached);
+                         setCurrentRegCount(regCount);
+
+                         if (!quotaReached) {
+                             setSelectedEvent(event);
+                             setApplicantName(user?.name || '');
+                             setApplicantPhone(user?.phone || '');
+                             setHasRegistered(false);
+                             // Clear state
+                             setScholarshipAnswers({});
+                             setScholarshipFiles({});
+                             setCustomFieldValues({});
+                         }
+                       }}
+                       disabled={quotaChecking}
+                       className="flex-[4] py-3.5 sm:py-4 rounded-2xl font-black font-bengali text-base sm:text-lg transition-all flex items-center justify-center gap-2 bg-slate-900 text-white hover:bg-indigo-600 shadow-[0_8px_20px_rgb(0,0,0,0.12)] hover:shadow-indigo-500/30 disabled:opacity-50"
+                      >
+                        রেজিস্ট্রেশন করুন <ArrowRight size={20} className="hidden sm:block" />
+                      </motion.button>
+                      
+                      <button 
+                         onClick={() => {
+                            const url = `${window.location.origin}/events?eventId=${event.id}`;
+                            navigator.clipboard.writeText(url);
+                            toast.success("লিংক কপি করা হয়েছে!");
+                         }}
+                         className="flex-[1] flex items-center justify-center p-3.5 sm:p-4 bg-slate-50 text-slate-400 rounded-2xl hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-slate-100 hover:border-indigo-100"
+                         title="লিংক কপি করুন"
+                      >
+                         <Copy size={20} />
+                      </button>
+                    </div>
                 </div>
               </motion.div>
             ))}
@@ -596,7 +698,7 @@ export default function Events() {
                      <input 
                        type="file" 
                        accept="image/*"
-                       onChange={e => {
+                       onChange={async e => {
                          const file = e.target.files?.[0];
                          if (file) {
                            if (file.size > 2 * 1024 * 1024) {
@@ -604,7 +706,18 @@ export default function Events() {
                              e.target.value = '';
                              return;
                            }
-                           setEventImageFile(file);
+                           const toastId = toast.loading("ইমেজ আপলোড হচ্ছে...");
+                           try {
+                              const fileRef = ref(storage, `events/${Date.now()}_${file.name}`);
+                              await uploadBytes(fileRef, file);
+                              const url = await getDownloadURL(fileRef);
+                              setNewEvent({ ...newEvent, image: url });
+                              setEventImageFile(null);
+                              toast.success("ইমেজ আপলোড সফল!", { id: toastId });
+                           } catch (err) {
+                              toast.error("ইমেজ আপলোড করতে সমস্যা হয়েছে", { id: toastId });
+                              console.error(err);
+                           }
                          }
                        }} 
                        className="w-full px-0 py-3 bg-transparent outline-none transition-all font-sans font-bold text-sm" 
@@ -639,306 +752,198 @@ export default function Events() {
               initial={{ opacity: 0, scale: 0.9, y: 40 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 40 }}
-              className="bg-white w-full h-full sm:h-auto max-w-2xl sm:rounded-[3.5rem] shadow-2xl relative z-10 overflow-hidden flex flex-col"
+              className="bg-white w-full h-full sm:h-auto max-w-5xl sm:rounded-[2.5rem] shadow-2xl relative z-10 overflow-hidden flex flex-col sm:max-h-[95vh]"
             >
-              <div className="p-6 md:p-16 overflow-y-auto flex-1 sm:max-h-[90vh]">
-                {!hasRegistered ? (
-                  <form onSubmit={handleRegister}>
-                    <div className="mb-12 text-center mt-8 sm:mt-0">
-                       <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
-                         <Zap size={36} className="fill-indigo-100" />
-                       </div>
-                      <h2 className="text-3xl font-black text-slate-900 mb-3 font-bengali">{selectedEvent.title}</h2>
-                      <p className="text-slate-500 font-bengali text-lg font-medium">অংশগ্রহণের জন্য তথ্যগুলো নিশ্চিত করুন</p>
-                    </div>
+              <button 
+                onClick={() => setSelectedEvent(null)}
+                className="absolute top-4 right-4 sm:top-6 sm:right-6 z-50 p-2.5 sm:p-3 bg-white/50 sm:bg-slate-100/80 hover:bg-slate-200 backdrop-blur text-slate-800 rounded-full transition-all group shadow-sm"
+              >
+                <X size={22} className="group-hover:rotate-90 transition-transform" />
+              </button>
 
-                    <div className="space-y-6 sm:space-y-8">
-                       <div className="bg-slate-50 p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2rem] border border-slate-100 space-y-5 sm:space-y-6">
-                          {(!selectedEvent.isScholarship && (!selectedEvent.customFields || selectedEvent.customFields.length === 0)) && (
-                             <>
-                               <div className="flex flex-col gap-2 pb-4 border-b border-slate-200/60 text-left">
-                                  <label className="text-sm font-black text-slate-400 uppercase tracking-widest font-bengali">আবেদনকারীর নাম <span className="text-rose-500">*</span></label>
-                                  <input type="text" required value={applicantName} onChange={e=>setApplicantName(e.target.value)} placeholder="আবেদনকারীর নাম" className="w-full bg-white px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold text-base" />
-                               </div>
-                               <div className="flex flex-col gap-2 pb-4 border-b border-slate-200/60 text-left">
-                                  <label className="text-sm font-black text-slate-400 uppercase tracking-widest font-bengali">মোবাইল নম্বর <span className="text-rose-500">*</span></label>
-                                  <input type="text" required value={applicantPhone} onChange={e=>setApplicantPhone(e.target.value)} placeholder="017........" className="w-full bg-white px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold text-base" />
-                               </div>
-                             </>
-                          )}
-                          <div className="flex justify-between items-center pb-4 border-b border-slate-200/60">
-                             <span className="text-sm font-black text-slate-400 uppercase tracking-widest font-bengali">ইভেন্টের ধরন:</span>
-                             <span className="font-black text-indigo-600 font-bengali">{selectedEvent.type}</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                             <span className="text-sm font-black text-slate-400 uppercase tracking-widest font-bengali">তারিখ:</span>
-                             <span className="font-black text-slate-900 font-sans text-lg">{new Date(selectedEvent.date).toLocaleDateString('bn-BD')}</span>
-                          </div>
-                       </div>
+              <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col sm:flex-row">
+                {/* LH Panel - Event Hero (Hidden on Mobile) */}
+                <div className="hidden sm:flex sm:w-[45%] bg-slate-900 relative min-h-[500px]">
+                  <img src={selectedEvent.image || 'https://images.unsplash.com/photo-1544928147-79a2dbc1f389?q=80&w=1974&auto=format&fit=crop'} alt={selectedEvent.title} className="absolute inset-0 w-full h-full object-cover opacity-60" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent sm:bg-gradient-to-r sm:from-slate-900/10 sm:to-slate-900/90 pointer-events-none" />
+                  <div className="relative h-full w-full flex flex-col p-10 justify-end">
+                    <div className="mt-auto space-y-4 max-w-lg">
+                      <div className="inline-flex px-3 py-1 bg-indigo-500/80 backdrop-blur rounded-lg text-xs font-black text-white uppercase tracking-widest">{selectedEvent.type}</div>
+                      <h2 className="text-3xl lg:text-4xl font-black text-white font-bengali leading-tight drop-shadow-md">{selectedEvent.title}</h2>
                       
-                        {selectedEvent.isScholarship && (
-                          <div className="space-y-6 sm:space-y-8">
-                            <h4 className="font-black text-slate-800 font-bengali text-base sm:text-lg border-b pb-3 sm:pb-4">
-                              {selectedEvent.type === 'QuestionAnswer' ? 'প্রশ্নোত্তর আবেদন ফরম' : selectedEvent.type === 'মেডিকেল ক্যাম্পেইন' ? 'মেডিকেল ক্যাম্পেইন আবেদন ফরম' : 'শিক্ষাবৃত্তি আবেদন ফরম'}
-                            </h4>
-                            
-                            <div className="space-y-5 sm:space-y-6">
-                              {(selectedEvent.requiredDocuments || []).filter(docTemplate => docTemplate.trim() !== '').map((docName) => (
-                                <div key={docName} className="space-y-2">
-                                  <label className="block text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">
-                                    {docName} আপলোড করুন (ছবি বা পিডিএফ)
-                                  </label>
-                                  <input
-                                    type="file"
-                                    accept="image/*,application/pdf"
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0];
-                                      if (file) {
-                                        setScholarshipFiles(prev => ({ ...prev, [docName]: file }));
-                                      }
-                                    }}
-                                    className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl outline-none text-xs sm:text-sm font-bengali file:mr-2 sm:file:mr-4 file:py-1.5 sm:file:py-2 file:px-3 sm:file:px-4 file:rounded-full file:border-0 file:text-[10px] sm:file:text-xs file:font-black file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100"
-                                  />
-                                </div>
-                              ))}
-
-                              {(selectedEvent.customQuestions || []).filter(q => q.trim() !== '').map((q) => (
-                                <div key={q} className="space-y-2">
-                                  <label className="block text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">
-                                    {q}
-                                  </label>
-                                  <textarea
-                                    value={scholarshipAnswers[q] || ''}
-                                    onChange={(e) => setScholarshipAnswers(prev => ({ ...prev, [q]: e.target.value }))}
-                                    className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-bengali font-bold h-20 sm:h-24 text-base"
-                                    placeholder="আপনার উত্তর এখানে লিখুন..."
-                                  />
-                                </div>
-                              ))}
-                            </div>
+                      <div className="flex flex-col gap-3 pt-6 border-t border-white/20">
+                        <div className="flex items-center gap-3 text-slate-100">
+                          <div className="p-2 bg-white/10 backdrop-blur rounded-xl">
+                             <Calendar size={18} />
                           </div>
-                        )}
-
-                        {selectedEvent.customFields && selectedEvent.customFields.length > 0 && (
-                          <div className="space-y-5 sm:space-y-6">
-                             {!(selectedEvent.customFields.some(f => f.label.toLowerCase().includes('name') || f.label.includes('নাম'))) && (
-                               <div className="flex flex-col gap-1.5 sm:gap-2 text-left">
-                                 <label className="text-xs sm:text-sm font-black text-slate-700 font-bengali">
-                                    আবেদনকারীর নাম <span className="text-rose-500">*</span>
-                                 </label>
-                                 <input type="text" required value={applicantName} onChange={e=>setApplicantName(e.target.value)} placeholder="আবেদনকারীর নাম" className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold text-base" />
-                               </div>
-                             )}
-
-                             {selectedEvent.customFields.map((field, idx) => (
-                               <React.Fragment key={field.id}>
-                                 <div className="flex flex-col gap-1.5 sm:gap-2 text-left">
-                                   <label className="text-xs sm:text-sm font-black text-slate-700 font-bengali">
-                                      {field.label} {field.required && <span className="text-rose-500">*</span>}
-                                   </label>
-                                   
-                                   {field.type === 'text' && (
-                                     <input type="text" required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold text-base" />
-                                   )}
-
-                                   {field.type === 'number' && (
-                                     <input type="number" required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold text-base" />
-                                   )}
-
-                                   {field.type === 'textarea' && (
-                                     <textarea required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold min-h-[100px] text-base" />
-                                   )}
-
-                                   {field.type === 'select' && (
-                                   <div className="relative">
-                                     <select required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bengali font-bold appearance-none text-base">
-                                        <option value="">নির্বাচন করুন</option>
-                                        {field.options?.split(',').map((opt, i) => <option key={i} value={opt.trim()}>{opt.trim()}</option>)}
-                                     </select>
-                                   </div>
-                                 )}
-
-                                 {field.type === 'date' && (
-                                   <div>
-                                     <input type="date" required={field.required} value={customFieldValues[field.id]?.split(' ')[0] || ''} onChange={e => {
-                                        let val = e.target.value;
-                                        if (field.calculateAge && val) {
-                                           const birthDate = new Date(val);
-                                           const diff_ms = Date.now() - birthDate.getTime();
-                                           const age_dt = new Date(diff_ms); 
-                                           const age = Math.abs(age_dt.getUTCFullYear() - 1970);
-                                           val = `${val} (বয়স: ${age} বছর)`;
-                                        }
-                                        setCustomFieldValues(prev => ({ ...prev, [field.id]: val }))
-                                     }} className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold text-base" />
-                                     {field.calculateAge && customFieldValues[field.id] && customFieldValues[field.id].includes('(বয়স:') && (
-                                        <p className="mt-1.5 sm:mt-2 text-xs sm:text-sm text-indigo-600 font-bold font-bengali text-right">{customFieldValues[field.id].split('(')[1]?.replace(')', '')}</p>
-                                     )}
-                                   </div>
-                                 )}
-                                 
-                                 {/* Inject phone right after first element if it's missing entirely from the custom fields */}
-                                 {idx === 0 && !(selectedEvent.customFields.some(f => f.label.toLowerCase().includes('phone') || f.label.toLowerCase().includes('mobile') || f.label.includes('মোবাইল') || f.label.includes('ফোন') || f.label.toLowerCase().includes('number'))) && (
-                                   <div className="flex flex-col gap-1.5 sm:gap-2 text-left mt-5 sm:mt-6">
-                                     <label className="text-xs sm:text-sm font-black text-slate-700 font-bengali">
-                                        মোবাইল নম্বর <span className="text-rose-500">*</span>
-                                     </label>
-                                     <input type="text" required value={applicantPhone} onChange={e=>setApplicantPhone(e.target.value)} placeholder="017........" className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold text-base" />
-                                   </div>
-                                 )}
-                               </div>
-                               </React.Fragment>
-                             ))}
-                             
-                             {/* If there were 0 elements for some reason, inject phone field at the very end */}
-                             {selectedEvent.customFields.length === 0 && !(selectedEvent.customFields.some(f => f.label.toLowerCase().includes('phone') || f.label.toLowerCase().includes('mobile') || f.label.includes('মোবাইল') || f.label.includes('ফোন') || f.label.toLowerCase().includes('number'))) && (
-                                 <div className="flex flex-col gap-1.5 sm:gap-2 text-left">
-                                   <label className="text-xs sm:text-sm font-black text-slate-700 font-bengali">
-                                      মোবাইল নম্বর <span className="text-rose-500">*</span>
-                                   </label>
-                                   <input type="text" required value={applicantPhone} onChange={e=>setApplicantPhone(e.target.value)} placeholder="017........" className="w-full bg-slate-50 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-sans font-bold text-base" />
-                                 </div>
-                             )}
-                          </div>
-                        )}
-                       
-                       <div className="bg-emerald-50 p-8 rounded-[2rem] border border-emerald-100">
-                        <h4 className="font-black text-emerald-700 mb-3 font-bengali flex items-center gap-3 text-lg">
-                          <Clock size={22} /> ইভেন্ট গাইডলাইনসমূহ
-                        </h4>
-                        <div className="text-emerald-600 font-bengali font-bold text-sm whitespace-pre-line">
-                          {selectedEvent.guidelines || (
-                            <ul className="space-y-3">
-                              <li className="flex items-start gap-3">
-                                <CheckCircle size={18} className="mt-0.5 flex-shrink-0" />
-                                <span>নির্দিষ্ট সময়ের ৩০ মিনিট আগে উপস্থিত থাকতে হবে</span>
-                              </li>
-                              <li className="flex items-start gap-3">
-                                <CheckCircle size={18} className="mt-0.5 flex-shrink-0" />
-                                <span>রেজিস্ট্রেশন স্লিপটি অবশ্যই সাথে আনতে হবে (পিডিএফ)</span>
-                              </li>
-                            </ul>
-                          )}
+                          <span className="font-bengali font-bold">{new Date(selectedEvent.date).toLocaleDateString('bn-BD')}</span>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </div>
 
-                      <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                {/* Mobile Header (Only on Mobile) */}
+                <div className="sm:hidden relative h-32 w-full shrink-0">
+                  <img src={selectedEvent.image || 'https://images.unsplash.com/photo-1544928147-79a2dbc1f389?q=80&w=1974&auto=format&fit=crop'} alt={selectedEvent.title} className="absolute inset-0 w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900 to-slate-900/20" />
+                  <h2 className="absolute bottom-4 left-5 pr-14 text-white font-black text-xl font-bengali leading-tight line-clamp-2">{selectedEvent.title}</h2>
+                </div>
+
+                {/* RH Panel - Form/Success */}
+                <div className="w-full sm:w-[55%] p-5 sm:p-10 lg:p-12 flex flex-col bg-slate-50/50">
+                  {!hasRegistered ? (
+                    <form onSubmit={handleRegister} className="space-y-10">
+                      <div className="space-y-2">
+                        <h4 className="text-2xl font-black text-slate-900 font-bengali">অংশগ্রহণ করুন</h4>
+                        <p className="text-slate-500 font-bengali font-medium">নিচের তথ্যগুলো প্রদান করে ইভেন্টে অংশ নিন</p>
+                      </div>
+
+                      <div className="space-y-8">
+                        {/* Standard Fields If No Custom Fields */}
+                        {(!selectedEvent.customFields || selectedEvent.customFields.length === 0) && (
+                          <div className="space-y-6">
+                             <div className="relative group">
+                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest font-sans mb-1.5 block group-focus-within:text-indigo-600 transition-colors">{(selectedEvent.type.includes('মেডিকেল') || selectedEvent.title.includes('Medical')) ? 'PATIENT NAME' : 'APPLICANT NAME'} <span className="text-rose-500">*</span></label>
+                                <input type="text" required value={applicantName} onChange={e=>setApplicantName(e.target.value)} className="w-full bg-slate-50/70 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white focus:shadow-[0_0_0_4px_rgba(99,102,241,0.1)] outline-none transition-all px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-sans font-bold text-base sm:text-lg text-slate-800" />
+                             </div>
+                             <div className="relative group">
+                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest font-sans mb-1.5 block group-focus-within:text-indigo-600 transition-colors">MOBILE NUMBER <span className="text-rose-500">*</span></label>
+                                <input type="text" required value={applicantPhone} onChange={e=>setApplicantPhone(e.target.value)} placeholder="017........" className="w-full bg-slate-50/70 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white focus:shadow-[0_0_0_4px_rgba(99,102,241,0.1)] outline-none transition-all px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-sans font-bold text-base sm:text-lg text-slate-800 tracking-wider" />
+                             </div>
+                          </div>
+                        )}
+
+                        {/* Scholarship/Advanced Logic */}
+                        {(selectedEvent.isScholarship || (selectedEvent.customFields && selectedEvent.customFields.length > 0)) && (
+                          <div className="space-y-6 sm:space-y-8">
+                            {/* Inject applicant name if not in custom fields */}
+                            {!(selectedEvent.customFields?.some(f => f.label.toLowerCase().includes('name') || f.label.includes('নাম'))) && (
+                               <div className="relative group mb-6">
+                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest font-sans mb-1.5 block group-focus-within:text-indigo-600 transition-colors">{(selectedEvent.type.includes('মেডিকেল') || selectedEvent.title.includes('Medical')) ? 'PATIENT NAME' : 'APPLICANT NAME'} <span className="text-rose-500">*</span></label>
+                                <input type="text" required value={applicantName} onChange={e=>setApplicantName(e.target.value)} className="w-full bg-slate-50/70 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white focus:shadow-[0_0_0_4px_rgba(99,102,241,0.1)] outline-none transition-all px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-sans font-bold text-base sm:text-lg text-slate-800" />
+                               </div>
+                            )}
+
+                            {/* Inject applicant phone if not in custom fields */}
+                            {!(selectedEvent.customFields?.some(f => /phone|mobile|number|মোবাইল|মোবাইল|ফোন|নম্বর|নাম্বার/i.test(f.label))) && (
+                               <div className="relative group mb-6">
+                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest font-sans mb-1.5 block group-focus-within:text-indigo-600 transition-colors">MOBILE NUMBER <span className="text-rose-500">*</span></label>
+                                <input type="text" required value={applicantPhone} onChange={e=>setApplicantPhone(e.target.value)} placeholder="017........" className="w-full bg-slate-50/70 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white focus:shadow-[0_0_0_4px_rgba(99,102,241,0.1)] outline-none transition-all px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-sans font-bold text-base sm:text-lg text-slate-800 tracking-wider" />
+                               </div>
+                            )}
+
+                            {selectedEvent.isScholarship && (
+                              <div className="space-y-6 sm:space-y-8">
+                                {(selectedEvent.requiredDocuments || []).filter(d => d.trim() !== '').map(docName => (
+                                  <div key={docName} className="space-y-2 sm:space-y-3">
+                                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">{docName} আপলোড করুন <span className="text-rose-500">*</span></label>
+                                    <input
+                                      type="file"
+                                      required
+                                      accept="image/*,application/pdf"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) setScholarshipFiles(prev => ({ ...prev, [docName]: file }));
+                                      }}
+                                      className="w-full text-xs sm:text-sm font-bengali file:mr-3 sm:file:mr-4 file:py-2 sm:file:py-3 file:px-4 sm:file:px-6 file:rounded-lg sm:file:rounded-xl file:border-0 file:font-black file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 transition-colors"
+                                    />
+                                  </div>
+                                ))}
+
+                                {(selectedEvent.customQuestions || []).filter(q => q.trim() !== '').map(q => (
+                                  <div key={q} className="space-y-2 sm:space-y-3">
+                                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest font-bengali">{q} <span className="text-rose-500">*</span></label>
+                                    <textarea
+                                      required
+                                      value={scholarshipAnswers[q] || ''}
+                                      onChange={(e) => setScholarshipAnswers(prev => ({ ...prev, [q]: e.target.value }))}
+                                      className="w-full bg-white px-4 sm:px-6 py-3 sm:py-4 rounded-xl sm:rounded-2xl border-2 border-slate-100 focus:border-indigo-500 outline-none transition-all min-h-[100px] sm:min-h-[120px] font-bengali font-bold text-base sm:text-lg shadow-sm custom-scrollbar"
+                                      placeholder="আপনার উত্তর দিন..."
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {selectedEvent.customFields?.map((field, idx) => (
+                              <div key={field.id} className="relative group mb-6">
+                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest font-sans mb-1.5 block group-focus-within:text-indigo-600 transition-colors">
+                                  {field.label} {field.required && <span className="text-rose-500">*</span>}
+                                </label>
+                                {field.type === 'text' && (
+                                   <input type="text" required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50/70 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white focus:shadow-[0_0_0_4px_rgba(99,102,241,0.1)] outline-none transition-all px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-bengali font-bold text-base sm:text-lg text-slate-800" />
+                                )}
+                                {field.type === 'number' && (
+                                   <input type="number" required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50/70 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white focus:shadow-[0_0_0_4px_rgba(99,102,241,0.1)] outline-none transition-all px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-sans font-bold text-base sm:text-lg text-slate-800 tracking-wider" />
+                                )}
+                                {field.type === 'textarea' && (
+                                   <textarea required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50/70 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white focus:shadow-[0_0_0_4px_rgba(99,102,241,0.1)] outline-none transition-all px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-bengali font-bold min-h-[100px] sm:min-h-[120px] text-base sm:text-lg text-slate-800 custom-scrollbar" />
+                                )}
+                                {field.type === 'select' && (
+                                   <select required={field.required} value={customFieldValues[field.id] || ''} onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))} className="w-full bg-slate-50/70 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white focus:shadow-[0_0_0_4px_rgba(99,102,241,0.1)] outline-none transition-all px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-bengali font-bold text-base sm:text-lg text-slate-800 appearance-none cursor-pointer">
+                                      <option value="">নির্বাচন করুন</option>
+                                      {field.options?.split(',').map((opt, i) => <option key={i} value={opt.trim()}>{opt.trim()}</option>)}
+                                   </select>
+                                )}
+                                {field.type === 'date' && (
+                                   <input type="date" required={field.required} value={customFieldValues[field.id]?.split(' ')[0] || ''} onChange={e => {
+                                      let val = e.target.value;
+                                      if (field.calculateAge && val) {
+                                         const birthDate = new Date(val);
+                                         const age = Math.abs(new Date(Date.now() - birthDate.getTime()).getUTCFullYear() - 1970);
+                                         val = `${val} (বয়স: ${age} বছর)`;
+                                      }
+                                      setCustomFieldValues(prev => ({ ...prev, [field.id]: val }))
+                                   }} className="w-full bg-slate-50/70 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white focus:shadow-[0_0_0_4px_rgba(99,102,241,0.1)] outline-none transition-all px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-sans font-bold text-base sm:text-lg text-slate-800" />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pt-8 flex flex-col sm:flex-row gap-4">
                         <button
                           type="submit"
                           disabled={registering}
-                          className="flex-1 bg-indigo-600 text-white py-5 rounded-[2rem] font-bengali font-black text-xl disabled:opacity-50 hover:bg-slate-900 transition-all shadow-xl shadow-indigo-100 active:scale-95"
+                          className="flex-[2] bg-indigo-600 text-white py-5 sm:py-6 rounded-3xl font-bengali font-black text-xl shadow-2xl shadow-indigo-100 hover:bg-slate-900 transition-all active:scale-95 disabled:opacity-50"
                         >
                           {registering ? 'প্রসেস হচ্ছে...' : 'রেজিস্ট্রেশন নিশ্চিত করুন'}
                         </button>
                         <button
                           type="button"
                           onClick={() => setSelectedEvent(null)}
-                          className="px-10 py-5 bg-slate-100 text-slate-500 rounded-[2rem] font-bengali font-black border border-slate-200 hover:bg-slate-200"
+                          className="flex-1 bg-slate-100 text-slate-500 py-5 sm:py-6 rounded-3xl font-bengali font-black text-lg hover:bg-slate-200 transition-all"
                         >
                           বাতিল
                         </button>
                       </div>
-                    </div>
-                  </form>
-                ) : (
-                  <div className="text-center py-10">
-                    <motion.div 
-                      initial={{ scale: 0.5, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      className="w-24 h-24 bg-emerald-500 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-10 shadow-2xl shadow-emerald-200"
-                    >
-                      <CheckCircle size={48} />
-                    </motion.div>
-                    <h2 className="text-4xl font-black text-slate-900 mb-4 font-bengali">স্বাগতম! সফলভাবে নিবন্ধিত</h2>
-                    <p className="text-slate-500 font-bengali font-medium mb-8 text-lg">
-                      আপনার রেজিস্ট্রেশন স্লিপটি ডাউনলোড করে নিন। ইভেন্টের দিন এটি প্রদর্শন বাধ্যতামূলক।
-                    </p>
-                    
-                    <div className="bg-slate-50 rounded-2xl p-6 max-w-sm mx-auto mb-8 border border-slate-200">
-                        <span className="text-xs font-bold text-slate-400 font-bengali uppercase tracking-widest block mb-2">আপনার সিরিয়াল নাম্বার</span>
-                        <p className="text-4xl font-black text-indigo-600 font-sans tracking-tight">#{currentSerial}</p>
-                    </div>
-                    
-                    {/* Printable area */}
-                    <div className="hidden">
-                      <div ref={printRef} className="p-16 font-bengali text-center bg-white">
-                        <div className="border-[12px] border-slate-900 p-16 rounded-[4rem] relative">
-                          <h1 className="text-5xl font-black text-slate-900 mb-3 tracking-tighter">PAN dhoA LIBRARY</h1>
-                          <p className="text-slate-400 font-black uppercase tracking-[0.4em] mb-16 text-xs">Event Registration Slip</p>
-                          
-                          <div className="space-y-10 text-left max-w-sm mx-auto">
-                            <div className="border-b-2 border-slate-100 pb-4">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">EVENT TITLE</span>
-                              <p className="text-2xl font-black text-slate-900">{selectedEvent.title}</p>
-                            </div>
-                            <div className="border-b-2 border-slate-100 pb-4">
-                               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">PARTICIPANT NAME</span>
-                               <p className="text-2xl font-black text-slate-900">{applicantName}</p>
-                            </div>
-                            <div className="grid grid-cols-2 gap-8">
-                               <div>
-                                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">DATE</span>
-                                  <p className="text-xl font-bold font-sans">{new Date(selectedEvent.date).toLocaleDateString()}</p>
-                               </div>
-                               <div>
-                                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">SERIAL NUMBER / ID</span>
-                                  <p className="text-xl font-bold font-sans">#E{currentSerial.toString().padStart(4, '0')}</p>
-                                  <svg id="barcode" className="mt-2 text-left"></svg>
-                                </div>
-                            </div>
-                            
-                            {selectedEvent.customQuestions && selectedEvent.customQuestions.filter(q => q.trim() !== '').length > 0 && (
-                               <div className="mt-8 pt-8 border-t-2 border-slate-100">
-                                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">SUBMITTED ANSWERS</span>
-                                   <div className="space-y-4">
-                                       {selectedEvent.customQuestions.filter(q => q.trim() !== '').map(q => (
-                                          <div key={q}>
-                                              <p className="text-xs font-bold text-slate-500 mb-1">{q}</p>
-                                              <p className="text-sm font-bold text-slate-900">{scholarshipAnswers[q] || 'N/A'}</p>
-                                          </div>
-                                       ))}
-                                   </div>
-                               </div>
-                            )}
+                    </form>
+                  ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center space-y-8 py-10">
+                      <motion.div initial={{ scale: 0, rotate: -45 }} animate={{ scale: 1, rotate: 0 }} className="w-32 h-32 bg-emerald-500 text-white rounded-[3.5rem] flex items-center justify-center shadow-2xl shadow-emerald-200">
+                        <CheckCircle size={64} />
+                      </motion.div>
+                      <div className="space-y-4">
+                        <h2 className="text-4xl font-black text-slate-900 font-bengali">রেজিস্ট্রেশন টোকেন</h2>
+                        <p className="text-slate-500 font-bengali text-lg max-w-sm mx-auto">সফলভাবে নিবন্ধিত হয়েছেন! আপনার স্লিপটি ডাউনলোড করে নিন।</p>
+                      </div>
 
-                            {selectedEvent.customFields && selectedEvent.customFields.length > 0 && (
-                               <div className="mt-8 pt-8 border-t-2 border-slate-100">
-                                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">REGISTRATION DETAILS</span>
-                                   <div className="space-y-4">
-                                       {selectedEvent.customFields.map(field => (
-                                          <div key={field.id}>
-                                              <p className="text-xs font-bold text-slate-500 mb-1">{field.label}</p>
-                                              <p className="text-sm font-bold text-slate-900">{customFieldValues[field.id] || 'N/A'}</p>
-                                          </div>
-                                       ))}
-                                   </div>
-                               </div>
-                            )}
-                          </div>
-                          
-                          <div className="mt-24 pt-10 border-t border-dashed border-slate-200">
-                             <p className="text-slate-400 font-black uppercase tracking-[0.5em] text-[10px] text-center">Identity Verified Digital Access</p>
-                          </div>
-                        </div>
+                      <div className="bg-indigo-50 border-4 border-white shadow-xl rounded-[2.5rem] p-10 w-full max-w-sm">
+                        <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest font-bengali block mb-2">আপনার সিরিয়াল নম্বর</span>
+                        <p className="text-6xl font-black text-indigo-600 font-sans tracking-tight">#{currentSerial}</p>
+                      </div>
+
+                      <div className="flex flex-col w-full max-w-sm gap-4 pt-6">
+                        <button onClick={() => handlePrint()} className="bg-slate-900 text-white flex items-center justify-center gap-3 py-5 rounded-3xl font-black font-bengali text-lg hover:bg-indigo-600 transition-all">
+                          স্লিপ ডাউনলোড করুন <Printer size={22} />
+                        </button>
+                        <button onClick={() => setSelectedEvent(null)} className="text-slate-400 font-bold font-bengali hover:text-slate-900 transition-colors">ফিরে যান</button>
                       </div>
                     </div>
-
-                    <div className="flex flex-col gap-6">
-                      <button
-                        onClick={() => handlePrint()}
-                        className="w-full bg-slate-900 text-white py-6 rounded-[2rem] font-bengali font-black text-xl flex items-center justify-center gap-4 shadow-2xl hover:bg-slate-800 transition-all active:scale-95"
-                      >
-                        <Printer size={28} /> স্লিপ ডাউনলোড করুন
-                      </button>
-                      <button
-                        onClick={() => setSelectedEvent(null)}
-                        className="w-full py-4 text-slate-400 font-bengali font-black hover:text-indigo-600 transition-colors text-lg"
-                      >
-                        বন্ধ করুন
-                      </button>
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </motion.div>
           </div>

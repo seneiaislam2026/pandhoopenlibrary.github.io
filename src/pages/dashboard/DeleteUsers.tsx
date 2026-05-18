@@ -45,8 +45,12 @@ export default function DeleteUsers() {
         setUsers(usersData);
         setLoading(false);
 
-        sessionStorage.setItem(cacheKey, JSON.stringify(usersData));
-        sessionStorage.setItem('admin_users_time', Date.now().toString());
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify(usersData));
+          sessionStorage.setItem('admin_users_time', Date.now().toString());
+        } catch (e) {
+          console.warn('Quota exceeded for sessionStorage', e);
+        }
       } catch (err) {
         console.error("Error fetching users:", err);
         setLoading(false);

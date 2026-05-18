@@ -36,6 +36,7 @@ export default function ManageStickers() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [shelfFilter, setShelfFilter] = useState('');
   
   // Form State
   const [isGenerating, setIsGenerating] = useState(false);
@@ -359,9 +360,16 @@ export default function ManageStickers() {
       (s.shelfNo || '').toLowerCase().includes(term);
 
     const categoryMatch = categoryFilter === '' || s.category === categoryFilter;
+    const shelfMatch = shelfFilter === '' || s.shelfNo === shelfFilter;
 
-    return searchMatch && categoryMatch;
+    return searchMatch && categoryMatch && shelfMatch;
   });
+
+  const uniqueShelves = Array.from(new Set([
+    ...stickers.map(s => s.shelfNo),
+    ...books.map(b => b.shelfNo)
+  ].filter(s => !!s && String(s).trim() !== ''))).sort();
+
 
   const handleDelete = async (id: string, code: string) => {
     if (!confirm(`Are you sure you want to delete ${code}?`)) return;
@@ -488,7 +496,7 @@ export default function ManageStickers() {
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative min-h-[400px]">
         <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row items-center gap-4 bg-slate-50/50">
-          <div className="relative flex-1 w-full max-w-md flex flex-col sm:flex-row gap-3">
+          <div className="relative w-full flex flex-col md:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
@@ -499,25 +507,48 @@ export default function ManageStickers() {
                 className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 active:bg-slate-50 transition-all font-bengali"
               />
             </div>
-            <Select
-              value={categoryFilter ? { value: categoryFilter, label: categoryFilter } : null}
-              onChange={(selected: any) => setCategoryFilter(selected ? selected.value : '')}
-              options={[
-                { value: '', label: 'সব ক্যাটাগরি' },
-                ...BOOK_CATEGORIES.map(cat => ({ value: cat, label: cat }))
-              ]}
-              placeholder="ক্যাটাগরি ফিল্টার..."
-              styles={{
-                ...reactSelectCustomStyles,
-                control: (base: any, state: any) => ({
-                   ...reactSelectCustomStyles.control(base, state),
-                   minHeight: '44px',
-                   borderRadius: '0.75rem'
-                })
-              }}
-              className="sm:w-64 font-bengali text-sm"
-              classNamePrefix="react-select"
-            />
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Select
+                value={categoryFilter ? { value: categoryFilter, label: categoryFilter } : null}
+                onChange={(selected: any) => setCategoryFilter(selected ? selected.value : '')}
+                options={[
+                  { value: '', label: 'সব ক্যাটাগরি' },
+                  ...BOOK_CATEGORIES.map(cat => ({ value: cat, label: cat }))
+                ]}
+                placeholder="ক্যাটাগরি ফিল্টার..."
+                styles={{
+                  ...reactSelectCustomStyles,
+                  control: (base: any, state: any) => ({
+                     ...reactSelectCustomStyles.control(base, state),
+                     minHeight: '44px',
+                     borderRadius: '0.75rem',
+                     minWidth: '200px'
+                  })
+                }}
+                className="font-bengali text-sm w-full sm:w-[200px]"
+                classNamePrefix="react-select"
+              />
+              <Select
+                value={shelfFilter ? { value: shelfFilter, label: `শেল্ফ: ${shelfFilter}` } : null}
+                onChange={(selected: any) => setShelfFilter(selected ? selected.value : '')}
+                options={[
+                  { value: '', label: 'সব শেল্ফ' },
+                  ...uniqueShelves.map((shelf: any) => ({ value: shelf, label: `শেল্ফ: ${shelf}` }))
+                ]}
+                placeholder="শেল্ফ ফিল্টার..."
+                styles={{
+                  ...reactSelectCustomStyles,
+                  control: (base: any, state: any) => ({
+                     ...reactSelectCustomStyles.control(base, state),
+                     minHeight: '44px',
+                     borderRadius: '0.75rem',
+                     minWidth: '160px'
+                  })
+                }}
+                className="font-bengali text-sm w-full sm:w-[160px]"
+                classNamePrefix="react-select"
+              />
+            </div>
           </div>
           
           <div className="flex items-center gap-4 w-full md:w-auto">
@@ -681,13 +712,23 @@ export default function ManageStickers() {
                         
                         <div>
                           <label className="block text-sm font-semibold text-slate-700 mb-1.5">শেল্ফ নম্বর</label>
-                          <input
-                            type="text"
-                            required
-                            value={shelfNo || ''}
-                            onChange={e => setShelfNo(e.target.value)}
-                            placeholder="e.g. A1, BC-2, 05"
-                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all font-mono text-sm"
+                          <CreatableSelect
+                            isClearable
+                            value={shelfNo ? { value: shelfNo, label: shelfNo } : null}
+                            onChange={(selected: any) => setShelfNo(selected ? selected.value : '')}
+                            options={uniqueShelves.map((shelf: any) => ({ value: shelf, label: shelf }))}
+                            placeholder="শেল্ফ সিলেক্ট করুন বা টাইপ করুন..."
+                            formatCreateLabel={(inputValue) => `নতুন যোগ করুন: "${inputValue}"`}
+                            styles={{
+                              ...reactSelectCustomStyles,
+                              control: (base: any, state: any) => ({
+                                ...reactSelectCustomStyles.control(base, state),
+                                minHeight: '44px',
+                                borderRadius: '0.75rem'
+                              })
+                            }}
+                            className="font-bengali text-sm"
+                            classNamePrefix="react-select"
                           />
                         </div>
 

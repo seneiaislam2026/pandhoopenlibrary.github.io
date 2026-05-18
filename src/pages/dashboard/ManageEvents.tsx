@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query, orderBy, where, getDocsFromCache, getDocsFromServer } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
+import { compressImage } from '../../lib/imageUtils';
 import { Plus, Trash2, Calendar, FileText, CheckCircle, Clock, Printer, X, Copy } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
@@ -35,6 +36,8 @@ interface Event {
   smsTemplate?: string;
   targetUserPhone?: string;
   guidelines?: string;
+  hasQuota?: boolean;
+  quota?: number;
 }
 
 export default function ManageEvents() {
@@ -57,7 +60,9 @@ export default function ManageEvents() {
     customFields: [] as CustomField[],
     smsTemplate: '',
     targetUserPhone: '',
-    guidelines: ''
+    guidelines: '',
+    hasQuota: false,
+    quota: 0
   });
   const [viewApplicants, setViewApplicants] = useState<string | null>(null);
   const [applicants, setApplicants] = useState<any[]>([]);
@@ -107,8 +112,12 @@ export default function ManageEvents() {
         ...doc.data()
       }));
       setUsers(fetchedUsers);
-      sessionStorage.setItem(cacheKey, JSON.stringify(fetchedUsers));
-      sessionStorage.setItem(cacheKey + '_time', Date.now().toString());
+      try {
+        sessionStorage.setItem(cacheKey, JSON.stringify(fetchedUsers));
+        sessionStorage.setItem(cacheKey + '_time', Date.now().toString());
+      } catch (e) {
+        console.warn('Quota exceeded for sessionStorage', e);
+      }
     } catch (error) {
       console.error("Error fetching users:", error);
     }
@@ -167,13 +176,38 @@ export default function ManageEvents() {
         querySnapshot = await getDocsFromServer(q);
       }
 
-      const fetchedEvents = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Event[];
+      const now = new Date();
+      const fetchedEvents = querySnapshot.docs.map(doc => {
+        const data = doc.data() as Event;
+        const eventDate = new Date(data.date);
+        const deadline = new Date(data.deadline);
+        
+        let autoStatus = data.status;
+        
+        // Auto-close only if deadline is truly passed
+        if (now > deadline) {
+          autoStatus = 'Closed';
+        } else if (data.status === 'Closed') {
+          // If manually closed, keep it closed
+          autoStatus = 'Closed';
+        } else if (!data.status) {
+          // Default fallback
+          autoStatus = now < deadline ? 'Active' : 'Closed';
+        }
+
+        return {
+          ...data,
+          id: doc.id,
+          status: autoStatus
+        };
+      }) as Event[];
       setEvents(fetchedEvents);
-      sessionStorage.setItem(cacheKey, JSON.stringify(fetchedEvents));
-      sessionStorage.setItem(cacheKey + '_time', Date.now().toString());
+      try {
+        sessionStorage.setItem(cacheKey, JSON.stringify(fetchedEvents));
+        sessionStorage.setItem(cacheKey + '_time', Date.now().toString());
+      } catch (e) {
+        console.warn('Quota exceeded for sessionStorage', e);
+      }
     } catch (error) {
       console.error("Error fetching events:", error);
       toast.error("ইভেন্ট লোড করতে সমস্যা হয়েছে");
@@ -188,21 +222,7 @@ export default function ManageEvents() {
     if (!formData.title || !formData.date || !formData.deadline || !formData.description) return toast.error("সব প্রয়োজনীয় ঘর পূরণ করুন (নাম, বর্ণনা, সময়, ডেডলাইন)");
     
     try {
-      let imageUrl = formData.image;
-      if (eventImageFile) {
-         const toastId = toast.loading('ইমেজ আপলোড হচ্ছে...');
-         try {
-           const fileRef = ref(storage, `events/${Date.now()}_${eventImageFile.name}`);
-           await uploadBytes(fileRef, eventImageFile);
-           imageUrl = await getDownloadURL(fileRef);
-           toast.success('ইমেজ আপলোড সফল', { id: toastId });
-         } catch(err) {
-           toast.error('ইমেজ আপলোড করতে সমস্যা হয়েছে, অন্য ইমেজ দিন', { id: toastId });
-           return;
-         }
-      }
-
-      const payload: any = JSON.parse(JSON.stringify({ ...formData, image: imageUrl }));
+      const payload: any = JSON.parse(JSON.stringify({ ...formData, image: formData.image }));
 
       if (editEventId) {
         await updateDoc(doc(db, 'events', editEventId), payload);
@@ -219,7 +239,7 @@ export default function ManageEvents() {
         const newEventData = {
           id: docRef.id,
           ...formData,
-          image: imageUrl,
+          image: formData.image,
           creatorId: user.id,
           createdAt: new Date().toISOString()
         } as Event;
@@ -249,7 +269,9 @@ export default function ManageEvents() {
         customFields: [],
         smsTemplate: '',
         targetUserPhone: '',
-        guidelines: ''
+        guidelines: '',
+        hasQuota: false,
+        quota: 0
       });
       setEventImageFile(null);
       setShowAddForm(false);
@@ -271,7 +293,9 @@ export default function ManageEvents() {
       customFields: event.customFields || [],
       smsTemplate: event.smsTemplate || '',
       targetUserPhone: event.targetUserPhone || '',
-      guidelines: event.guidelines || ''
+      guidelines: event.guidelines || '',
+      hasQuota: !!event.hasQuota,
+      quota: event.quota || 0
     });
     setEditEventId(event.id);
     setShowAddForm(true);
@@ -530,6 +554,98 @@ export default function ManageEvents() {
         </head>
         <body onload="JsBarcode('.barcode').init(); setTimeout(() => window.print(), 1000)">
            ${pagesHtml}
+        </body>
+      </html>
+    `;
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(html);
+      printWindow.document.close();
+    }
+  };
+
+  const handlePrintA4SerialList = () => {
+    const listToPrint = selectedApplicants.length > 0 
+       ? applicants.filter(a => selectedApplicants.includes(a.id))
+       : applicants;
+    
+    if (listToPrint.length === 0) return toast.error("প্রিন্ট করার জন্য কিছু নেই");
+
+    const eventName = events.find(e => e.id === viewApplicants)?.title || 'আবেদনকারী তালিকা';
+    
+    // Sort by serial number if available
+    listToPrint.sort((a, b) => (Number(a.serialNumber) || 0) - (Number(b.serialNumber) || 0));
+
+    const html = `
+      <html>
+        <head>
+          <title>${eventName} - টোকেন স্লিপ</title>
+          <script src="https://cdn.tailwindcss.com"></script>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700;800&display=swap');
+            body { font-family: 'Noto Sans Bengali', sans-serif; background: #fff; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .page { width: 210mm; min-height: 297mm; padding: 10mm; margin: 0 auto; background: white; box-sizing: border-box; }
+            .tickets-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15mm 10mm; }
+            .ticket { border: 2px dashed #cbd5e1; border-radius: 16px; padding: 20px; display: flex; flex-direction: column; break-inside: avoid; position: relative; gap: 12px; }
+            .cut-mark { position: absolute; font-size: 16px; color: #94a3b8; background: white; }
+            .cut-top { top: -11px; left: 50%; transform: translateX(-50%); padding: 0 4px; }
+            .cut-bottom { bottom: -11px; left: 50%; transform: translateX(-50%); padding: 0 4px; }
+            @media print {
+               body { background: white; }
+               .page { margin: 0; padding: 10mm; width: auto; min-height: auto; box-shadow: none; }
+               @page { size: A4; margin: 0; }
+            }
+          </style>
+        </head>
+        <body onload="window.print()">
+          <div class="page">
+            <div class="tickets-grid">
+                ${listToPrint.map((app, idx) => {
+                  const serialNum = app.serialNumber || (idx + 1);
+                  const patientId = serialNum.toString().padStart(5, '0');
+                  let extraInfo = '';
+                  if (app.customFieldAnswers) {
+                     const answers = Object.values(app.customFieldAnswers) as any[];
+                     const deptField = answers.find((f: any) => f.label.toLowerCase().includes('dept') || f.label.includes('বিভাগ'));
+                     if (deptField && deptField.value) extraInfo = `<span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md text-[11px] font-bold mt-1.5 inline-block">${deptField.value}</span>`;
+                  }
+                  return `
+                    <div class="ticket">
+                      <div class="cut-mark cut-top">✂</div>
+                      <div class="cut-mark cut-bottom">✂</div>
+                      
+                      <div class="flex justify-between items-start border-b-2 border-slate-100 pb-3">
+                        <div class="pr-2">
+                          <h1 class="text-sm font-black text-slate-900 leading-tight">পানধোঁয়া উন্মুক্ত পাঠাগার</h1>
+                          <h2 class="text-[10px] font-bold text-indigo-600 mt-1 line-clamp-1">${eventName}</h2>
+                        </div>
+                        <div class="text-right shrink-0">
+                          <span class="text-[9px] text-slate-400 block uppercase tracking-widest mb-0.5">Serial No</span>
+                          <div class="text-xl font-black text-indigo-600 font-mono leading-none">#${serialNum}</div>
+                        </div>
+                      </div>
+                      
+                      <div class="py-1">
+                        <div class="text-[9px] text-slate-400 uppercase tracking-widest mb-1">Patient Name</div>
+                        <div class="font-bold text-lg text-slate-800 leading-tight">${app.userName || 'N/A'}</div>
+                        ${extraInfo}
+                      </div>
+
+                      <div class="flex justify-between items-end mt-auto pt-3 border-t-2 border-slate-100">
+                         <div>
+                            <div class="text-[9px] text-slate-400 uppercase tracking-widest mb-0.5">Phone</div>
+                            <div class="font-mono text-sm font-bold text-slate-600">${app.userPhone || 'N/A'}</div>
+                         </div>
+                         <div class="text-right">
+                            <div class="text-[9px] text-slate-400 uppercase tracking-widest mb-0.5">Patient ID</div>
+                            <div class="font-mono text-xl font-black text-slate-900 leading-none">${patientId}</div>
+                         </div>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+            </div>
+          </div>
         </body>
       </html>
     `;
@@ -945,28 +1061,28 @@ export default function ManageEvents() {
                   <div className="h-2.5 bg-[#673ab7] w-full rounded-t-xl mb-[-4px]" />
                   
                   {/* Header Card */}
-                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm relative p-8">
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm relative p-5 sm:p-8">
                     <input
                       type="text"
                       required
                       value={formData.title}
                       onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                      className="w-full text-4xl font-bold font-bengali text-slate-900 border-b-2 border-transparent focus:border-[#673ab7] mb-6 outline-none transition-all placeholder:text-slate-200 py-2"
+                      className="w-full text-2xl sm:text-4xl font-bold font-bengali text-slate-900 border-b-2 border-transparent focus:border-[#673ab7] mb-4 sm:mb-6 outline-none transition-all placeholder:text-slate-200 py-2 sm:py-2"
                       placeholder="ইভেন্টের নাম (Event Title)"
                     />
                     <textarea
                       required
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      className="w-full px-0 py-2 bg-transparent text-slate-700 font-bengali text-lg outline-none resize-none min-h-[100px] placeholder:text-slate-300"
+                      className="w-full px-0 py-2 bg-transparent text-slate-700 font-bengali text-sm sm:text-lg outline-none resize-none min-h-[100px] placeholder:text-slate-300"
                       placeholder="ইভেন্টের বিস্তারিত বর্ণনা এখানে লিখুন..."
                     />
                   </div>
 
                   {/* Question Card: Event Type */}
-                  <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm transition-all hover:shadow-md">
-                    <label className="block text-base font-bold text-slate-900 font-bengali mb-6 border-l-4 border-[#673ab7] pl-4">ইভেন্টের ধরণ (Event Type) *</label>
-                    <div className="flex flex-wrap gap-3">
+                  <div className="bg-white p-5 sm:p-8 rounded-xl border border-slate-200 shadow-sm transition-all hover:shadow-md">
+                    <label className="block text-base font-bold text-slate-900 font-bengali mb-4 sm:mb-6 border-l-4 border-[#673ab7] pl-4">ইভেন্টের ধরণ (Event Type) *</label>
+                    <div className="flex flex-wrap gap-2 sm:gap-3">
                       {['প্রতিযোগিতা', 'বৃত্তি', 'মেডিকেল ক্যাম্পেইন', 'ওয়ার্কশপ', 'প্রশ্ন উত্তর', 'অন্যান্য'].map((type) => (
                         <button
                           key={type}
@@ -989,7 +1105,7 @@ export default function ManageEvents() {
                               isScholarship: type === 'Scholarship' || type === 'QuestionAnswer' || type === 'বৃত্তি' || type === 'প্রশ্ন উত্তর' 
                             });
                           }}
-                          className={`px-8 py-3.5 rounded-xl font-bold font-bengali transition-all border-2 ${
+                          className={`px-4 py-2 sm:px-8 sm:py-3.5 rounded-xl font-bold font-bengali text-sm sm:text-base transition-all border-2 flex-grow sm:flex-grow-0 ${
                             formData.type === type 
                               ? 'bg-[#673ab7] text-white border-[#673ab7] shadow-lg shadow-indigo-200' 
                               : 'bg-white text-slate-600 border-slate-100 hover:border-[#673ab7]/30'
@@ -1001,8 +1117,35 @@ export default function ManageEvents() {
                     </div>
                   </div>
 
+                  {/* Question Card: Status */}
+                  <div className="bg-white p-5 sm:p-8 rounded-xl border border-slate-200 shadow-sm transition-all hover:shadow-md">
+                    <label className="block text-base font-bold text-slate-900 font-bengali mb-4 sm:mb-6 border-l-4 border-indigo-600 pl-4">ইভেন্ট স্ট্যাটাস (Event Status) *</label>
+                    <div className="flex flex-wrap gap-2 sm:gap-4">
+                      {[
+                        { value: 'Upcoming', label: 'আসন্ন (Upcoming)', color: 'bg-blue-500' },
+                        { value: 'Active', label: 'চলমান (Active)', color: 'bg-emerald-500' },
+                        { value: 'Closed', label: 'বন্ধ (Closed)', color: 'bg-rose-500' }
+                      ].map((s) => (
+                        <button
+                          key={s.value}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, status: s.value as any })}
+                          className={`px-6 py-3 rounded-xl font-bold font-bengali text-sm transition-all border-2 flex items-center gap-2 ${
+                            formData.status === s.value 
+                              ? 'bg-slate-900 text-white border-slate-900 shadow-lg' 
+                              : 'bg-white text-slate-600 border-slate-100 hover:border-slate-200'
+                          }`}
+                        >
+                          <div className={`w-2 h-2 rounded-full ${s.color}`} />
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-4 font-bengali">* দ্রষ্টব্য: ডেডলাইন পার হয়ে গেলে অটোমেটিক 'বন্ধ' দেখাবে।</p>
+                  </div>
+
                   {/* Guideline Card */}
-                  <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm transition-all hover:shadow-md">
+                  <div className="bg-white p-5 sm:p-8 rounded-xl border border-slate-200 shadow-sm transition-all hover:shadow-md">
                     <label className="block text-base font-bold text-slate-900 font-bengali mb-4 border-l-4 border-emerald-500 pl-4">ইভেন্ট গাইডলাইন (Guidelines)</label>
                     <textarea
                       value={formData.guidelines}
@@ -1013,8 +1156,8 @@ export default function ManageEvents() {
                   </div>
 
                   {/* Question Card: Timing */}
-                  <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                  <div className="bg-white p-5 sm:p-8 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-10">
                       <div className="group">
                         <label className="block text-base font-bold text-slate-900 font-bengali mb-4 border-l-4 border-indigo-500 pl-4">ইভেন্টের সময়</label>
                         <input
@@ -1038,8 +1181,49 @@ export default function ManageEvents() {
                     </div>
                   </div>
 
+                  {/* Question Card: Quota Limit */}
+                  <div className="bg-white p-5 sm:p-8 rounded-xl border border-slate-200 shadow-sm transition-all hover:shadow-md">
+                    <label className="block text-base font-bold text-slate-900 font-bengali mb-4 border-l-4 border-[#673ab7] pl-4">আসন/কোটা সীমা (Registration Limit)</label>
+                    <div className="flex items-center gap-4 mb-4">
+                      <label className="flex items-center gap-2 cursor-pointer font-bengali font-bold text-slate-700">
+                        <input
+                          type="radio"
+                          name="quota"
+                          checked={!formData.hasQuota}
+                          onChange={() => setFormData({ ...formData, hasQuota: false })}
+                          className="w-4 h-4 text-[#673ab7] focus:ring-[#673ab7]"
+                        />
+                        আনলিমিটেড (Unlimited)
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer font-bengali font-bold text-slate-700">
+                        <input
+                          type="radio"
+                          name="quota"
+                          checked={formData.hasQuota}
+                          onChange={() => setFormData({ ...formData, hasQuota: true })}
+                          className="w-4 h-4 text-[#673ab7] focus:ring-[#673ab7]"
+                        />
+                        নির্দিষ্ট সংখ্যা (Limited)
+                      </label>
+                    </div>
+                    {formData.hasQuota && (
+                      <div>
+                        <input
+                          type="number"
+                          min="1"
+                          required={formData.hasQuota}
+                          value={formData.quota || ''}
+                          onChange={(e) => setFormData({ ...formData, quota: parseInt(e.target.value) || 0 })}
+                          className="w-full max-w-xs px-4 py-3 rounded-lg border border-slate-200 focus:border-[#673ab7] outline-none font-bold text-slate-700"
+                          placeholder="আসন সংখ্যা (যেমন: 200)"
+                        />
+                        <p className="text-xs text-slate-500 mt-2 font-bengali">এই সংখ্যা পার হয়ে গেলে আর কেউ রেজিস্ট্রেশন করতে পারবে না।</p>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Question Card: Image */}
-                  <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm group">
+                  <div className="bg-white p-5 sm:p-8 rounded-xl border border-slate-200 shadow-sm group">
                     <label className="block text-base font-bold text-slate-900 font-bengali mb-4 border-l-4 border-sky-500 pl-4">ইভেন্ট কভার ইমেজ (Max 5MB) বা লিংক</label>
                     <input
                       type="url"
@@ -1054,7 +1238,7 @@ export default function ManageEvents() {
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={(e) => {
+                      onChange={async (e) => {
                          const file = e.target.files?.[0];
                          if (file) {
                            if (file.size > 5 * 1024 * 1024) {
@@ -1062,7 +1246,17 @@ export default function ManageEvents() {
                              if (e.target) e.target.value = '';
                              return;
                            }
-                           setEventImageFile(file);
+                           const toastId = toast.loading("ইমেজ প্রস্তুত হচ্ছে...");
+                           try {
+                              const base64Str = await compressImage(file, 1024);
+                              setFormData({ ...formData, image: base64Str });
+                              setEventImageFile(null);
+                              toast.success("ইমেজ যোগ করা হয়েছে!", { id: toastId });
+                           } catch (err) {
+                              toast.error("ইমেজ যোগ করতে সমস্যা হয়েছে", { id: toastId });
+                              console.error(err);
+                           }
+                           if (e.target) e.target.value = '';
                          }
                       }}
                       className="w-full px-0 py-3 border-b-2 border-slate-100 group-focus-within:border-[#673ab7] outline-none font-mono text-sm transition-all"
@@ -1272,20 +1466,20 @@ export default function ManageEvents() {
                   </div>
 
                   {/* Submission Row */}
-                  <div className="sticky bottom-8 left-0 right-0 py-6 px-8 bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl flex justify-between items-center z-10 mx-auto max-w-2xl">
+                  <div className="fixed sm:sticky bottom-0 sm:bottom-8 left-0 right-0 p-4 sm:py-6 sm:px-8 bg-white/95 sm:bg-white/80 backdrop-blur-md border-t sm:border border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] sm:shadow-2xl flex flex-row justify-between items-center z-[60] mx-auto sm:max-w-2xl sm:rounded-2xl gap-3">
                     <button
                       type="button"
                       onClick={() => setShowAddForm(false)}
-                      className="text-slate-500 font-bold font-bengali px-8 py-3 hover:bg-slate-100 rounded-xl transition"
+                      className="flex-1 sm:flex-none text-slate-500 font-bold font-bengali px-4 sm:px-8 py-3.5 hover:bg-slate-100 rounded-xl transition text-center"
                     >
                       বাতিল
                     </button>
                     <button
                       type="button"
                       onClick={handleSubmit}
-                      className="bg-[#673ab7] text-white px-12 py-4 rounded-xl font-bengali font-bold text-lg hover:shadow-[0_10px_30px_rgba(103,58,183,0.3)] transition-all active:scale-95 flex items-center justify-center gap-3"
+                      className="flex-[2] sm:flex-none bg-[#673ab7] text-white px-4 sm:px-12 py-3.5 sm:py-4 rounded-xl font-bengali font-bold text-base sm:text-lg hover:shadow-[0_10px_30px_rgba(103,58,183,0.3)] transition-all active:scale-95 flex items-center justify-center gap-3 shrink-0"
                     >
-                      সেভ করুন (Save Changes)
+                      সেভ করুন (Save)
                     </button>
                   </div>
                 </div>
@@ -1445,6 +1639,9 @@ export default function ManageEvents() {
                            <button onClick={handlePrintSelected} className="max-sm:min-w-[45%] flex-auto lg:flex-none justify-center items-center gap-2 bg-indigo-50 text-indigo-600 px-3 py-2 rounded-xl text-sm font-bold font-bengali hover:bg-indigo-100 transition-colors shadow-sm inline-flex">
                               <Printer size={16} /> তালিকা প্রিন্ট
                            </button>
+                           <button onClick={handlePrintA4SerialList} className="max-sm:min-w-[45%] flex-auto lg:flex-none justify-center items-center gap-2 bg-emerald-50 text-emerald-600 px-3 py-2 rounded-xl text-sm font-bold font-bengali hover:bg-emerald-100 transition-colors shadow-sm inline-flex">
+                              <Printer size={16} /> টোকেন স্লিপ
+                           </button>
                            <button onClick={handlePrintMedicalPads} className="max-sm:min-w-[45%] flex-auto lg:flex-none justify-center items-center gap-2 bg-pink-50 text-pink-600 px-3 py-2 rounded-xl text-sm font-bold font-bengali hover:bg-pink-100 transition-colors shadow-sm inline-flex">
                               <Printer size={16} /> প্যাড প্রিন্ট
                            </button>
@@ -1512,17 +1709,17 @@ export default function ManageEvents() {
                            />
                         </div>
                         <div className="flex-1 min-w-0">
-                           <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-3 sm:gap-2 mb-3">
+                           <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-3 mb-3">
                               <div className="min-w-0">
-                                 <h4 className="font-bold text-slate-800 font-bengali text-lg leading-tight mb-0.5 break-words">{app.userName}</h4>
+                                 <h4 className="font-bold text-slate-800 font-bengali text-base sm:text-lg leading-tight mb-0.5 break-words">{app.userName}</h4>
                                  <p className="text-sm text-slate-500 font-mono tracking-wide mt-1">{app.userPhone}</p>
                               </div>
-                              <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 shrink-0 w-full sm:w-auto">
-                                 <span className="text-[10px] text-slate-500 font-medium bg-slate-100 px-2.5 py-1.5 rounded-lg whitespace-nowrap">{new Date(app.registeredAt?.seconds * 1000).toLocaleString('bn-BD')}</span>
+                              <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 shrink-0 w-full sm:w-auto overflow-hidden">
+                                 <span className="text-[10px] text-slate-500 font-medium bg-slate-100 px-2 py-1 rounded-lg truncate shrink">{new Date(app.registeredAt?.seconds * 1000).toLocaleString('bn-BD')}</span>
                                  <select 
                                    value={app.status || 'pending'} 
                                    onChange={(e) => updateApplicantStatus(app.id, e.target.value)}
-                                   className="text-sm font-bold border border-slate-200 rounded-lg px-3 py-1.5 outline-none font-bengali cursor-pointer bg-slate-50 text-slate-700"
+                                   className="text-xs sm:text-sm font-bold border border-slate-200 rounded-lg px-2 py-1 sm:px-3 sm:py-1.5 outline-none font-bengali cursor-pointer bg-slate-50 text-slate-700 shrink-0"
                                  >
                                     <option value="pending">অপেক্ষমান</option>
                                     <option value="approved">অনুমোদিত</option>
@@ -1532,11 +1729,11 @@ export default function ManageEvents() {
                            </div>
                            
                            {app.customFieldAnswers && Object.keys(app.customFieldAnswers).length > 0 && (
-                             <div className="mb-3 space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                             <div className="mb-3 space-y-2 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
                                 {Object.values(app.customFieldAnswers).map((field: any, idx: number) => (
-                                  <div key={`${field.label}-${idx}`} className="grid grid-cols-3 gap-2 items-start">
-                                     <p className="text-[11px] text-slate-500 font-bengali break-words" title={field.label}>{field.label}</p>
-                                     <p className="text-[12px] font-semibold text-slate-800 font-bengali col-span-2 break-words">{field.value || '-'}</p>
+                                  <div key={`${field.label}-${idx}`} className="flex flex-col sm:grid sm:grid-cols-3 gap-1 sm:gap-2 sm:items-start">
+                                     <p className="text-[10px] sm:text-[11px] text-slate-500 font-bengali uppercase tracking-wide break-words" title={field.label}>{field.label}</p>
+                                     <p className="text-xs sm:text-[12px] font-semibold text-slate-800 font-bengali sm:col-span-2 break-words leading-snug">{field.value || '-'}</p>
                                   </div>
                                 ))}
                              </div>

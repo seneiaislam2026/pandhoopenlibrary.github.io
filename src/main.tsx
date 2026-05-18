@@ -17,6 +17,17 @@ if (window.self !== window.top) {
   };
 }
 
+// Safely catch Safari/Chrome quota exceeded errors globally to prevent application crashes
+const originalSetItem = Storage.prototype.setItem;
+Storage.prototype.setItem = function(key: string, value: string) {
+  try {
+    originalSetItem.call(this, key, value);
+  } catch (e: any) {
+    console.warn(`[Storage] Failed to set ${key}: ${e.message}`);
+    // If it's a quota issue, we could clear old caches, but at least we don't crash now.
+  }
+};
+
 testConnection();
 
 createRoot(document.getElementById('root')!).render(
