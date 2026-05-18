@@ -454,9 +454,9 @@ export default function Events() {
                 whileHover={{ y: -8, transition: { duration: 0.3 } }}
                 className="bg-white rounded-[2rem] sm:rounded-[2.5rem] border-[1.5px] border-slate-100/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden hover:shadow-[0_20px_40px_rgb(0,0,0,0.08)] transition-all duration-300 group flex flex-col h-full ring-1 ring-slate-900/5"
               >
-                <div className="relative w-full aspect-[4/3] sm:aspect-[16/10] overflow-hidden bg-slate-100">
-                  <img src={event.image || 'https://images.unsplash.com/photo-1544928147-79a2dbc1f389?q=80&w=1974&auto=format&fit=crop'} alt={event.title} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out" />
-                  <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-slate-900/60 via-slate-900/20 to-transparent pointer-events-none" />
+                <div className="relative w-full aspect-auto sm:aspect-auto overflow-hidden bg-white flex items-center justify-center p-2 rounded-t-[2rem] sm:rounded-t-[2.5rem]">
+                  <img src={event.image || 'https://images.unsplash.com/photo-1544928147-79a2dbc1f389?q=80&w=1974&auto=format&fit=crop'} alt={event.title} referrerPolicy="no-referrer" className="w-full h-auto max-h-[250px] sm:max-h-[300px] object-contain group-hover:scale-105 transition-transform duration-700 ease-out" />
+                  <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-slate-900/60 via-slate-900/20 to-transparent pointer-events-none rounded-t-[2rem] sm:rounded-t-[2.5rem]" />
                   <div className="absolute top-4 left-4 sm:top-5 sm:left-5 flex flex-wrap gap-2">
                     {event.status === 'Upcoming' && (
                       <span className="bg-amber-400/95 backdrop-blur-md px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[10px] sm:text-[11px] font-black text-amber-950 font-bengali tracking-wider shadow-sm uppercase">
@@ -763,9 +763,9 @@ export default function Events() {
 
               <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col sm:flex-row">
                 {/* LH Panel - Event Hero (Hidden on Mobile) */}
-                <div className="hidden sm:flex sm:w-[45%] bg-slate-900 relative min-h-[500px]">
-                  <img src={selectedEvent.image || 'https://images.unsplash.com/photo-1544928147-79a2dbc1f389?q=80&w=1974&auto=format&fit=crop'} alt={selectedEvent.title} className="absolute inset-0 w-full h-full object-cover opacity-60" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent sm:bg-gradient-to-r sm:from-slate-900/10 sm:to-slate-900/90 pointer-events-none" />
+                <div className="hidden sm:flex sm:w-[45%] bg-slate-100 relative min-h-[500px] p-6 lg:p-10 justify-center items-center">
+                  <img src={selectedEvent.image || 'https://images.unsplash.com/photo-1544928147-79a2dbc1f389?q=80&w=1974&auto=format&fit=crop'} alt={selectedEvent.title} className="w-full h-auto max-h-[80%] object-contain" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent sm:bg-gradient-to-r sm:from-slate-100/10 sm:to-white/90 pointer-events-none" />
                   <div className="relative h-full w-full flex flex-col p-10 justify-end">
                     <div className="mt-auto space-y-4 max-w-lg">
                       <div className="inline-flex px-3 py-1 bg-indigo-500/80 backdrop-blur rounded-lg text-xs font-black text-white uppercase tracking-widest">{selectedEvent.type}</div>
@@ -783,11 +783,12 @@ export default function Events() {
                   </div>
                 </div>
 
+                <div className="sm:hidden relative bg-slate-100 p-4 shrink-0 flex items-center justify-center">
+                  <img src={selectedEvent.image || 'https://images.unsplash.com/photo-1544928147-79a2dbc1f389?q=80&w=1974&auto=format&fit=crop'} alt={selectedEvent.title} className="w-full h-auto max-h-[160px] object-contain rounded-xl" />
+                </div>
                 {/* Mobile Header (Only on Mobile) */}
-                <div className="sm:hidden relative h-32 w-full shrink-0">
-                  <img src={selectedEvent.image || 'https://images.unsplash.com/photo-1544928147-79a2dbc1f389?q=80&w=1974&auto=format&fit=crop'} alt={selectedEvent.title} className="absolute inset-0 w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900 to-slate-900/20" />
-                  <h2 className="absolute bottom-4 left-5 pr-14 text-white font-black text-xl font-bengali leading-tight line-clamp-2">{selectedEvent.title}</h2>
+                <div className="sm:hidden relative px-5 pt-5 pb-2 w-full shrink-0">
+                  <h2 className="pr-14 text-slate-900 font-black text-xl font-bengali leading-tight">{selectedEvent.title}</h2>
                 </div>
 
                 {/* RH Panel - Form/Success */}

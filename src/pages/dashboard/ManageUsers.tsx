@@ -797,7 +797,7 @@ const handleAddUser = async (e: React.FormEvent) => {
       const email = (u.email || "").toLowerCase().trim();
       const isExcludeName = name === "system admin" || name === "seneia islam" || name === "seneiya islam";
       const isExcludeEmail = email === "seneiaislam@gmail.com";
-      return !isExcludeName && !isExcludeEmail;
+      return !isExcludeName && !isExcludeEmail && u.status !== 'pending';
     });
 
     let tableRows = usersToPrint.map((u, idx) => `

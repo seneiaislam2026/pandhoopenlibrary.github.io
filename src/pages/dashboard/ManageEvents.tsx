@@ -340,7 +340,7 @@ export default function ManageEvents() {
   const handlePrintSelected = () => {
     const listToPrint = selectedApplicants.length > 0 
        ? applicants.filter(a => selectedApplicants.includes(a.id))
-       : applicants;
+       : applicants.filter(a => a.status !== 'pending');
     
     if (listToPrint.length === 0) return toast.error("প্রিন্ট করার জন্য কিছু নেই");
 
@@ -364,7 +364,7 @@ export default function ManageEvents() {
         <body onload="JsBarcode('.barcode').init(); setTimeout(() => window.print(), 1000)" class="p-8">
           <div class="print-container max-w-5xl mx-auto">
             <div class="text-center mb-8 pb-6 border-b-2 border-slate-900">
-              <h1 class="text-3xl font-black text-slate-900 tracking-tight mb-2">পানধোঁয়া উন্মুক্ত পাঠাগার</h1>
+              <h1 class="text-3xl font-black text-slate-900 tracking-tight mb-2">পানধোয়া উন্মুক্ত পাঠাগার</h1>
               <h2 class="text-xl font-bold text-indigo-600">${eventName} - আবেদনকারীদের তালিকা</h2>
               <p class="text-sm text-slate-500 font-bold mt-2 bg-slate-100 inline-block px-3 py-1 rounded-full">মোট আবেদনকারী (প্রিন্ট): ${listToPrint.length} জন</p>
             </div>
@@ -408,7 +408,7 @@ export default function ManageEvents() {
             
             <div class="mt-12 pt-6 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 font-bold">
                <p>প্রিন্ট করার সময়: ${new Date().toLocaleString('bn-BD')}</p>
-               <p>পানধোঁয়া উন্মুক্ত পাঠাগার সিষ্টেম</p>
+               <p>পানধোয়া উন্মুক্ত পাঠাগার সিষ্টেম</p>
             </div>
           </div>
         </body>
@@ -424,7 +424,7 @@ export default function ManageEvents() {
   const handlePrintMedicalPads = () => {
     const listToPrint = selectedApplicants.length > 0 
        ? applicants.filter(a => selectedApplicants.includes(a.id))
-       : applicants;
+       : applicants.filter(a => a.status !== 'pending');
     
     if (listToPrint.length === 0) return toast.error("প্রিন্ট করার জন্য কিছু নেই");
 
@@ -567,7 +567,7 @@ export default function ManageEvents() {
   const handlePrintA4SerialList = () => {
     const listToPrint = selectedApplicants.length > 0 
        ? applicants.filter(a => selectedApplicants.includes(a.id))
-       : applicants;
+       : applicants.filter(a => a.status !== 'pending');
     
     if (listToPrint.length === 0) return toast.error("প্রিন্ট করার জন্য কিছু নেই");
 
@@ -616,7 +616,7 @@ export default function ManageEvents() {
                       
                       <div class="flex justify-between items-start border-b-2 border-slate-100 pb-3">
                         <div class="pr-2">
-                          <h1 class="text-sm font-black text-slate-900 leading-tight">পানধোঁয়া উন্মুক্ত পাঠাগার</h1>
+                          <h1 class="text-sm font-black text-slate-900 leading-tight">পানধোয়া উন্মুক্ত পাঠাগার</h1>
                           <h2 class="text-[10px] font-bold text-indigo-600 mt-1 line-clamp-1">${eventName}</h2>
                         </div>
                         <div class="text-right shrink-0">
@@ -677,9 +677,9 @@ export default function ManageEvents() {
         <body onload="JsBarcode('.barcode').init(); setTimeout(() => window.print(), 1000)" class="p-8">
           <div class="print-container max-w-5xl mx-auto">
             <div class="text-center mb-8 pb-6 border-b-2 border-slate-900">
-              <h1 class="text-3xl font-black text-slate-900 tracking-tight mb-2">পানধোঁয়া উন্মুক্ত পাঠাগার</h1>
+              <h1 class="text-3xl font-black text-slate-900 tracking-tight mb-2">পানধোয়া উন্মুক্ত পাঠাগার</h1>
               <h2 class="text-xl font-bold text-indigo-600">${eventName} - সকল আবেদনকারীর তালিকা</h2>
-              <p class="text-sm text-slate-500 font-bold mt-2 bg-slate-100 inline-block px-3 py-1 rounded-full">মোট আবেদনকারী: ${applicants.length} জন</p>
+              <p class="text-sm text-slate-500 font-bold mt-2 bg-slate-100 inline-block px-3 py-1 rounded-full">মোট আবেদনকারী: ${applicants.filter(a => a.status !== 'pending').length} জন</p>
             </div>
             
             <table class="w-full text-left border-collapse border border-slate-200">
@@ -692,7 +692,7 @@ export default function ManageEvents() {
                 </tr>
               </thead>
               <tbody class="text-sm">
-                ${applicants.map((app, idx) => `
+                ${applicants.filter(a => a.status !== 'pending').map((app, idx) => `
                   <tr class="hover:bg-slate-50 transition-colors">
                     <td class="border border-slate-200 p-3 font-bold text-indigo-600 w-24"># ${app.serialNumber || idx + 1}</td>
                     <td class="border border-slate-200 p-3 font-bold text-slate-800">
@@ -721,7 +721,7 @@ export default function ManageEvents() {
             
             <div class="mt-12 pt-6 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 font-bold">
                <p>প্রিন্ট করার সময়: ${new Date().toLocaleString('bn-BD')}</p>
-               <p>পানধোঁয়া উন্মুক্ত পাঠাগার সিষ্টেম</p>
+               <p>পানধোয়া উন্মুক্ত পাঠাগার সিষ্টেম</p>
             </div>
           </div>
         </body>
@@ -1460,7 +1460,7 @@ export default function ManageEvents() {
                          value={formData.smsTemplate || ''}
                          onChange={e => setFormData({ ...formData, smsTemplate: e.target.value })}
                          className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-[#673ab7] outline-none min-h-[120px] font-bengali"
-                         placeholder="যেমন: ধন্যবাদ {name}, আপনার সিরিয়াল নাম্বার {serial}। পানধোঁয়া ফ্রি মেডিকেল ক্যাম্পেইনে আপনাকে স্বাগতম।"
+                         placeholder="যেমন: ধন্যবাদ {name}, আপনার সিরিয়াল নাম্বার {serial}। পানধোয়া ফ্রি মেডিকেল ক্যাম্পেইনে আপনাকে স্বাগতম।"
                        />
                     </div>
                   </div>
